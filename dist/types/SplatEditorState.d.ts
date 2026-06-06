@@ -6,11 +6,18 @@ export declare const SPLAT_EDITOR_STATE_DELETED = 4;
 export declare const SPLAT_EDITOR_STATE_NONE = 0;
 export type SplatEditorStateBits = number;
 export type SplatEditorStateOperation = "replace" | "set" | "clear" | "toggle";
+export type SplatEditorSelectionOperation = "set" | "add" | "remove";
 export type SplatEditorStateFilterMode = "all" | "visible" | "selected" | "editable" | "pick-add" | "pick-remove" | "pick-set";
 export interface SplatEditorStateCounts {
     readonly selected: number;
     readonly locked: number;
     readonly deleted: number;
+}
+export interface SplatEditorStateMutationResult {
+    readonly changed: number;
+    readonly counts: SplatEditorStateCounts;
+    readonly version: number;
+    readonly visibilityVersion: number;
 }
 export interface SplatEditorStateDirtyRange {
     readonly start: number;
@@ -36,6 +43,7 @@ export interface SplatEditorStateColors {
 }
 export declare class SplatEditorState {
     states: Uint8Array;
+    numSplats: number;
     maxSplats: number;
     version: number;
     visibilityVersion: number;
@@ -60,6 +68,15 @@ export declare class SplatEditorState {
     matches(index: number, mode: SplatEditorStateFilterMode): boolean;
     setRange(start: number, count: number, bits: SplatEditorStateBits, operation?: SplatEditorStateOperation): void;
     setList(indices: Iterable<number>, bits: SplatEditorStateBits, operation?: SplatEditorStateOperation): void;
+    selectCandidates(indices: Iterable<number>, operation?: SplatEditorSelectionOperation): SplatEditorStateMutationResult;
+    selectAll(): SplatEditorStateMutationResult;
+    clearSelection(): SplatEditorStateMutationResult;
+    invertSelection(): SplatEditorStateMutationResult;
+    hideSelected(): SplatEditorStateMutationResult;
+    unhideAll(): SplatEditorStateMutationResult;
+    deleteSelected(): SplatEditorStateMutationResult;
+    resetDeleted(): SplatEditorStateMutationResult;
+    cropToSelection(): SplatEditorStateMutationResult;
     replace(states: ArrayLike<number>, numSplats?: number): void;
     clear(mask?: SplatEditorStateBits): void;
     reset(): void;
@@ -75,6 +92,8 @@ export declare class SplatEditorState {
     private clearDirty;
     private uploadDirtySpans;
     private assertIndex;
+    private normalizeIndex;
+    private commitMutation;
     private setUnchecked;
     private updateCounts;
     static emptyTexture: THREE.DataArrayTexture;

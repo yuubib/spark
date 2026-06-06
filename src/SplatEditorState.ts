@@ -19,6 +19,7 @@ export const SPLAT_EDITOR_STATE_NONE = 0;
 
 export type SplatEditorStateBits = number;
 export type SplatEditorStateOperation = "replace" | "set" | "clear" | "toggle";
+export type SplatEditorSelectionOperation = "set" | "add" | "remove";
 export type SplatEditorStateFilterMode =
   | "all"
   | "visible"
@@ -32,6 +33,13 @@ export interface SplatEditorStateCounts {
   readonly selected: number;
   readonly locked: number;
   readonly deleted: number;
+}
+
+export interface SplatEditorStateMutationResult {
+  readonly changed: number;
+  readonly counts: SplatEditorStateCounts;
+  readonly version: number;
+  readonly visibilityVersion: number;
 }
 
 export interface SplatEditorStateDirtyRange {
@@ -81,6 +89,7 @@ type WebGLTextureProperties = {
 
 export class SplatEditorState {
   states: Uint8Array;
+  numSplats: number;
   maxSplats: number;
   version = 0;
   visibilityVersion = 0;
@@ -96,6 +105,7 @@ export class SplatEditorState {
   private fullTextureUploadPending = false;
 
   constructor(numSplats = 0, colors: SplatEditorStateColors = {}) {
+    this.numSplats = 0;
     this.maxSplats = 0;
     this.states = new Uint8Array(0);
     this.selectedColor =
@@ -111,6 +121,7 @@ export class SplatEditorState {
       this.texture = null;
     }
     this.states = new Uint8Array(0);
+    this.numSplats = 0;
     this.maxSplats = 0;
     this.selected = 0;
     this.locked = 0;
@@ -123,6 +134,7 @@ export class SplatEditorState {
 
   ensureCapacity(numSplats: number): Uint8Array {
     const safeNumSplats = Math.max(0, Math.ceil(numSplats));
+    this.numSplats = Math.max(this.numSplats, safeNumSplats);
     if (safeNumSplats <= this.maxSplats) {
       return this.states;
     }
@@ -253,9 +265,197 @@ export class SplatEditorState {
     }
   }
 
+  selectCandidates(
+    indices: Iterable<number>,
+    operation: SplatEditorSelectionOperation = "set",
+  ): SplatEditorStateMutationResult {
+    if (operation === "set") {
+      const candidates = new Uint8Array(this.numSplats);
+      for (const rawIndex of indices) {
+        const index = this.normalizeIndex(rawIndex);
+        if (index !== null) {
+          candidates[index] = 1;
+        }
+      }
+
+      let changed = 0;
+      for (let index = 0; index < this.numSplats; index++) {
+        const previous = this.states[index];
+        const next =
+          candidates[index] && previous === SPLAT_EDITOR_STATE_NONE
+            ? SPLAT_EDITOR_STATE_SELECTED
+            : !candidates[index] && previous === SPLAT_EDITOR_STATE_SELECTED
+              ? SPLAT_EDITOR_STATE_NONE
+              : previous;
+        if (this.setUnchecked(index, next, false)) {
+          changed++;
+        }
+      }
+      return this.commitMutation(changed, [], true);
+    }
+
+    const dirtyIndices: number[] = [];
+    let changed = 0;
+    for (const rawIndex of indices) {
+      const index = this.normalizeIndex(rawIndex);
+      if (index === null) {
+        continue;
+      }
+      const previous = this.states[index];
+      const next =
+        operation === "add" && previous === SPLAT_EDITOR_STATE_NONE
+          ? SPLAT_EDITOR_STATE_SELECTED
+          : operation === "remove" && previous === SPLAT_EDITOR_STATE_SELECTED
+            ? SPLAT_EDITOR_STATE_NONE
+            : previous;
+      if (this.setUnchecked(index, next, false)) {
+        dirtyIndices.push(index);
+        changed++;
+      }
+    }
+    return this.commitMutation(changed, dirtyIndices);
+  }
+
+  selectAll(): SplatEditorStateMutationResult {
+    let changed = 0;
+    for (let index = 0; index < this.numSplats; index++) {
+      if (
+        this.setUnchecked(
+          index,
+          this.states[index] === SPLAT_EDITOR_STATE_NONE
+            ? SPLAT_EDITOR_STATE_SELECTED
+            : this.states[index],
+          false,
+        )
+      ) {
+        changed++;
+      }
+    }
+    return this.commitMutation(changed, [], true);
+  }
+
+  clearSelection(): SplatEditorStateMutationResult {
+    let changed = 0;
+    for (let index = 0; index < this.numSplats; index++) {
+      if (
+        this.setUnchecked(
+          index,
+          this.states[index] === SPLAT_EDITOR_STATE_SELECTED
+            ? SPLAT_EDITOR_STATE_NONE
+            : this.states[index],
+          false,
+        )
+      ) {
+        changed++;
+      }
+    }
+    return this.commitMutation(changed, [], true);
+  }
+
+  invertSelection(): SplatEditorStateMutationResult {
+    let changed = 0;
+    for (let index = 0; index < this.numSplats; index++) {
+      const previous = this.states[index];
+      const next =
+        previous === SPLAT_EDITOR_STATE_NONE
+          ? SPLAT_EDITOR_STATE_SELECTED
+          : previous === SPLAT_EDITOR_STATE_SELECTED
+            ? SPLAT_EDITOR_STATE_NONE
+            : previous;
+      if (this.setUnchecked(index, next, false)) {
+        changed++;
+      }
+    }
+    return this.commitMutation(changed, [], true);
+  }
+
+  hideSelected(): SplatEditorStateMutationResult {
+    let changed = 0;
+    for (let index = 0; index < this.numSplats; index++) {
+      if (
+        this.setUnchecked(
+          index,
+          this.states[index] === SPLAT_EDITOR_STATE_SELECTED
+            ? SPLAT_EDITOR_STATE_SELECTED | SPLAT_EDITOR_STATE_LOCKED
+            : this.states[index],
+          false,
+        )
+      ) {
+        changed++;
+      }
+    }
+    return this.commitMutation(changed, [], true);
+  }
+
+  unhideAll(): SplatEditorStateMutationResult {
+    let changed = 0;
+    for (let index = 0; index < this.numSplats; index++) {
+      const previous = this.states[index];
+      const next =
+        (previous & SPLAT_EDITOR_STATE_DELETED) === 0 &&
+        (previous & SPLAT_EDITOR_STATE_LOCKED) !== 0
+          ? previous & ~SPLAT_EDITOR_STATE_LOCKED
+          : previous;
+      if (this.setUnchecked(index, next, false)) {
+        changed++;
+      }
+    }
+    return this.commitMutation(changed, [], true);
+  }
+
+  deleteSelected(): SplatEditorStateMutationResult {
+    let changed = 0;
+    for (let index = 0; index < this.numSplats; index++) {
+      if (
+        this.setUnchecked(
+          index,
+          this.states[index] === SPLAT_EDITOR_STATE_SELECTED
+            ? SPLAT_EDITOR_STATE_SELECTED | SPLAT_EDITOR_STATE_DELETED
+            : this.states[index],
+          false,
+        )
+      ) {
+        changed++;
+      }
+    }
+    return this.commitMutation(changed, [], true);
+  }
+
+  resetDeleted(): SplatEditorStateMutationResult {
+    let changed = 0;
+    for (let index = 0; index < this.numSplats; index++) {
+      const previous = this.states[index];
+      const next =
+        (previous & SPLAT_EDITOR_STATE_DELETED) !== 0
+          ? previous & ~SPLAT_EDITOR_STATE_DELETED
+          : previous;
+      if (this.setUnchecked(index, next, false)) {
+        changed++;
+      }
+    }
+    return this.commitMutation(changed, [], true);
+  }
+
+  cropToSelection(): SplatEditorStateMutationResult {
+    let changed = 0;
+    for (let index = 0; index < this.numSplats; index++) {
+      const previous = this.states[index];
+      const next =
+        previous !== SPLAT_EDITOR_STATE_SELECTED &&
+        (previous & SPLAT_EDITOR_STATE_DELETED) === 0
+          ? previous | SPLAT_EDITOR_STATE_DELETED
+          : previous;
+      if (this.setUnchecked(index, next, false)) {
+        changed++;
+      }
+    }
+    return this.commitMutation(changed, [], true);
+  }
+
   replace(states: ArrayLike<number>, numSplats = states.length): void {
     const safeNumSplats = Math.max(0, Math.floor(numSplats));
     this.ensureCapacity(safeNumSplats);
+    this.numSplats = safeNumSplats;
 
     let changed = false;
     let visibilityChanged = false;
@@ -582,6 +782,40 @@ export class SplatEditorState {
     if (!Number.isInteger(index) || index < 0 || index >= this.maxSplats) {
       throw new Error(`Invalid splat editor state index: ${index}`);
     }
+  }
+
+  private normalizeIndex(rawIndex: number): number | null {
+    const index = Math.floor(rawIndex);
+    return Number.isFinite(index) && index >= 0 && index < this.numSplats
+      ? index
+      : null;
+  }
+
+  private commitMutation(
+    changed: number,
+    dirtyIndices: readonly number[] = [],
+    fullRange = false,
+  ): SplatEditorStateMutationResult {
+    if (changed > 0) {
+      if (
+        fullRange ||
+        dirtyIndices.length === 0 ||
+        dirtyIndices.length > this.numSplats / 4
+      ) {
+        this.markDirtyRange(0, this.numSplats);
+      } else if (dirtyIndices.length === 1) {
+        this.markDirtyRange(dirtyIndices[0], 1);
+      } else {
+        this.markDirtyList(dirtyIndices);
+      }
+      this.version++;
+    }
+    return {
+      changed,
+      counts: this.getCounts(),
+      version: this.version,
+      visibilityVersion: this.visibilityVersion,
+    };
   }
 
   private setUnchecked(

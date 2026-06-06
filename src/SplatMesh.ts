@@ -14,10 +14,12 @@ import { SparkRenderer } from "./SparkRenderer";
 import { SplatEdit, SplatEditSdf, SplatEdits } from "./SplatEdit";
 import {
   SPLAT_EDITOR_STATE_NONE,
+  type SplatEditorSelectionOperation,
   SplatEditorState,
   type SplatEditorStateBits,
   type SplatEditorStateCounts,
   type SplatEditorStateFilterMode,
+  type SplatEditorStateMutationResult,
   type SplatEditorStateOperation,
   type SplatEditorStateUploadResult,
   applyCovSplatEditorStateColor,
@@ -807,6 +809,47 @@ export class SplatMesh extends SplatGenerator {
     );
   }
 
+  selectSplatStateCandidates(
+    indices: Iterable<number>,
+    operation: SplatEditorSelectionOperation = "set",
+  ): SplatEditorStateMutationResult {
+    return this.mutateEditorState((state) =>
+      state.selectCandidates(indices, operation),
+    );
+  }
+
+  selectAllSplatState(): SplatEditorStateMutationResult {
+    return this.mutateEditorState((state) => state.selectAll());
+  }
+
+  clearSplatStateSelection(): SplatEditorStateMutationResult {
+    return this.mutateEditorState((state) => state.clearSelection());
+  }
+
+  invertSplatStateSelection(): SplatEditorStateMutationResult {
+    return this.mutateEditorState((state) => state.invertSelection());
+  }
+
+  hideSelectedSplatState(): SplatEditorStateMutationResult {
+    return this.mutateEditorState((state) => state.hideSelected());
+  }
+
+  unhideAllSplatState(): SplatEditorStateMutationResult {
+    return this.mutateEditorState((state) => state.unhideAll());
+  }
+
+  deleteSelectedSplatState(): SplatEditorStateMutationResult {
+    return this.mutateEditorState((state) => state.deleteSelected());
+  }
+
+  resetDeletedSplatState(): SplatEditorStateMutationResult {
+    return this.mutateEditorState((state) => state.resetDeleted());
+  }
+
+  cropSplatStateToSelection(): SplatEditorStateMutationResult {
+    return this.mutateEditorState((state) => state.cropToSelection());
+  }
+
   getSplatStateCounts(): SplatEditorStateCounts {
     return (
       this.getEditorState()?.getCounts() ?? {
@@ -997,6 +1040,21 @@ export class SplatMesh extends SplatGenerator {
         this.updateEditorStateStyleVersion();
       }
     }
+  }
+
+  private mutateEditorState(
+    mutate: (state: SplatEditorState) => SplatEditorStateMutationResult,
+  ): SplatEditorStateMutationResult {
+    const state = this.ensureEditorState();
+    const previousVersion = state.version;
+    const previousVisibilityVersion = state.visibilityVersion;
+    const result = mutate(state);
+    this.updateVersionForEditorState(
+      state,
+      previousVersion,
+      previousVisibilityVersion,
+    );
+    return result;
   }
 
   private updateEditorStateStyleVersion(): void {

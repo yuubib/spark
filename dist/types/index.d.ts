@@ -9,7 +9,7 @@ export { PlyReader } from './ply';
 export { SpzReader, SpzWriter, transcodeSpz } from './spz';
 export { PackedSplats, type PackedSplatsOptions } from './PackedSplats';
 export { ExtSplats, type ExtSplatsOptions } from './ExtSplats';
-export { SplatEditorState, SPLAT_EDITOR_STATE_DELETED, SPLAT_EDITOR_STATE_LOCKED, SPLAT_EDITOR_STATE_NONE, SPLAT_EDITOR_STATE_SELECTED, matchesSplatEditorStateBits, type SplatEditorStateBits, type SplatEditorStateCounts, type SplatEditorStateDirtyRange, type SplatEditorStateDirtyUploadSpan, type SplatEditorStateFilterMode, type SplatEditorStateOperation, type SplatEditorStateUploadMode, type SplatEditorStateUploadResult, } from './SplatEditorState';
+export { SplatEditorState, SPLAT_EDITOR_STATE_DELETED, SPLAT_EDITOR_STATE_LOCKED, SPLAT_EDITOR_STATE_NONE, SPLAT_EDITOR_STATE_SELECTED, matchesSplatEditorStateBits, type SplatEditorSelectionOperation, type SplatEditorStateBits, type SplatEditorStateCounts, type SplatEditorStateDirtyRange, type SplatEditorStateDirtyUploadSpan, type SplatEditorStateFilterMode, type SplatEditorStateMutationResult, type SplatEditorStateOperation, type SplatEditorStateUploadMode, type SplatEditorStateUploadResult, } from './SplatEditorState';
 export * from './SplatPager';
 export { SplatGenerator, type GsplatGenerator, SplatModifier, type GsplatModifier, SplatTransformer, } from './SplatGenerator';
 export { OldSplatAccumulator } from './OldSplatAccumulator';

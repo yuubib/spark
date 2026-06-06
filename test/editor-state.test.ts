@@ -118,6 +118,171 @@ import {
 }
 
 {
+  const state = new SplatEditorState(3);
+  assert.ok(state.maxSplats >= state.numSplats);
+  state.uploadDirty();
+
+  const result = state.selectAll();
+  assert.strictEqual(result.changed, 3);
+  assert.deepStrictEqual(result.counts, {
+    selected: 3,
+    locked: 0,
+    deleted: 0,
+  });
+  assert.strictEqual(state.get(0), SPLAT_EDITOR_STATE_SELECTED);
+  assert.strictEqual(state.get(2), SPLAT_EDITOR_STATE_SELECTED);
+  assert.strictEqual(state.states[3], SPLAT_EDITOR_STATE_NONE);
+  assert.deepStrictEqual(state.getDirtyRanges(), [{ start: 0, count: 3 }]);
+
+  const version = state.version;
+  assert.strictEqual(state.selectCandidates([0, 1, 2], "add").changed, 0);
+  assert.strictEqual(state.version, version);
+}
+
+{
+  const state = new SplatEditorState(6);
+  state.replace(
+    new Uint8Array([
+      SPLAT_EDITOR_STATE_SELECTED,
+      SPLAT_EDITOR_STATE_SELECTED | SPLAT_EDITOR_STATE_LOCKED,
+      SPLAT_EDITOR_STATE_DELETED,
+      SPLAT_EDITOR_STATE_SELECTED,
+      SPLAT_EDITOR_STATE_NONE,
+      SPLAT_EDITOR_STATE_NONE,
+    ]),
+    6,
+  );
+  state.uploadDirty();
+  const visibilityVersion = state.visibilityVersion;
+
+  const setResult = state.selectCandidates([4, 1, 2], "set");
+  assert.strictEqual(setResult.changed, 3);
+  assert.strictEqual(state.get(0), SPLAT_EDITOR_STATE_NONE);
+  assert.strictEqual(
+    state.get(1),
+    SPLAT_EDITOR_STATE_SELECTED | SPLAT_EDITOR_STATE_LOCKED,
+  );
+  assert.strictEqual(state.get(2), SPLAT_EDITOR_STATE_DELETED);
+  assert.strictEqual(state.get(3), SPLAT_EDITOR_STATE_NONE);
+  assert.strictEqual(state.get(4), SPLAT_EDITOR_STATE_SELECTED);
+  assert.deepStrictEqual(setResult.counts, {
+    selected: 1,
+    locked: 1,
+    deleted: 1,
+  });
+  assert.strictEqual(state.visibilityVersion, visibilityVersion);
+
+  state.uploadDirty();
+  const addResult = state.selectCandidates([0, 1, 2, 4, 99], "add");
+  assert.strictEqual(addResult.changed, 1);
+  assert.strictEqual(state.get(0), SPLAT_EDITOR_STATE_SELECTED);
+  assert.strictEqual(
+    state.get(1),
+    SPLAT_EDITOR_STATE_SELECTED | SPLAT_EDITOR_STATE_LOCKED,
+  );
+  assert.strictEqual(state.get(2), SPLAT_EDITOR_STATE_DELETED);
+  assert.strictEqual(state.get(4), SPLAT_EDITOR_STATE_SELECTED);
+  assert.deepStrictEqual(addResult.counts, {
+    selected: 2,
+    locked: 1,
+    deleted: 1,
+  });
+
+  const removeResult = state.selectCandidates([0, 1, 4], "remove");
+  assert.strictEqual(removeResult.changed, 2);
+  assert.strictEqual(state.get(0), SPLAT_EDITOR_STATE_NONE);
+  assert.strictEqual(
+    state.get(1),
+    SPLAT_EDITOR_STATE_SELECTED | SPLAT_EDITOR_STATE_LOCKED,
+  );
+  assert.strictEqual(state.get(4), SPLAT_EDITOR_STATE_NONE);
+  assert.deepStrictEqual(removeResult.counts, {
+    selected: 0,
+    locked: 1,
+    deleted: 1,
+  });
+  assert.strictEqual(state.visibilityVersion, visibilityVersion);
+}
+
+{
+  const state = new SplatEditorState(6);
+  state.replace(
+    new Uint8Array([
+      SPLAT_EDITOR_STATE_SELECTED,
+      SPLAT_EDITOR_STATE_SELECTED | SPLAT_EDITOR_STATE_LOCKED,
+      SPLAT_EDITOR_STATE_LOCKED,
+      SPLAT_EDITOR_STATE_DELETED,
+      SPLAT_EDITOR_STATE_NONE,
+      SPLAT_EDITOR_STATE_SELECTED,
+    ]),
+    6,
+  );
+  state.uploadDirty();
+  const visibilityVersion = state.visibilityVersion;
+
+  const hideResult = state.hideSelected();
+  assert.strictEqual(hideResult.changed, 2);
+  assert.strictEqual(
+    state.get(0),
+    SPLAT_EDITOR_STATE_SELECTED | SPLAT_EDITOR_STATE_LOCKED,
+  );
+  assert.strictEqual(
+    state.get(5),
+    SPLAT_EDITOR_STATE_SELECTED | SPLAT_EDITOR_STATE_LOCKED,
+  );
+  assert.deepStrictEqual(hideResult.counts, {
+    selected: 0,
+    locked: 4,
+    deleted: 1,
+  });
+  assert.strictEqual(state.visibilityVersion, visibilityVersion);
+
+  const unhideResult = state.unhideAll();
+  assert.strictEqual(unhideResult.changed, 4);
+  assert.strictEqual(state.get(0), SPLAT_EDITOR_STATE_SELECTED);
+  assert.strictEqual(state.get(1), SPLAT_EDITOR_STATE_SELECTED);
+  assert.strictEqual(state.get(2), SPLAT_EDITOR_STATE_NONE);
+  assert.strictEqual(state.get(5), SPLAT_EDITOR_STATE_SELECTED);
+  assert.deepStrictEqual(unhideResult.counts, {
+    selected: 3,
+    locked: 0,
+    deleted: 1,
+  });
+  assert.strictEqual(state.visibilityVersion, visibilityVersion);
+
+  const deleteResult = state.deleteSelected();
+  assert.strictEqual(deleteResult.changed, 3);
+  assert.deepStrictEqual(deleteResult.counts, {
+    selected: 0,
+    locked: 0,
+    deleted: 4,
+  });
+  assert.strictEqual(state.visibilityVersion, visibilityVersion + 3);
+
+  const resetResult = state.resetDeleted();
+  assert.strictEqual(resetResult.changed, 4);
+  assert.strictEqual(state.get(0), SPLAT_EDITOR_STATE_SELECTED);
+  assert.strictEqual(state.get(1), SPLAT_EDITOR_STATE_SELECTED);
+  assert.strictEqual(state.get(3), SPLAT_EDITOR_STATE_NONE);
+  assert.strictEqual(state.get(5), SPLAT_EDITOR_STATE_SELECTED);
+  assert.deepStrictEqual(resetResult.counts, {
+    selected: 3,
+    locked: 0,
+    deleted: 0,
+  });
+  assert.strictEqual(state.visibilityVersion, visibilityVersion + 7);
+
+  const cropResult = state.cropToSelection();
+  assert.strictEqual(cropResult.changed, 3);
+  assert.deepStrictEqual(cropResult.counts, {
+    selected: 3,
+    locked: 0,
+    deleted: 3,
+  });
+  assert.strictEqual(state.visibilityVersion, visibilityVersion + 10);
+}
+
+{
   assert.strictEqual(matchesSplatEditorStateBits(0, "all"), true);
   assert.strictEqual(matchesSplatEditorStateBits(0, "visible"), true);
   assert.strictEqual(matchesSplatEditorStateBits(0, "editable"), true);

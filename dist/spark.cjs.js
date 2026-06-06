@@ -6848,6 +6848,7 @@ const _SplatEditorState = class _SplatEditorState {
     this.dirtyRanges = [];
     this.dirtyAll = false;
     this.fullTextureUploadPending = false;
+    this.numSplats = 0;
     this.maxSplats = 0;
     this.states = new Uint8Array(0);
     this.selectedColor = ((_a2 = colors.selected) == null ? void 0 : _a2.clone()) ?? DEFAULT_SELECTED_COLOR.clone();
@@ -6861,6 +6862,7 @@ const _SplatEditorState = class _SplatEditorState {
       this.texture = null;
     }
     this.states = new Uint8Array(0);
+    this.numSplats = 0;
     this.maxSplats = 0;
     this.selected = 0;
     this.locked = 0;
@@ -6872,6 +6874,7 @@ const _SplatEditorState = class _SplatEditorState {
   }
   ensureCapacity(numSplats) {
     const safeNumSplats = Math.max(0, Math.ceil(numSplats));
+    this.numSplats = Math.max(this.numSplats, safeNumSplats);
     if (safeNumSplats <= this.maxSplats) {
       return this.states;
     }
@@ -6975,9 +6978,141 @@ const _SplatEditorState = class _SplatEditorState {
       this.version++;
     }
   }
+  selectCandidates(indices, operation = "set") {
+    if (operation === "set") {
+      const candidates = new Uint8Array(this.numSplats);
+      for (const rawIndex of indices) {
+        const index = this.normalizeIndex(rawIndex);
+        if (index !== null) {
+          candidates[index] = 1;
+        }
+      }
+      let changed2 = 0;
+      for (let index = 0; index < this.numSplats; index++) {
+        const previous = this.states[index];
+        const next = candidates[index] && previous === SPLAT_EDITOR_STATE_NONE ? SPLAT_EDITOR_STATE_SELECTED : !candidates[index] && previous === SPLAT_EDITOR_STATE_SELECTED ? SPLAT_EDITOR_STATE_NONE : previous;
+        if (this.setUnchecked(index, next, false)) {
+          changed2++;
+        }
+      }
+      return this.commitMutation(changed2, [], true);
+    }
+    const dirtyIndices = [];
+    let changed = 0;
+    for (const rawIndex of indices) {
+      const index = this.normalizeIndex(rawIndex);
+      if (index === null) {
+        continue;
+      }
+      const previous = this.states[index];
+      const next = operation === "add" && previous === SPLAT_EDITOR_STATE_NONE ? SPLAT_EDITOR_STATE_SELECTED : operation === "remove" && previous === SPLAT_EDITOR_STATE_SELECTED ? SPLAT_EDITOR_STATE_NONE : previous;
+      if (this.setUnchecked(index, next, false)) {
+        dirtyIndices.push(index);
+        changed++;
+      }
+    }
+    return this.commitMutation(changed, dirtyIndices);
+  }
+  selectAll() {
+    let changed = 0;
+    for (let index = 0; index < this.numSplats; index++) {
+      if (this.setUnchecked(
+        index,
+        this.states[index] === SPLAT_EDITOR_STATE_NONE ? SPLAT_EDITOR_STATE_SELECTED : this.states[index],
+        false
+      )) {
+        changed++;
+      }
+    }
+    return this.commitMutation(changed, [], true);
+  }
+  clearSelection() {
+    let changed = 0;
+    for (let index = 0; index < this.numSplats; index++) {
+      if (this.setUnchecked(
+        index,
+        this.states[index] === SPLAT_EDITOR_STATE_SELECTED ? SPLAT_EDITOR_STATE_NONE : this.states[index],
+        false
+      )) {
+        changed++;
+      }
+    }
+    return this.commitMutation(changed, [], true);
+  }
+  invertSelection() {
+    let changed = 0;
+    for (let index = 0; index < this.numSplats; index++) {
+      const previous = this.states[index];
+      const next = previous === SPLAT_EDITOR_STATE_NONE ? SPLAT_EDITOR_STATE_SELECTED : previous === SPLAT_EDITOR_STATE_SELECTED ? SPLAT_EDITOR_STATE_NONE : previous;
+      if (this.setUnchecked(index, next, false)) {
+        changed++;
+      }
+    }
+    return this.commitMutation(changed, [], true);
+  }
+  hideSelected() {
+    let changed = 0;
+    for (let index = 0; index < this.numSplats; index++) {
+      if (this.setUnchecked(
+        index,
+        this.states[index] === SPLAT_EDITOR_STATE_SELECTED ? SPLAT_EDITOR_STATE_SELECTED | SPLAT_EDITOR_STATE_LOCKED : this.states[index],
+        false
+      )) {
+        changed++;
+      }
+    }
+    return this.commitMutation(changed, [], true);
+  }
+  unhideAll() {
+    let changed = 0;
+    for (let index = 0; index < this.numSplats; index++) {
+      const previous = this.states[index];
+      const next = (previous & SPLAT_EDITOR_STATE_DELETED) === 0 && (previous & SPLAT_EDITOR_STATE_LOCKED) !== 0 ? previous & -3 : previous;
+      if (this.setUnchecked(index, next, false)) {
+        changed++;
+      }
+    }
+    return this.commitMutation(changed, [], true);
+  }
+  deleteSelected() {
+    let changed = 0;
+    for (let index = 0; index < this.numSplats; index++) {
+      if (this.setUnchecked(
+        index,
+        this.states[index] === SPLAT_EDITOR_STATE_SELECTED ? SPLAT_EDITOR_STATE_SELECTED | SPLAT_EDITOR_STATE_DELETED : this.states[index],
+        false
+      )) {
+        changed++;
+      }
+    }
+    return this.commitMutation(changed, [], true);
+  }
+  resetDeleted() {
+    let changed = 0;
+    for (let index = 0; index < this.numSplats; index++) {
+      const previous = this.states[index];
+      const next = (previous & SPLAT_EDITOR_STATE_DELETED) !== 0 ? previous & -5 : previous;
+      if (this.setUnchecked(index, next, false)) {
+        changed++;
+      }
+    }
+    return this.commitMutation(changed, [], true);
+  }
+  cropToSelection() {
+    let changed = 0;
+    for (let index = 0; index < this.numSplats; index++) {
+      const previous = this.states[index];
+      const next = previous !== SPLAT_EDITOR_STATE_SELECTED && (previous & SPLAT_EDITOR_STATE_DELETED) === 0 ? previous | SPLAT_EDITOR_STATE_DELETED : previous;
+      if (this.setUnchecked(index, next, false)) {
+        changed++;
+      }
+    }
+    return this.commitMutation(changed, [], true);
+  }
   replace(states, numSplats = states.length) {
     const safeNumSplats = Math.max(0, Math.floor(numSplats));
     this.ensureCapacity(safeNumSplats);
+    this.numSplats = safeNumSplats;
     let changed = false;
     let visibilityChanged = false;
     let selected = 0;
@@ -7245,6 +7380,28 @@ const _SplatEditorState = class _SplatEditorState {
     if (!Number.isInteger(index) || index < 0 || index >= this.maxSplats) {
       throw new Error(`Invalid splat editor state index: ${index}`);
     }
+  }
+  normalizeIndex(rawIndex) {
+    const index = Math.floor(rawIndex);
+    return Number.isFinite(index) && index >= 0 && index < this.numSplats ? index : null;
+  }
+  commitMutation(changed, dirtyIndices = [], fullRange = false) {
+    if (changed > 0) {
+      if (fullRange || dirtyIndices.length === 0 || dirtyIndices.length > this.numSplats / 4) {
+        this.markDirtyRange(0, this.numSplats);
+      } else if (dirtyIndices.length === 1) {
+        this.markDirtyRange(dirtyIndices[0], 1);
+      } else {
+        this.markDirtyList(dirtyIndices);
+      }
+      this.version++;
+    }
+    return {
+      changed,
+      counts: this.getCounts(),
+      version: this.version,
+      visibilityVersion: this.visibilityVersion
+    };
   }
   setUnchecked(index, bits2, markDirty = true) {
     const next = bits2 & 255;
@@ -13418,6 +13575,35 @@ const _SplatMesh = class _SplatMesh extends SplatGenerator {
       previousVisibilityVersion
     );
   }
+  selectSplatStateCandidates(indices, operation = "set") {
+    return this.mutateEditorState(
+      (state) => state.selectCandidates(indices, operation)
+    );
+  }
+  selectAllSplatState() {
+    return this.mutateEditorState((state) => state.selectAll());
+  }
+  clearSplatStateSelection() {
+    return this.mutateEditorState((state) => state.clearSelection());
+  }
+  invertSplatStateSelection() {
+    return this.mutateEditorState((state) => state.invertSelection());
+  }
+  hideSelectedSplatState() {
+    return this.mutateEditorState((state) => state.hideSelected());
+  }
+  unhideAllSplatState() {
+    return this.mutateEditorState((state) => state.unhideAll());
+  }
+  deleteSelectedSplatState() {
+    return this.mutateEditorState((state) => state.deleteSelected());
+  }
+  resetDeletedSplatState() {
+    return this.mutateEditorState((state) => state.resetDeleted());
+  }
+  cropSplatStateToSelection() {
+    return this.mutateEditorState((state) => state.cropToSelection());
+  }
   getSplatStateCounts() {
     var _a2;
     return ((_a2 = this.getEditorState()) == null ? void 0 : _a2.getCounts()) ?? {
@@ -13562,6 +13748,18 @@ const _SplatMesh = class _SplatMesh extends SplatGenerator {
         this.updateEditorStateStyleVersion();
       }
     }
+  }
+  mutateEditorState(mutate) {
+    const state = this.ensureEditorState();
+    const previousVersion = state.version;
+    const previousVisibilityVersion = state.visibilityVersion;
+    const result = mutate(state);
+    this.updateVersionForEditorState(
+      state,
+      previousVersion,
+      previousVisibilityVersion
+    );
+    return result;
   }
   updateEditorStateStyleVersion() {
     if (this.editorStateRenderMode === "accumulator") {
