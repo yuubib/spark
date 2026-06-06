@@ -780,6 +780,21 @@ export class SplatMesh extends SplatGenerator {
     );
   }
 
+  replaceSplatState(
+    states: ArrayLike<number>,
+    numSplats = states.length,
+  ): void {
+    const state = this.ensureEditorState(numSplats);
+    const previousVersion = state.version;
+    const previousVisibilityVersion = state.visibilityVersion;
+    state.replace(states, numSplats);
+    this.updateVersionForEditorState(
+      state,
+      previousVersion,
+      previousVisibilityVersion,
+    );
+  }
+
   clearSplatState(mask?: SplatEditorStateBits): void {
     const state = this.ensureEditorState();
     const previousVersion = state.version;

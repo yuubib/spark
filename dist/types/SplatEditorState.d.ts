@@ -60,6 +60,7 @@ export declare class SplatEditorState {
     matches(index: number, mode: SplatEditorStateFilterMode): boolean;
     setRange(start: number, count: number, bits: SplatEditorStateBits, operation?: SplatEditorStateOperation): void;
     setList(indices: Iterable<number>, bits: SplatEditorStateBits, operation?: SplatEditorStateOperation): void;
+    replace(states: ArrayLike<number>, numSplats?: number): void;
     clear(mask?: SplatEditorStateBits): void;
     reset(): void;
     getCounts(): SplatEditorStateCounts;

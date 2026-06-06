@@ -179,6 +179,7 @@ export declare class SplatMesh extends SplatGenerator {
     updateSplatState(index: number, mask: SplatEditorStateBits, operation: SplatEditorStateOperation): SplatEditorStateBits;
     setSplatStateRange(start: number, count: number, bits: SplatEditorStateBits, operation?: SplatEditorStateOperation): void;
     setSplatStateList(indices: Iterable<number>, bits: SplatEditorStateBits, operation?: SplatEditorStateOperation): void;
+    replaceSplatState(states: ArrayLike<number>, numSplats?: number): void;
     clearSplatState(mask?: SplatEditorStateBits): void;
     getSplatStateCounts(): SplatEditorStateCounts;
     uploadDirtySplatState(renderer?: THREE.WebGLRenderer): THREE.DataArrayTexture;

@@ -6956,6 +6956,43 @@ const _SplatEditorState = class _SplatEditorState {
       this.version++;
     }
   }
+  replace(states, numSplats = states.length) {
+    const safeNumSplats = Math.max(0, Math.floor(numSplats));
+    this.ensureCapacity(safeNumSplats);
+    let changed = false;
+    let visibilityChanged = false;
+    let selected = 0;
+    let locked = 0;
+    let deleted = 0;
+    for (let index = 0; index < this.maxSplats; index++) {
+      const previous = this.states[index];
+      const next = index < safeNumSplats ? Number(states[index] ?? SPLAT_EDITOR_STATE_NONE) & 255 : SPLAT_EDITOR_STATE_NONE;
+      if (previous !== next) {
+        changed = true;
+        if ((previous & SPLAT_EDITOR_STATE_DELETED) !== (next & SPLAT_EDITOR_STATE_DELETED)) {
+          visibilityChanged = true;
+        }
+        this.states[index] = next;
+      }
+      if ((next & SPLAT_EDITOR_STATE_DELETED) !== 0) {
+        deleted++;
+      } else if ((next & SPLAT_EDITOR_STATE_LOCKED) !== 0) {
+        locked++;
+      } else if ((next & SPLAT_EDITOR_STATE_SELECTED) !== 0) {
+        selected++;
+      }
+    }
+    this.selected = selected;
+    this.locked = locked;
+    this.deleted = deleted;
+    if (changed) {
+      this.markDirtyRange(0, this.maxSplats);
+      this.version++;
+      if (visibilityChanged) {
+        this.visibilityVersion++;
+      }
+    }
+  }
   clear(mask) {
     if (mask === void 0) {
       const hadDeleted = this.deleted > 0;
@@ -13334,6 +13371,17 @@ const _SplatMesh = class _SplatMesh extends SplatGenerator {
     const previousVersion = state.version;
     const previousVisibilityVersion = state.visibilityVersion;
     state.setList(indices, bits2, operation);
+    this.updateVersionForEditorState(
+      state,
+      previousVersion,
+      previousVisibilityVersion
+    );
+  }
+  replaceSplatState(states, numSplats = states.length) {
+    const state = this.ensureEditorState(numSplats);
+    const previousVersion = state.version;
+    const previousVisibilityVersion = state.visibilityVersion;
+    state.replace(states, numSplats);
     this.updateVersionForEditorState(
       state,
       previousVersion,

@@ -50,6 +50,74 @@ import {
 }
 
 {
+  const state = new SplatEditorState(4);
+  state.uploadDirty();
+
+  state.replace(
+    new Uint8Array([
+      SPLAT_EDITOR_STATE_SELECTED,
+      SPLAT_EDITOR_STATE_SELECTED | SPLAT_EDITOR_STATE_LOCKED,
+      SPLAT_EDITOR_STATE_SELECTED | SPLAT_EDITOR_STATE_DELETED,
+      SPLAT_EDITOR_STATE_NONE,
+    ]),
+  );
+
+  assert.strictEqual(state.get(0), SPLAT_EDITOR_STATE_SELECTED);
+  assert.strictEqual(
+    state.get(1),
+    SPLAT_EDITOR_STATE_SELECTED | SPLAT_EDITOR_STATE_LOCKED,
+  );
+  assert.strictEqual(
+    state.get(2),
+    SPLAT_EDITOR_STATE_SELECTED | SPLAT_EDITOR_STATE_DELETED,
+  );
+  assert.deepStrictEqual(state.getCounts(), {
+    selected: 1,
+    locked: 1,
+    deleted: 1,
+  });
+  assert.strictEqual(state.visibilityVersion, 1);
+  assert.deepStrictEqual(state.getDirtyRanges(), [
+    { start: 0, count: state.maxSplats },
+  ]);
+
+  const version = state.version;
+  const visibilityVersion = state.visibilityVersion;
+  state.uploadDirty();
+  state.replace(
+    new Uint8Array([
+      SPLAT_EDITOR_STATE_SELECTED,
+      SPLAT_EDITOR_STATE_SELECTED | SPLAT_EDITOR_STATE_LOCKED,
+      SPLAT_EDITOR_STATE_SELECTED | SPLAT_EDITOR_STATE_DELETED,
+      SPLAT_EDITOR_STATE_NONE,
+    ]),
+  );
+
+  assert.strictEqual(state.version, version);
+  assert.strictEqual(state.visibilityVersion, visibilityVersion);
+  assert.deepStrictEqual(state.getDirtyRanges(), []);
+
+  state.replace(
+    new Uint8Array([SPLAT_EDITOR_STATE_SELECTED, SPLAT_EDITOR_STATE_NONE]),
+    2,
+  );
+
+  assert.strictEqual(state.get(0), SPLAT_EDITOR_STATE_SELECTED);
+  assert.strictEqual(state.get(1), SPLAT_EDITOR_STATE_NONE);
+  assert.strictEqual(state.get(2), SPLAT_EDITOR_STATE_NONE);
+  assert.strictEqual(state.get(3), SPLAT_EDITOR_STATE_NONE);
+  assert.deepStrictEqual(state.getCounts(), {
+    selected: 1,
+    locked: 0,
+    deleted: 0,
+  });
+  assert.strictEqual(state.visibilityVersion, visibilityVersion + 1);
+  assert.deepStrictEqual(state.getDirtyRanges(), [
+    { start: 0, count: state.maxSplats },
+  ]);
+}
+
+{
   assert.strictEqual(matchesSplatEditorStateBits(0, "all"), true);
   assert.strictEqual(matchesSplatEditorStateBits(0, "visible"), true);
   assert.strictEqual(matchesSplatEditorStateBits(0, "editable"), true);
