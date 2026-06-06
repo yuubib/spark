@@ -48,4 +48,147 @@ import {
   assert.deepStrictEqual(state.getDirtyRanges(), []);
 }
 
+{
+  const state = new SplatEditorState(5000);
+  const initialUpload = state.uploadDirtyWithResult();
+  assert.strictEqual(initialUpload.mode, "full-texture");
+  assert.deepStrictEqual(state.getDirtyRanges(), []);
+
+  state.setList([4099, 2, 2], SPLAT_EDITOR_STATE_SELECTED, "set");
+
+  assert.deepStrictEqual(state.getDirtyRanges(), [
+    { start: 2, count: 1 },
+    { start: 4099, count: 1 },
+  ]);
+  assert.deepStrictEqual(state.getDirtyUploadSpans(), [
+    { layer: 0, row: 0, rowCount: 1, start: 0, count: 2048 },
+    { layer: 0, row: 2, rowCount: 1, start: 4096, count: 2048 },
+  ]);
+
+  const fallbackUpload = state.uploadDirtyWithResult();
+  assert.strictEqual(fallbackUpload.mode, "full-texture");
+  assert.deepStrictEqual(fallbackUpload.ranges, [
+    { start: 2, count: 1 },
+    { start: 4099, count: 1 },
+  ]);
+  assert.deepStrictEqual(fallbackUpload.uploadSpans, [
+    { layer: 0, row: 0, rowCount: 1, start: 0, count: 2048 },
+    { layer: 0, row: 2, rowCount: 1, start: 4096, count: 2048 },
+  ]);
+  assert.deepStrictEqual(state.getDirtyRanges(), []);
+
+  const noOpUpload = state.uploadDirtyWithResult();
+  assert.strictEqual(noOpUpload.mode, "none");
+}
+
+{
+  const state = new SplatEditorState(5000);
+  const texture = state.uploadDirtyWithResult().texture;
+  const texSubImageCalls: unknown[][] = [];
+  const pixelStore = new Map<number, number | boolean>([
+    [0x0cf5, 4],
+    [0x9240, false],
+    [0x0cf2, 0],
+    [0x806e, 0],
+    [0x0cf4, 0],
+    [0x0cf3, 0],
+    [0x806d, 0],
+  ]);
+  const gl = {
+    TEXTURE0: 0x84c0,
+    TEXTURE_2D_ARRAY: 0x8c1a,
+    PIXEL_UNPACK_BUFFER: 0x88ec,
+    UNPACK_ALIGNMENT: 0x0cf5,
+    UNPACK_FLIP_Y_WEBGL: 0x9240,
+    UNPACK_ROW_LENGTH: 0x0cf2,
+    UNPACK_IMAGE_HEIGHT: 0x806e,
+    UNPACK_SKIP_PIXELS: 0x0cf4,
+    UNPACK_SKIP_ROWS: 0x0cf3,
+    UNPACK_SKIP_IMAGES: 0x806d,
+    RED_INTEGER: 0x8d94,
+    UNSIGNED_BYTE: 0x1401,
+    bindBuffer() {},
+    getParameter(pname: number) {
+      return pixelStore.get(pname) ?? 0;
+    },
+    pixelStorei(pname: number, value: number | boolean) {
+      pixelStore.set(pname, value);
+    },
+    texSubImage3D(...args: unknown[]) {
+      texSubImageCalls.push(args);
+    },
+  };
+  const renderer = {
+    properties: {
+      has(candidate: unknown) {
+        return candidate === texture;
+      },
+      get(candidate: unknown) {
+        assert.strictEqual(candidate, texture);
+        return { __webglTexture: {} };
+      },
+    },
+    state: {
+      activeTexture(slot: number) {
+        assert.strictEqual(slot, gl.TEXTURE0);
+      },
+      bindTexture(target: number) {
+        assert.strictEqual(target, gl.TEXTURE_2D_ARRAY);
+      },
+    },
+    getContext() {
+      return gl;
+    },
+  };
+
+  state.setList([2, 4099], SPLAT_EDITOR_STATE_SELECTED, "set");
+
+  const upload = state.uploadDirtyWithResult(renderer as never);
+  assert.strictEqual(upload.mode, "dirty-range");
+  assert.deepStrictEqual(upload.uploadSpans, [
+    { layer: 0, row: 0, rowCount: 1, start: 0, count: 2048 },
+    { layer: 0, row: 2, rowCount: 1, start: 4096, count: 2048 },
+  ]);
+  assert.strictEqual(texSubImageCalls.length, 2);
+  assert.deepStrictEqual(texSubImageCalls[0].slice(0, 10), [
+    gl.TEXTURE_2D_ARRAY,
+    0,
+    0,
+    0,
+    0,
+    2048,
+    1,
+    1,
+    gl.RED_INTEGER,
+    gl.UNSIGNED_BYTE,
+  ]);
+  assert.deepStrictEqual(texSubImageCalls[1].slice(0, 10), [
+    gl.TEXTURE_2D_ARRAY,
+    0,
+    0,
+    2,
+    0,
+    2048,
+    1,
+    1,
+    gl.RED_INTEGER,
+    gl.UNSIGNED_BYTE,
+  ]);
+  assert.strictEqual((texSubImageCalls[0][10] as Uint8Array).length, 2048);
+  assert.strictEqual((texSubImageCalls[1][10] as Uint8Array).length, 2048);
+  assert.deepStrictEqual(state.getDirtyRanges(), []);
+}
+
+{
+  const state = new SplatEditorState(12);
+  state.uploadDirty();
+
+  state.markDirtyList([7, 3, 4, 4]);
+
+  assert.deepStrictEqual(state.getDirtyRanges(), [
+    { start: 3, count: 2 },
+    { start: 7, count: 1 },
+  ]);
+}
+
 console.log("Splat editor state tests passed");

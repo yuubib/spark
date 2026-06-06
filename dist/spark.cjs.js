@@ -6835,6 +6835,7 @@ const SPLAT_EDITOR_STATE_DELETED = 4;
 const SPLAT_EDITOR_STATE_NONE = 0;
 const DEFAULT_SELECTED_COLOR = new THREE__namespace.Vector4(0.38, 0.62, 1, 0.42);
 const DEFAULT_LOCKED_COLOR = new THREE__namespace.Vector4(0.58, 0.64, 0.72, 1);
+const MAX_DIRTY_UPLOAD_SPANS = 512;
 const _SplatEditorState = class _SplatEditorState {
   constructor(numSplats = 0, colors = {}) {
     var _a2, _b2;
@@ -6845,6 +6846,7 @@ const _SplatEditorState = class _SplatEditorState {
     this.deleted = 0;
     this.dirtyRanges = [];
     this.dirtyAll = false;
+    this.fullTextureUploadPending = false;
     this.maxSplats = 0;
     this.states = new Uint8Array(0);
     this.selectedColor = ((_a2 = colors.selected) == null ? void 0 : _a2.clone()) ?? DEFAULT_SELECTED_COLOR.clone();
@@ -6864,6 +6866,7 @@ const _SplatEditorState = class _SplatEditorState {
     this.deleted = 0;
     this.dirtyRanges = [];
     this.dirtyAll = false;
+    this.fullTextureUploadPending = false;
   }
   ensureCapacity(numSplats) {
     const safeNumSplats = Math.max(0, Math.ceil(numSplats));
@@ -6879,6 +6882,7 @@ const _SplatEditorState = class _SplatEditorState {
       this.texture.dispose();
       this.texture = null;
     }
+    this.fullTextureUploadPending = true;
     this.markDirtyRange(0, maxSplats);
     this.version++;
     return this.states;
@@ -6939,21 +6943,30 @@ const _SplatEditorState = class _SplatEditorState {
     let min2 = Number.POSITIVE_INFINITY;
     let max2 = -1;
     let changed = false;
+    const dirtyIndices = [];
     for (const rawIndex of indices) {
       const index = Math.floor(rawIndex);
       if (index < 0 || index >= this.maxSplats) {
         continue;
       }
-      changed = this.setUnchecked(
+      const didChange = this.setUnchecked(
         index,
         applyStateOperation(this.states[index], bits2, operation),
         false
-      ) || changed;
-      min2 = Math.min(min2, index);
-      max2 = Math.max(max2, index);
+      );
+      changed = didChange || changed;
+      if (didChange) {
+        dirtyIndices.push(index);
+        min2 = Math.min(min2, index);
+        max2 = Math.max(max2, index);
+      }
     }
     if (changed) {
-      this.markDirtyRange(min2, max2 - min2 + 1);
+      if (dirtyIndices.length <= 1) {
+        this.markDirtyRange(min2, max2 - min2 + 1);
+      } else {
+        this.markDirtyList(dirtyIndices);
+      }
       this.version++;
     }
   }
@@ -7004,24 +7017,36 @@ const _SplatEditorState = class _SplatEditorState {
     }
     this.dirtyRanges.push({ start: safeStart, count: safeEnd - safeStart });
     this.dirtyAll || (this.dirtyAll = safeEnd - safeStart >= this.maxSplats);
-    if (this.texture) {
-      this.texture.needsUpdate = true;
-    }
   }
   markDirtyList(indices) {
-    let min2 = Number.POSITIVE_INFINITY;
-    let max2 = -1;
+    const sortedIndices = [];
     for (const rawIndex of indices) {
       const index = Math.floor(rawIndex);
       if (index < 0 || index >= this.maxSplats) {
         continue;
       }
-      min2 = Math.min(min2, index);
-      max2 = Math.max(max2, index);
+      sortedIndices.push(index);
     }
-    if (max2 >= min2) {
-      this.markDirtyRange(min2, max2 - min2 + 1);
+    if (sortedIndices.length === 0) {
+      return;
     }
+    sortedIndices.sort((a, b) => a - b);
+    let start = sortedIndices[0];
+    let previous = start;
+    for (let i = 1; i < sortedIndices.length; i++) {
+      const index = sortedIndices[i];
+      if (index <= previous) {
+        continue;
+      }
+      if (index === previous + 1) {
+        previous = index;
+        continue;
+      }
+      this.markDirtyRange(start, previous - start + 1);
+      start = index;
+      previous = index;
+    }
+    this.markDirtyRange(start, previous - start + 1);
   }
   getDirtyRanges() {
     if (this.dirtyAll) {
@@ -7029,14 +7054,54 @@ const _SplatEditorState = class _SplatEditorState {
     }
     return this.dirtyRanges.slice();
   }
-  uploadDirty() {
-    const texture2 = this.getTexture();
-    if (this.dirtyAll || this.dirtyRanges.length > 0) {
-      texture2.needsUpdate = true;
-      this.dirtyAll = false;
-      this.dirtyRanges = [];
+  getDirtyUploadSpans() {
+    if (this.maxSplats <= 0) {
+      return [];
     }
-    return texture2;
+    const { width, height } = getTextureSize(this.maxSplats);
+    return createDirtyUploadSpans(
+      this.getDirtyRanges(),
+      width,
+      height,
+      this.maxSplats
+    );
+  }
+  uploadDirty() {
+    return this.uploadDirtyWithResult().texture;
+  }
+  uploadDirtyWithResult(renderer) {
+    const texture2 = this.getTexture();
+    const ranges = this.getDirtyRanges();
+    const hasDirty = this.fullTextureUploadPending || this.dirtyAll || this.dirtyRanges.length > 0;
+    if (!hasDirty) {
+      return {
+        texture: texture2,
+        mode: "none",
+        ranges: [],
+        uploadSpans: []
+      };
+    }
+    const uploadSpans = this.dirtyAll || this.fullTextureUploadPending ? [] : this.getDirtyUploadSpans();
+    if (!this.dirtyAll && !this.fullTextureUploadPending && renderer && uploadSpans.length > 0 && uploadSpans.length <= MAX_DIRTY_UPLOAD_SPANS && this.uploadDirtySpans(renderer, texture2, uploadSpans)) {
+      this.clearDirty();
+      return {
+        texture: texture2,
+        mode: "dirty-range",
+        ranges,
+        uploadSpans
+      };
+    }
+    if (texture2 !== _SplatEditorState.emptyTexture) {
+      texture2.needsUpdate = true;
+    }
+    this.clearDirty();
+    this.fullTextureUploadPending = false;
+    return {
+      texture: texture2,
+      mode: "full-texture",
+      ranges,
+      uploadSpans
+    };
   }
   getTexture() {
     if (this.maxSplats <= 0) {
@@ -7046,11 +7111,89 @@ const _SplatEditorState = class _SplatEditorState {
       const { width, height, depth } = getTextureSize(this.maxSplats);
       this.texture = createStateTexture(this.states, width, height, depth);
       this.texture.needsUpdate = true;
+      this.fullTextureUploadPending = true;
     } else if (this.texture.image.data !== this.states) {
       this.texture.image.data = this.states;
       this.texture.needsUpdate = true;
+      this.fullTextureUploadPending = true;
     }
     return this.texture;
+  }
+  clearDirty() {
+    this.dirtyAll = false;
+    this.dirtyRanges = [];
+  }
+  uploadDirtySpans(renderer, texture2, uploadSpans) {
+    if (texture2 === _SplatEditorState.emptyTexture || !renderer.properties.has(texture2)) {
+      return false;
+    }
+    const gl = renderer.getContext();
+    if (!("texSubImage3D" in gl)) {
+      return false;
+    }
+    const textureProperties = renderer.properties.get(
+      texture2
+    );
+    const glTexture = textureProperties.__webglTexture;
+    if (!glTexture) {
+      return false;
+    }
+    const image = texture2.image;
+    if (image.data !== this.states) {
+      return false;
+    }
+    const gl2 = gl;
+    const previousAlignment = gl2.getParameter(gl2.UNPACK_ALIGNMENT);
+    const previousFlipY = gl2.getParameter(gl2.UNPACK_FLIP_Y_WEBGL);
+    const previousRowLength = gl2.getParameter(gl2.UNPACK_ROW_LENGTH);
+    const previousImageHeight = gl2.getParameter(
+      gl2.UNPACK_IMAGE_HEIGHT
+    );
+    const previousSkipPixels = gl2.getParameter(
+      gl2.UNPACK_SKIP_PIXELS
+    );
+    const previousSkipRows = gl2.getParameter(gl2.UNPACK_SKIP_ROWS);
+    const previousSkipImages = gl2.getParameter(
+      gl2.UNPACK_SKIP_IMAGES
+    );
+    renderer.state.activeTexture(gl2.TEXTURE0);
+    renderer.state.bindTexture(gl2.TEXTURE_2D_ARRAY, glTexture);
+    gl2.bindBuffer(gl2.PIXEL_UNPACK_BUFFER, null);
+    gl2.pixelStorei(gl2.UNPACK_FLIP_Y_WEBGL, false);
+    gl2.pixelStorei(gl2.UNPACK_ALIGNMENT, 1);
+    gl2.pixelStorei(gl2.UNPACK_ROW_LENGTH, 0);
+    gl2.pixelStorei(gl2.UNPACK_IMAGE_HEIGHT, 0);
+    gl2.pixelStorei(gl2.UNPACK_SKIP_PIXELS, 0);
+    gl2.pixelStorei(gl2.UNPACK_SKIP_ROWS, 0);
+    gl2.pixelStorei(gl2.UNPACK_SKIP_IMAGES, 0);
+    try {
+      for (const span of uploadSpans) {
+        const data = this.states.subarray(span.start, span.start + span.count);
+        gl2.texSubImage3D(
+          gl2.TEXTURE_2D_ARRAY,
+          0,
+          0,
+          span.row,
+          span.layer,
+          image.width,
+          span.rowCount,
+          1,
+          gl2.RED_INTEGER,
+          gl2.UNSIGNED_BYTE,
+          data
+        );
+      }
+    } finally {
+      gl2.pixelStorei(gl2.UNPACK_ALIGNMENT, previousAlignment);
+      gl2.pixelStorei(gl2.UNPACK_FLIP_Y_WEBGL, previousFlipY);
+      gl2.pixelStorei(gl2.UNPACK_ROW_LENGTH, previousRowLength);
+      gl2.pixelStorei(gl2.UNPACK_IMAGE_HEIGHT, previousImageHeight);
+      gl2.pixelStorei(gl2.UNPACK_SKIP_PIXELS, previousSkipPixels);
+      gl2.pixelStorei(gl2.UNPACK_SKIP_ROWS, previousSkipRows);
+      gl2.pixelStorei(gl2.UNPACK_SKIP_IMAGES, previousSkipImages);
+      renderer.state.bindTexture(gl2.TEXTURE_2D_ARRAY, null);
+    }
+    return true;
   }
   assertIndex(index) {
     if (!Number.isInteger(index) || index < 0 || index >= this.maxSplats) {
@@ -7106,6 +7249,55 @@ function applyCovSplatEditorStateColor(covsplat, stateTexture, enabled, selected
     selectedColor,
     lockedColor
   }).outputs.covsplat;
+}
+function createDirtyUploadSpans(ranges, width, height, maxSplats) {
+  if (width <= 0 || height <= 0 || maxSplats <= 0) {
+    return [];
+  }
+  const splatsPerLayer = width * height;
+  const spans = [];
+  for (const range of ranges) {
+    let start = Math.max(0, Math.floor(range.start));
+    const end = Math.min(
+      maxSplats,
+      start + Math.max(0, Math.floor(range.count))
+    );
+    while (start < end) {
+      const layer = Math.floor(start / splatsPerLayer);
+      const layerStart = layer * splatsPerLayer;
+      const layerEnd = Math.min(end, layerStart + splatsPerLayer);
+      const firstRow = Math.floor((start - layerStart) / width);
+      const lastRow = Math.floor((layerEnd - 1 - layerStart) / width);
+      const rowCount = lastRow - firstRow + 1;
+      spans.push({
+        layer,
+        row: firstRow,
+        rowCount,
+        start: layerStart + firstRow * width,
+        count: rowCount * width
+      });
+      start = layerStart + (lastRow + 1) * width;
+    }
+  }
+  spans.sort((a, b) => a.layer - b.layer || a.row - b.row);
+  const merged = [];
+  for (const span of spans) {
+    const previous = merged[merged.length - 1];
+    if (previous && previous.layer === span.layer && previous.row + previous.rowCount >= span.row) {
+      const previousEndRow = previous.row + previous.rowCount;
+      const nextEndRow = Math.max(previousEndRow, span.row + span.rowCount);
+      merged[merged.length - 1] = {
+        layer: previous.layer,
+        row: previous.row,
+        rowCount: nextEndRow - previous.row,
+        start: previous.start,
+        count: (nextEndRow - previous.row) * width
+      };
+      continue;
+    }
+    merged.push(span);
+  }
+  return merged;
 }
 function applyStateOperation(previous, bits2, operation) {
   switch (operation) {
@@ -12949,8 +13141,11 @@ const _SplatMesh = class _SplatMesh extends SplatGenerator {
       deleted: 0
     };
   }
-  uploadDirtySplatState() {
-    return this.ensureEditorState().uploadDirty();
+  uploadDirtySplatState(renderer) {
+    return this.ensureEditorState().uploadDirtyWithResult(renderer).texture;
+  }
+  uploadDirtySplatStateWithResult(renderer) {
+    return this.ensureEditorState().uploadDirtyWithResult(renderer);
   }
   // Call this when you are finished with the SplatMesh and want to free
   // any buffers it holds (via packedSplats).
@@ -13025,9 +13220,9 @@ const _SplatMesh = class _SplatMesh extends SplatGenerator {
       this.updateVersion();
     }
   }
-  updateEditorStateContext(state) {
+  updateEditorStateContext(state, renderer) {
     this.context.editorStateEnabled.value = state != null;
-    this.context.editorStateTexture.value = (state == null ? void 0 : state.uploadDirty()) ?? SplatEditorState.emptyTexture;
+    this.context.editorStateTexture.value = (renderer ? state == null ? void 0 : state.uploadDirtyWithResult(renderer).texture : state == null ? void 0 : state.getTexture()) ?? SplatEditorState.emptyTexture;
     if (state) {
       this.context.editorSelectedColor.value.copy(state.selectedColor);
       this.context.editorLockedColor.value.copy(state.lockedColor);
@@ -13236,7 +13431,7 @@ const _SplatMesh = class _SplatMesh extends SplatGenerator {
       this.generatorDirty = true;
     }
     const editorState = ((_d = (_c = this.context.splats).getEditorState) == null ? void 0 : _d.call(_c)) ?? null;
-    this.updateEditorStateContext(editorState);
+    this.updateEditorStateContext(editorState, renderer);
     const editorStateVersion = (editorState == null ? void 0 : editorState.version) ?? -1;
     if (editorState !== this.lastEditorState || editorStateVersion !== this.lastEditorStateVersion) {
       this.lastEditorState = editorState;

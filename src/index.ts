@@ -37,7 +37,10 @@ export {
   type SplatEditorStateBits,
   type SplatEditorStateCounts,
   type SplatEditorStateDirtyRange,
+  type SplatEditorStateDirtyUploadSpan,
   type SplatEditorStateOperation,
+  type SplatEditorStateUploadMode,
+  type SplatEditorStateUploadResult,
 } from "./SplatEditorState";
 export * from "./SplatPager";
 export {

@@ -18,6 +18,7 @@ import {
   type SplatEditorStateBits,
   type SplatEditorStateCounts,
   type SplatEditorStateOperation,
+  type SplatEditorStateUploadResult,
   applyCovSplatEditorStateColor,
   applySplatEditorStateColor,
   applySplatEditorStateVisibility,
@@ -732,8 +733,16 @@ export class SplatMesh extends SplatGenerator {
     );
   }
 
-  uploadDirtySplatState(): THREE.DataArrayTexture {
-    return this.ensureEditorState().uploadDirty();
+  uploadDirtySplatState(
+    renderer?: THREE.WebGLRenderer,
+  ): THREE.DataArrayTexture {
+    return this.ensureEditorState().uploadDirtyWithResult(renderer).texture;
+  }
+
+  uploadDirtySplatStateWithResult(
+    renderer?: THREE.WebGLRenderer,
+  ): SplatEditorStateUploadResult {
+    return this.ensureEditorState().uploadDirtyWithResult(renderer);
   }
 
   // Call this when you are finished with the SplatMesh and want to free
@@ -831,10 +840,15 @@ export class SplatMesh extends SplatGenerator {
     }
   }
 
-  private updateEditorStateContext(state: SplatEditorState | null): void {
+  private updateEditorStateContext(
+    state: SplatEditorState | null,
+    renderer?: THREE.WebGLRenderer,
+  ): void {
     this.context.editorStateEnabled.value = state != null;
     this.context.editorStateTexture.value =
-      state?.uploadDirty() ?? SplatEditorState.emptyTexture;
+      (renderer
+        ? state?.uploadDirtyWithResult(renderer).texture
+        : state?.getTexture()) ?? SplatEditorState.emptyTexture;
     if (state) {
       this.context.editorSelectedColor.value.copy(state.selectedColor);
       this.context.editorLockedColor.value.copy(state.lockedColor);
@@ -1100,7 +1114,7 @@ export class SplatMesh extends SplatGenerator {
     }
 
     const editorState = this.context.splats.getEditorState?.() ?? null;
-    this.updateEditorStateContext(editorState);
+    this.updateEditorStateContext(editorState, renderer);
     const editorStateVersion = editorState?.version ?? -1;
     if (
       editorState !== this.lastEditorState ||

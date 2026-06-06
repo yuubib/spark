@@ -31,6 +31,26 @@ export interface SplatEditorStateDirtyRange {
   readonly count: number;
 }
 
+export interface SplatEditorStateDirtyUploadSpan {
+  readonly layer: number;
+  readonly row: number;
+  readonly rowCount: number;
+  readonly start: number;
+  readonly count: number;
+}
+
+export type SplatEditorStateUploadMode =
+  | "none"
+  | "full-texture"
+  | "dirty-range";
+
+export interface SplatEditorStateUploadResult {
+  readonly texture: THREE.DataArrayTexture;
+  readonly mode: SplatEditorStateUploadMode;
+  readonly ranges: readonly SplatEditorStateDirtyRange[];
+  readonly uploadSpans: readonly SplatEditorStateDirtyUploadSpan[];
+}
+
 export interface SplatEditorStateColors {
   readonly selected?: THREE.Vector4;
   readonly locked?: THREE.Vector4;
@@ -38,6 +58,18 @@ export interface SplatEditorStateColors {
 
 const DEFAULT_SELECTED_COLOR = new THREE.Vector4(0.38, 0.62, 1.0, 0.42);
 const DEFAULT_LOCKED_COLOR = new THREE.Vector4(0.58, 0.64, 0.72, 1.0);
+const MAX_DIRTY_UPLOAD_SPANS = 512;
+
+type StateTextureImage = {
+  data: Uint8Array;
+  width: number;
+  height: number;
+  depth: number;
+};
+
+type WebGLTextureProperties = {
+  __webglTexture?: WebGLTexture;
+};
 
 export class SplatEditorState {
   states: Uint8Array;
@@ -52,6 +84,7 @@ export class SplatEditorState {
   private deleted = 0;
   private dirtyRanges: SplatEditorStateDirtyRange[] = [];
   private dirtyAll = false;
+  private fullTextureUploadPending = false;
 
   constructor(numSplats = 0, colors: SplatEditorStateColors = {}) {
     this.maxSplats = 0;
@@ -75,6 +108,7 @@ export class SplatEditorState {
     this.deleted = 0;
     this.dirtyRanges = [];
     this.dirtyAll = false;
+    this.fullTextureUploadPending = false;
   }
 
   ensureCapacity(numSplats: number): Uint8Array {
@@ -93,6 +127,7 @@ export class SplatEditorState {
       this.texture.dispose();
       this.texture = null;
     }
+    this.fullTextureUploadPending = true;
     this.markDirtyRange(0, maxSplats);
     this.version++;
     return this.states;
@@ -176,22 +211,30 @@ export class SplatEditorState {
     let min = Number.POSITIVE_INFINITY;
     let max = -1;
     let changed = false;
+    const dirtyIndices: number[] = [];
     for (const rawIndex of indices) {
       const index = Math.floor(rawIndex);
       if (index < 0 || index >= this.maxSplats) {
         continue;
       }
-      changed =
-        this.setUnchecked(
-          index,
-          applyStateOperation(this.states[index], bits, operation),
-          false,
-        ) || changed;
-      min = Math.min(min, index);
-      max = Math.max(max, index);
+      const didChange = this.setUnchecked(
+        index,
+        applyStateOperation(this.states[index], bits, operation),
+        false,
+      );
+      changed = didChange || changed;
+      if (didChange) {
+        dirtyIndices.push(index);
+        min = Math.min(min, index);
+        max = Math.max(max, index);
+      }
     }
     if (changed) {
-      this.markDirtyRange(min, max - min + 1);
+      if (dirtyIndices.length <= 1) {
+        this.markDirtyRange(min, max - min + 1);
+      } else {
+        this.markDirtyList(dirtyIndices);
+      }
       this.version++;
     }
   }
@@ -248,25 +291,38 @@ export class SplatEditorState {
     }
     this.dirtyRanges.push({ start: safeStart, count: safeEnd - safeStart });
     this.dirtyAll ||= safeEnd - safeStart >= this.maxSplats;
-    if (this.texture) {
-      this.texture.needsUpdate = true;
-    }
   }
 
   markDirtyList(indices: Iterable<number>): void {
-    let min = Number.POSITIVE_INFINITY;
-    let max = -1;
+    const sortedIndices: number[] = [];
     for (const rawIndex of indices) {
       const index = Math.floor(rawIndex);
       if (index < 0 || index >= this.maxSplats) {
         continue;
       }
-      min = Math.min(min, index);
-      max = Math.max(max, index);
+      sortedIndices.push(index);
     }
-    if (max >= min) {
-      this.markDirtyRange(min, max - min + 1);
+    if (sortedIndices.length === 0) {
+      return;
     }
+
+    sortedIndices.sort((a, b) => a - b);
+    let start = sortedIndices[0];
+    let previous = start;
+    for (let i = 1; i < sortedIndices.length; i++) {
+      const index = sortedIndices[i];
+      if (index <= previous) {
+        continue;
+      }
+      if (index === previous + 1) {
+        previous = index;
+        continue;
+      }
+      this.markDirtyRange(start, previous - start + 1);
+      start = index;
+      previous = index;
+    }
+    this.markDirtyRange(start, previous - start + 1);
   }
 
   getDirtyRanges(): readonly SplatEditorStateDirtyRange[] {
@@ -276,14 +332,73 @@ export class SplatEditorState {
     return this.dirtyRanges.slice();
   }
 
-  uploadDirty(): THREE.DataArrayTexture {
-    const texture = this.getTexture();
-    if (this.dirtyAll || this.dirtyRanges.length > 0) {
-      texture.needsUpdate = true;
-      this.dirtyAll = false;
-      this.dirtyRanges = [];
+  getDirtyUploadSpans(): readonly SplatEditorStateDirtyUploadSpan[] {
+    if (this.maxSplats <= 0) {
+      return [];
     }
-    return texture;
+    const { width, height } = getTextureSize(this.maxSplats);
+    return createDirtyUploadSpans(
+      this.getDirtyRanges(),
+      width,
+      height,
+      this.maxSplats,
+    );
+  }
+
+  uploadDirty(): THREE.DataArrayTexture {
+    return this.uploadDirtyWithResult().texture;
+  }
+
+  uploadDirtyWithResult(
+    renderer?: THREE.WebGLRenderer,
+  ): SplatEditorStateUploadResult {
+    const texture = this.getTexture();
+    const ranges = this.getDirtyRanges();
+    const hasDirty =
+      this.fullTextureUploadPending ||
+      this.dirtyAll ||
+      this.dirtyRanges.length > 0;
+    if (!hasDirty) {
+      return {
+        texture,
+        mode: "none",
+        ranges: [],
+        uploadSpans: [],
+      };
+    }
+
+    const uploadSpans =
+      this.dirtyAll || this.fullTextureUploadPending
+        ? []
+        : this.getDirtyUploadSpans();
+    if (
+      !this.dirtyAll &&
+      !this.fullTextureUploadPending &&
+      renderer &&
+      uploadSpans.length > 0 &&
+      uploadSpans.length <= MAX_DIRTY_UPLOAD_SPANS &&
+      this.uploadDirtySpans(renderer, texture, uploadSpans)
+    ) {
+      this.clearDirty();
+      return {
+        texture,
+        mode: "dirty-range",
+        ranges,
+        uploadSpans,
+      };
+    }
+
+    if (texture !== SplatEditorState.emptyTexture) {
+      texture.needsUpdate = true;
+    }
+    this.clearDirty();
+    this.fullTextureUploadPending = false;
+    return {
+      texture,
+      mode: "full-texture",
+      ranges,
+      uploadSpans,
+    };
   }
 
   getTexture(): THREE.DataArrayTexture {
@@ -294,11 +409,105 @@ export class SplatEditorState {
       const { width, height, depth } = getTextureSize(this.maxSplats);
       this.texture = createStateTexture(this.states, width, height, depth);
       this.texture.needsUpdate = true;
+      this.fullTextureUploadPending = true;
     } else if (this.texture.image.data !== this.states) {
       this.texture.image.data = this.states;
       this.texture.needsUpdate = true;
+      this.fullTextureUploadPending = true;
     }
     return this.texture;
+  }
+
+  private clearDirty(): void {
+    this.dirtyAll = false;
+    this.dirtyRanges = [];
+  }
+
+  private uploadDirtySpans(
+    renderer: THREE.WebGLRenderer,
+    texture: THREE.DataArrayTexture,
+    uploadSpans: readonly SplatEditorStateDirtyUploadSpan[],
+  ): boolean {
+    if (
+      texture === SplatEditorState.emptyTexture ||
+      !renderer.properties.has(texture)
+    ) {
+      return false;
+    }
+
+    const gl = renderer.getContext();
+    if (!("texSubImage3D" in gl)) {
+      return false;
+    }
+
+    const textureProperties = renderer.properties.get(
+      texture,
+    ) as WebGLTextureProperties;
+    const glTexture = textureProperties.__webglTexture;
+    if (!glTexture) {
+      return false;
+    }
+
+    const image = texture.image as StateTextureImage;
+    if (image.data !== this.states) {
+      return false;
+    }
+
+    const gl2 = gl as WebGL2RenderingContext;
+    const previousAlignment = gl2.getParameter(gl2.UNPACK_ALIGNMENT) as number;
+    const previousFlipY = gl2.getParameter(gl2.UNPACK_FLIP_Y_WEBGL) as boolean;
+    const previousRowLength = gl2.getParameter(gl2.UNPACK_ROW_LENGTH) as number;
+    const previousImageHeight = gl2.getParameter(
+      gl2.UNPACK_IMAGE_HEIGHT,
+    ) as number;
+    const previousSkipPixels = gl2.getParameter(
+      gl2.UNPACK_SKIP_PIXELS,
+    ) as number;
+    const previousSkipRows = gl2.getParameter(gl2.UNPACK_SKIP_ROWS) as number;
+    const previousSkipImages = gl2.getParameter(
+      gl2.UNPACK_SKIP_IMAGES,
+    ) as number;
+
+    renderer.state.activeTexture(gl2.TEXTURE0);
+    renderer.state.bindTexture(gl2.TEXTURE_2D_ARRAY, glTexture);
+    gl2.bindBuffer(gl2.PIXEL_UNPACK_BUFFER, null);
+    gl2.pixelStorei(gl2.UNPACK_FLIP_Y_WEBGL, false);
+    gl2.pixelStorei(gl2.UNPACK_ALIGNMENT, 1);
+    gl2.pixelStorei(gl2.UNPACK_ROW_LENGTH, 0);
+    gl2.pixelStorei(gl2.UNPACK_IMAGE_HEIGHT, 0);
+    gl2.pixelStorei(gl2.UNPACK_SKIP_PIXELS, 0);
+    gl2.pixelStorei(gl2.UNPACK_SKIP_ROWS, 0);
+    gl2.pixelStorei(gl2.UNPACK_SKIP_IMAGES, 0);
+
+    try {
+      for (const span of uploadSpans) {
+        const data = this.states.subarray(span.start, span.start + span.count);
+        gl2.texSubImage3D(
+          gl2.TEXTURE_2D_ARRAY,
+          0,
+          0,
+          span.row,
+          span.layer,
+          image.width,
+          span.rowCount,
+          1,
+          gl2.RED_INTEGER,
+          gl2.UNSIGNED_BYTE,
+          data,
+        );
+      }
+    } finally {
+      gl2.pixelStorei(gl2.UNPACK_ALIGNMENT, previousAlignment);
+      gl2.pixelStorei(gl2.UNPACK_FLIP_Y_WEBGL, previousFlipY);
+      gl2.pixelStorei(gl2.UNPACK_ROW_LENGTH, previousRowLength);
+      gl2.pixelStorei(gl2.UNPACK_IMAGE_HEIGHT, previousImageHeight);
+      gl2.pixelStorei(gl2.UNPACK_SKIP_PIXELS, previousSkipPixels);
+      gl2.pixelStorei(gl2.UNPACK_SKIP_ROWS, previousSkipRows);
+      gl2.pixelStorei(gl2.UNPACK_SKIP_IMAGES, previousSkipImages);
+      renderer.state.bindTexture(gl2.TEXTURE_2D_ARRAY, null);
+    }
+
+    return true;
   }
 
   private assertIndex(index: number): void {
@@ -381,6 +590,68 @@ export function applyCovSplatEditorStateColor(
     selectedColor,
     lockedColor,
   }).outputs.covsplat;
+}
+
+function createDirtyUploadSpans(
+  ranges: readonly SplatEditorStateDirtyRange[],
+  width: number,
+  height: number,
+  maxSplats: number,
+): SplatEditorStateDirtyUploadSpan[] {
+  if (width <= 0 || height <= 0 || maxSplats <= 0) {
+    return [];
+  }
+
+  const splatsPerLayer = width * height;
+  const spans: SplatEditorStateDirtyUploadSpan[] = [];
+  for (const range of ranges) {
+    let start = Math.max(0, Math.floor(range.start));
+    const end = Math.min(
+      maxSplats,
+      start + Math.max(0, Math.floor(range.count)),
+    );
+    while (start < end) {
+      const layer = Math.floor(start / splatsPerLayer);
+      const layerStart = layer * splatsPerLayer;
+      const layerEnd = Math.min(end, layerStart + splatsPerLayer);
+      const firstRow = Math.floor((start - layerStart) / width);
+      const lastRow = Math.floor((layerEnd - 1 - layerStart) / width);
+      const rowCount = lastRow - firstRow + 1;
+      spans.push({
+        layer,
+        row: firstRow,
+        rowCount,
+        start: layerStart + firstRow * width,
+        count: rowCount * width,
+      });
+      start = layerStart + (lastRow + 1) * width;
+    }
+  }
+
+  spans.sort((a, b) => a.layer - b.layer || a.row - b.row);
+
+  const merged: SplatEditorStateDirtyUploadSpan[] = [];
+  for (const span of spans) {
+    const previous = merged[merged.length - 1];
+    if (
+      previous &&
+      previous.layer === span.layer &&
+      previous.row + previous.rowCount >= span.row
+    ) {
+      const previousEndRow = previous.row + previous.rowCount;
+      const nextEndRow = Math.max(previousEndRow, span.row + span.rowCount);
+      merged[merged.length - 1] = {
+        layer: previous.layer,
+        row: previous.row,
+        rowCount: nextEndRow - previous.row,
+        start: previous.start,
+        count: (nextEndRow - previous.row) * width,
+      };
+      continue;
+    }
+    merged.push(span);
+  }
+  return merged;
 }
 
 function applyStateOperation(

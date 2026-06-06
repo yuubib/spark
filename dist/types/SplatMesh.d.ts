@@ -2,7 +2,7 @@ import { ExtSplats } from './ExtSplats';
 import { PackedSplats } from './PackedSplats';
 import { RgbaArray, TRgbaArray } from './RgbaArray';
 import { SplatEdit, SplatEdits } from './SplatEdit';
-import { SplatEditorState, SplatEditorStateBits, SplatEditorStateCounts, SplatEditorStateOperation } from './SplatEditorState';
+import { SplatEditorState, SplatEditorStateBits, SplatEditorStateCounts, SplatEditorStateOperation, SplatEditorStateUploadResult } from './SplatEditorState';
 import { CovSplatModifier, CovSplatTransformer, FrameUpdateContext, GsplatModifier, SplatGenerator, SplatTransformer } from './SplatGenerator';
 import { PagedSplats, SplatPager } from './SplatPager';
 import { SplatSkinning } from './SplatSkinning';
@@ -170,7 +170,8 @@ export declare class SplatMesh extends SplatGenerator {
     setSplatStateList(indices: Iterable<number>, bits: SplatEditorStateBits, operation?: SplatEditorStateOperation): void;
     clearSplatState(mask?: SplatEditorStateBits): void;
     getSplatStateCounts(): SplatEditorStateCounts;
-    uploadDirtySplatState(): THREE.DataArrayTexture;
+    uploadDirtySplatState(renderer?: THREE.WebGLRenderer): THREE.DataArrayTexture;
+    uploadDirtySplatStateWithResult(renderer?: THREE.WebGLRenderer): SplatEditorStateUploadResult;
     dispose(): void;
     getBoundingBox(centers_only?: boolean): THREE.Box3;
     private getEditorStateSource;

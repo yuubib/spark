@@ -15,6 +15,20 @@ export interface SplatEditorStateDirtyRange {
     readonly start: number;
     readonly count: number;
 }
+export interface SplatEditorStateDirtyUploadSpan {
+    readonly layer: number;
+    readonly row: number;
+    readonly rowCount: number;
+    readonly start: number;
+    readonly count: number;
+}
+export type SplatEditorStateUploadMode = "none" | "full-texture" | "dirty-range";
+export interface SplatEditorStateUploadResult {
+    readonly texture: THREE.DataArrayTexture;
+    readonly mode: SplatEditorStateUploadMode;
+    readonly ranges: readonly SplatEditorStateDirtyRange[];
+    readonly uploadSpans: readonly SplatEditorStateDirtyUploadSpan[];
+}
 export interface SplatEditorStateColors {
     readonly selected?: THREE.Vector4;
     readonly locked?: THREE.Vector4;
@@ -31,6 +45,7 @@ export declare class SplatEditorState {
     private deleted;
     private dirtyRanges;
     private dirtyAll;
+    private fullTextureUploadPending;
     constructor(numSplats?: number, colors?: SplatEditorStateColors);
     dispose(): void;
     ensureCapacity(numSplats: number): Uint8Array;
@@ -49,8 +64,12 @@ export declare class SplatEditorState {
     markDirtyRange(start: number, count: number): void;
     markDirtyList(indices: Iterable<number>): void;
     getDirtyRanges(): readonly SplatEditorStateDirtyRange[];
+    getDirtyUploadSpans(): readonly SplatEditorStateDirtyUploadSpan[];
     uploadDirty(): THREE.DataArrayTexture;
+    uploadDirtyWithResult(renderer?: THREE.WebGLRenderer): SplatEditorStateUploadResult;
     getTexture(): THREE.DataArrayTexture;
+    private clearDirty;
+    private uploadDirtySpans;
     private assertIndex;
     private setUnchecked;
     private updateCounts;
