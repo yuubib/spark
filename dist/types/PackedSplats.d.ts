@@ -1,5 +1,6 @@
 import { FullScreenQuad } from 'three/addons/postprocessing/Pass.js';
 import { RgbaArray } from './RgbaArray';
+import { SplatEditorState } from './SplatEditorState';
 import { GsplatGenerator } from './SplatGenerator';
 import { SplatSource } from './SplatMesh';
 import { SplatEncoding, SplatFileType } from './defines';
@@ -30,6 +31,7 @@ export declare class PackedSplats implements SplatSource {
     numSplats: number;
     packedArray: Uint32Array | null;
     extra: Record<string, unknown>;
+    editorState: SplatEditorState | null;
     maxSh: number;
     splatEncoding?: SplatEncoding;
     lod?: boolean | "quality";
@@ -54,6 +56,9 @@ export declare class PackedSplats implements SplatSource {
     hasRgbDir(): boolean;
     getNumSh(): number;
     setMaxSh(maxSh: number): void;
+    getEditorState(): SplatEditorState | null;
+    ensureEditorState(numSplats?: number): SplatEditorState;
+    clearEditorState(): void;
     fetchSplat({ index, viewOrigin, }: {
         index: DynoVal<"int">;
         viewOrigin?: DynoVal<"vec3">;

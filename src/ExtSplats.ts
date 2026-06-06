@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import type { RgbaArray } from "./RgbaArray";
+import { SplatEditorState } from "./SplatEditorState";
 import { SplatLoader } from "./SplatLoader";
 import type { SplatSource } from "./SplatMesh";
 import { workerPool } from "./SplatWorker";
@@ -78,6 +79,7 @@ export class ExtSplats implements SplatSource {
   numSplats = 0;
   extArrays: [Uint32Array, Uint32Array];
   extra: Record<string, unknown> = {};
+  editorState: SplatEditorState | null = null;
   maxSh = 3;
   lod?: boolean | "quality";
   nonLod?: boolean;
@@ -114,6 +116,7 @@ export class ExtSplats implements SplatSource {
 
   reinitialize(options: ExtSplatsOptions) {
     this.isInitialized = false;
+    this.clearEditorState();
 
     this.extra = {};
     this.maxSplats = options.maxSplats ?? 0;
@@ -209,6 +212,8 @@ export class ExtSplats implements SplatSource {
   // Call this when you are finished with the PackedSplats and want to free
   // any buffers it holds.
   dispose() {
+    this.clearEditorState();
+
     if (this.textures[0] !== ExtSplats.emptyTexture) {
       this.textures[0].dispose();
       this.textures[0].source.data = null;
@@ -265,6 +270,26 @@ export class ExtSplats implements SplatSource {
 
   setMaxSh(maxSh: number) {
     this.maxSh = maxSh;
+  }
+
+  getEditorState(): SplatEditorState | null {
+    return this.editorState;
+  }
+
+  ensureEditorState(numSplats = this.numSplats): SplatEditorState {
+    if (!this.editorState) {
+      this.editorState = new SplatEditorState(numSplats);
+    } else {
+      this.editorState.ensureCapacity(numSplats);
+    }
+    return this.editorState;
+  }
+
+  clearEditorState(): void {
+    if (this.editorState) {
+      this.editorState.dispose();
+      this.editorState = null;
+    }
   }
 
   fetchSplat({
@@ -465,6 +490,9 @@ export class ExtSplats implements SplatSource {
       }
       this.extArrays[0] = newArray0;
       this.extArrays[1] = newArray1;
+    }
+    if (this.editorState) {
+      this.editorState.ensureCapacity(this.maxSplats);
     }
     return this.extArrays;
   }

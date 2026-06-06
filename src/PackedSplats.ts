@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { FullScreenQuad } from "three/addons/postprocessing/Pass.js";
 
 import type { RgbaArray } from "./RgbaArray";
+import { SplatEditorState } from "./SplatEditorState";
 import type { GsplatGenerator } from "./SplatGenerator";
 import { SplatLoader } from "./SplatLoader";
 import type { SplatSource } from "./SplatMesh";
@@ -112,6 +113,7 @@ export class PackedSplats implements SplatSource {
   numSplats = 0;
   packedArray: Uint32Array | null = null;
   extra: Record<string, unknown>;
+  editorState: SplatEditorState | null = null;
   maxSh = 3;
   splatEncoding?: SplatEncoding;
   lod?: boolean | "quality";
@@ -178,6 +180,7 @@ export class PackedSplats implements SplatSource {
 
   reinitialize(options: PackedSplatsOptions) {
     this.isInitialized = false;
+    this.clearEditorState();
 
     this.extra = {};
     this.maxSplats = options.maxSplats ?? 0;
@@ -271,6 +274,8 @@ export class PackedSplats implements SplatSource {
   // Call this when you are finished with the PackedSplats and want to free
   // any buffers it holds.
   dispose() {
+    this.clearEditorState();
+
     if (this.target) {
       this.target.dispose();
       this.target.texture.source.data = null;
@@ -321,6 +326,26 @@ export class PackedSplats implements SplatSource {
 
   setMaxSh(maxSh: number) {
     this.maxSh = maxSh;
+  }
+
+  getEditorState(): SplatEditorState | null {
+    return this.editorState;
+  }
+
+  ensureEditorState(numSplats = this.numSplats): SplatEditorState {
+    if (!this.editorState) {
+      this.editorState = new SplatEditorState(numSplats);
+    } else {
+      this.editorState.ensureCapacity(numSplats);
+    }
+    return this.editorState;
+  }
+
+  clearEditorState(): void {
+    if (this.editorState) {
+      this.editorState.dispose();
+      this.editorState = null;
+    }
   }
 
   fetchSplat({
@@ -477,6 +502,9 @@ export class PackedSplats implements SplatSource {
         newArray.set(this.packedArray);
       }
       this.packedArray = newArray;
+    }
+    if (this.editorState) {
+      this.editorState.ensureCapacity(this.maxSplats);
     }
     return this.packedArray;
   }

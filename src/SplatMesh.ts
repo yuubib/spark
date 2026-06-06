@@ -13,6 +13,16 @@ import { type RgbaArray, TRgbaArray } from "./RgbaArray";
 import { SparkRenderer } from "./SparkRenderer";
 import { SplatEdit, SplatEditSdf, SplatEdits } from "./SplatEdit";
 import {
+  SPLAT_EDITOR_STATE_NONE,
+  SplatEditorState,
+  type SplatEditorStateBits,
+  type SplatEditorStateCounts,
+  type SplatEditorStateOperation,
+  applyCovSplatEditorStateColor,
+  applySplatEditorStateColor,
+  applySplatEditorStateVisibility,
+} from "./SplatEditorState";
+import {
   type CovSplatModifier,
   CovSplatTransformer,
   type FrameUpdateContext,
@@ -36,6 +46,7 @@ import {
   DynoFloat,
   DynoInt,
   DynoUsampler2D,
+  DynoUsampler2DArray,
   type DynoVal,
   DynoVec4,
   Gsplat,
@@ -163,6 +174,13 @@ export type SplatMeshContext = {
   deltaTime: DynoFloat;
   numSplats: DynoInt<string>;
   splats: SplatSource;
+  editorStateEnabled: DynoBool<"splatEditorStateEnabled">;
+  editorStateTexture: DynoUsampler2DArray<
+    "splatEditorStateTexture",
+    THREE.DataArrayTexture
+  >;
+  editorSelectedColor: DynoVec4<THREE.Vector4, "splatEditorSelectedColor">;
+  editorLockedColor: DynoVec4<THREE.Vector4, "splatEditorLockedColor">;
   enableLod: DynoBool<string>;
   lodIndices: DynoUsampler2D<"lodIndices", THREE.DataTexture>;
 };
@@ -175,6 +193,10 @@ export interface SplatSource {
   hasRgbDir(): boolean;
   getNumSh(): number;
   setMaxSh(maxSh: number): void;
+
+  getEditorState?(): SplatEditorState | null;
+  ensureEditorState?(numSplats?: number): SplatEditorState;
+  clearEditorState?(): void;
 
   fetchSplat({
     index,
@@ -246,6 +268,8 @@ export class SplatMesh extends SplatGenerator {
   covSplats: boolean;
   splats?: SplatSource;
   lastSplats?: SplatSource;
+  lastEditorState?: SplatEditorState | null;
+  lastEditorStateVersion = -1;
   paged?: PagedSplats;
 
   // A THREE.Color that can be used to tint all splats in the mesh.
@@ -373,6 +397,22 @@ export class SplatMesh extends SplatGenerator {
       deltaTime: new DynoFloat({ value: 0 }),
       numSplats: new DynoInt({ value: 0 }),
       splats: new EmptySplatSource(),
+      editorStateEnabled: new DynoBool({
+        key: "splatEditorStateEnabled",
+        value: false,
+      }),
+      editorStateTexture: new DynoUsampler2DArray({
+        key: "splatEditorStateTexture",
+        value: SplatEditorState.emptyTexture,
+      }),
+      editorSelectedColor: new DynoVec4({
+        key: "splatEditorSelectedColor",
+        value: new THREE.Vector4(),
+      }),
+      editorLockedColor: new DynoVec4({
+        key: "splatEditorLockedColor",
+        value: new THREE.Vector4(),
+      }),
       enableLod: new DynoBool({ value: false }),
       lodIndices: new DynoUsampler2D({
         value: emptyLodIndices,
@@ -562,6 +602,140 @@ export class SplatMesh extends SplatGenerator {
     this.splats?.forEachSplat(callback);
   }
 
+  getEditorState(): SplatEditorState | null {
+    const source = this.getEditorStateSource();
+    return source.getEditorState?.() ?? null;
+  }
+
+  ensureEditorState(numSplats = this.numSplats): SplatEditorState {
+    const source = this.getEditorStateSource();
+    if (!source.ensureEditorState) {
+      throw new Error("SplatSource does not support editor state");
+    }
+    const existing = source.getEditorState?.() ?? null;
+    const previousVersion = existing?.version ?? -1;
+    const state = source.ensureEditorState(numSplats || source.getNumSplats());
+    this.updateEditorStateContext(state);
+    if (!existing || state.version !== previousVersion) {
+      this.updateVersion();
+    }
+    return state;
+  }
+
+  clearEditorState(): void {
+    const source = this.getEditorStateSource();
+    const state = source.getEditorState?.();
+    source.clearEditorState?.();
+    if (state) {
+      this.updateEditorStateContext(null);
+      this.updateVersion();
+    }
+  }
+
+  getSplatState(index: number): SplatEditorStateBits {
+    return this.getEditorState()?.get(index) ?? SPLAT_EDITOR_STATE_NONE;
+  }
+
+  setSplatState(
+    index: number,
+    bits: SplatEditorStateBits,
+  ): SplatEditorStateBits {
+    const state = this.ensureEditorState();
+    const previousVersion = state.version;
+    const next = state.set(index, bits);
+    this.updateVersionForEditorState(state, previousVersion);
+    return next;
+  }
+
+  setSplatStateBits(
+    index: number,
+    mask: SplatEditorStateBits,
+  ): SplatEditorStateBits {
+    const state = this.ensureEditorState();
+    const previousVersion = state.version;
+    const next = state.setBits(index, mask);
+    this.updateVersionForEditorState(state, previousVersion);
+    return next;
+  }
+
+  clearSplatStateBits(
+    index: number,
+    mask: SplatEditorStateBits,
+  ): SplatEditorStateBits {
+    const state = this.ensureEditorState();
+    const previousVersion = state.version;
+    const next = state.clearBits(index, mask);
+    this.updateVersionForEditorState(state, previousVersion);
+    return next;
+  }
+
+  toggleSplatStateBits(
+    index: number,
+    mask: SplatEditorStateBits,
+  ): SplatEditorStateBits {
+    const state = this.ensureEditorState();
+    const previousVersion = state.version;
+    const next = state.toggleBits(index, mask);
+    this.updateVersionForEditorState(state, previousVersion);
+    return next;
+  }
+
+  updateSplatState(
+    index: number,
+    mask: SplatEditorStateBits,
+    operation: SplatEditorStateOperation,
+  ): SplatEditorStateBits {
+    const state = this.ensureEditorState();
+    const previousVersion = state.version;
+    const next = state.update(index, mask, operation);
+    this.updateVersionForEditorState(state, previousVersion);
+    return next;
+  }
+
+  setSplatStateRange(
+    start: number,
+    count: number,
+    bits: SplatEditorStateBits,
+    operation: SplatEditorStateOperation = "replace",
+  ): void {
+    const state = this.ensureEditorState(start + count);
+    const previousVersion = state.version;
+    state.setRange(start, count, bits, operation);
+    this.updateVersionForEditorState(state, previousVersion);
+  }
+
+  setSplatStateList(
+    indices: Iterable<number>,
+    bits: SplatEditorStateBits,
+    operation: SplatEditorStateOperation = "replace",
+  ): void {
+    const state = this.ensureEditorState();
+    const previousVersion = state.version;
+    state.setList(indices, bits, operation);
+    this.updateVersionForEditorState(state, previousVersion);
+  }
+
+  clearSplatState(mask?: SplatEditorStateBits): void {
+    const state = this.ensureEditorState();
+    const previousVersion = state.version;
+    state.clear(mask);
+    this.updateVersionForEditorState(state, previousVersion);
+  }
+
+  getSplatStateCounts(): SplatEditorStateCounts {
+    return (
+      this.getEditorState()?.getCounts() ?? {
+        selected: 0,
+        locked: 0,
+        deleted: 0,
+      }
+    );
+  }
+
+  uploadDirtySplatState(): THREE.DataArrayTexture {
+    return this.ensureEditorState().uploadDirty();
+  }
+
   // Call this when you are finished with the SplatMesh and want to free
   // any buffers it holds (via packedSplats).
   dispose() {
@@ -638,6 +812,35 @@ export class SplatMesh extends SplatGenerator {
     return box;
   }
 
+  private getEditorStateSource(): SplatSource {
+    const source =
+      this.splats ?? this.packedSplats ?? this.extSplats ?? this.paged;
+    if (!source) {
+      throw new Error("SplatMesh does not have a splat source");
+    }
+    return source;
+  }
+
+  private updateVersionForEditorState(
+    state: SplatEditorState,
+    previousVersion: number,
+  ): void {
+    this.updateEditorStateContext(state);
+    if (state.version !== previousVersion) {
+      this.updateVersion();
+    }
+  }
+
+  private updateEditorStateContext(state: SplatEditorState | null): void {
+    this.context.editorStateEnabled.value = state != null;
+    this.context.editorStateTexture.value =
+      state?.uploadDirty() ?? SplatEditorState.emptyTexture;
+    if (state) {
+      this.context.editorSelectedColor.value.copy(state.selectedColor);
+      this.context.editorLockedColor.value.copy(state.lockedColor);
+    }
+  }
+
   set objectModifier(modifier: GsplatModifier | undefined) {
     if (modifier) {
       this.objectModifiers = [modifier];
@@ -683,6 +886,11 @@ export class SplatMesh extends SplatGenerator {
           index,
           viewOrigin: viewToObject.translate,
         });
+        gsplat = applySplatEditorStateVisibility(
+          gsplat,
+          context.editorStateTexture,
+          context.editorStateEnabled,
+        );
 
         if (this.splatRgba) {
           // Overwrite RGBA with baked RGBA values
@@ -725,6 +933,14 @@ export class SplatMesh extends SplatGenerator {
           }
         }
 
+        gsplat = applySplatEditorStateColor(
+          gsplat,
+          context.editorStateTexture,
+          context.editorStateEnabled,
+          context.editorSelectedColor,
+          context.editorLockedColor,
+        );
+
         // We're done! Output resulting Gsplat
         return { gsplat };
       },
@@ -758,6 +974,11 @@ export class SplatMesh extends SplatGenerator {
           index,
           viewOrigin: covViewToObject.offset,
         });
+        gsplat = applySplatEditorStateVisibility(
+          gsplat,
+          context.editorStateTexture,
+          context.editorStateEnabled,
+        );
 
         if (this.splatRgba) {
           // Overwrite RGBA with baked RGBA values
@@ -808,6 +1029,14 @@ export class SplatMesh extends SplatGenerator {
             covsplat = modifier.apply({ covsplat }).covsplat;
           }
         }
+
+        covsplat = applyCovSplatEditorStateColor(
+          covsplat,
+          context.editorStateTexture,
+          context.editorStateEnabled,
+          context.editorSelectedColor,
+          context.editorLockedColor,
+        );
 
         // We're done! Output resulting Gsplat
         return { covsplat };
@@ -868,6 +1097,18 @@ export class SplatMesh extends SplatGenerator {
     if (this.context.splats !== this.lastSplats) {
       this.lastSplats = this.context.splats;
       this.generatorDirty = true;
+    }
+
+    const editorState = this.context.splats.getEditorState?.() ?? null;
+    this.updateEditorStateContext(editorState);
+    const editorStateVersion = editorState?.version ?? -1;
+    if (
+      editorState !== this.lastEditorState ||
+      editorStateVersion !== this.lastEditorStateVersion
+    ) {
+      this.lastEditorState = editorState;
+      this.lastEditorStateVersion = editorStateVersion;
+      updated = true;
     }
 
     if (!this.covSplats) {

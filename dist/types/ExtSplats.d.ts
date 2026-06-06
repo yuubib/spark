@@ -1,4 +1,5 @@
 import { RgbaArray } from './RgbaArray';
+import { SplatEditorState } from './SplatEditorState';
 import { SplatSource } from './SplatMesh';
 import { SplatFileType } from './defines';
 import { DynoInt, DynoUniform, DynoUsampler2DArray, DynoVal, Gsplat, TExtSplats } from './dyno';
@@ -26,6 +27,7 @@ export declare class ExtSplats implements SplatSource {
     numSplats: number;
     extArrays: [Uint32Array, Uint32Array];
     extra: Record<string, unknown>;
+    editorState: SplatEditorState | null;
     maxSh: number;
     lod?: boolean | "quality";
     nonLod?: boolean;
@@ -45,6 +47,9 @@ export declare class ExtSplats implements SplatSource {
     hasRgbDir(): boolean;
     getNumSh(): number;
     setMaxSh(maxSh: number): void;
+    getEditorState(): SplatEditorState | null;
+    ensureEditorState(numSplats?: number): SplatEditorState;
+    clearEditorState(): void;
     fetchSplat({ index, viewOrigin, }: {
         index: DynoVal<"int">;
         viewOrigin?: DynoVal<"vec3">;

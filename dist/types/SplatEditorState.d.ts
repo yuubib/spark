@@ -1,0 +1,61 @@
+import { CovSplat, DynoVal, Gsplat } from './dyno';
+import * as THREE from "three";
+export declare const SPLAT_EDITOR_STATE_SELECTED = 1;
+export declare const SPLAT_EDITOR_STATE_LOCKED = 2;
+export declare const SPLAT_EDITOR_STATE_DELETED = 4;
+export declare const SPLAT_EDITOR_STATE_NONE = 0;
+export type SplatEditorStateBits = number;
+export type SplatEditorStateOperation = "replace" | "set" | "clear" | "toggle";
+export interface SplatEditorStateCounts {
+    readonly selected: number;
+    readonly locked: number;
+    readonly deleted: number;
+}
+export interface SplatEditorStateDirtyRange {
+    readonly start: number;
+    readonly count: number;
+}
+export interface SplatEditorStateColors {
+    readonly selected?: THREE.Vector4;
+    readonly locked?: THREE.Vector4;
+}
+export declare class SplatEditorState {
+    states: Uint8Array;
+    maxSplats: number;
+    version: number;
+    texture: THREE.DataArrayTexture | null;
+    selectedColor: THREE.Vector4;
+    lockedColor: THREE.Vector4;
+    private selected;
+    private locked;
+    private deleted;
+    private dirtyRanges;
+    private dirtyAll;
+    constructor(numSplats?: number, colors?: SplatEditorStateColors);
+    dispose(): void;
+    ensureCapacity(numSplats: number): Uint8Array;
+    get(index: number): SplatEditorStateBits;
+    set(index: number, bits: SplatEditorStateBits): SplatEditorStateBits;
+    setBits(index: number, mask: SplatEditorStateBits): SplatEditorStateBits;
+    clearBits(index: number, mask: SplatEditorStateBits): SplatEditorStateBits;
+    toggleBits(index: number, mask: SplatEditorStateBits): SplatEditorStateBits;
+    update(index: number, mask: SplatEditorStateBits, operation: SplatEditorStateOperation): SplatEditorStateBits;
+    setRange(start: number, count: number, bits: SplatEditorStateBits, operation?: SplatEditorStateOperation): void;
+    setList(indices: Iterable<number>, bits: SplatEditorStateBits, operation?: SplatEditorStateOperation): void;
+    clear(mask?: SplatEditorStateBits): void;
+    reset(): void;
+    getCounts(): SplatEditorStateCounts;
+    setColors(colors: SplatEditorStateColors): void;
+    markDirtyRange(start: number, count: number): void;
+    markDirtyList(indices: Iterable<number>): void;
+    getDirtyRanges(): readonly SplatEditorStateDirtyRange[];
+    uploadDirty(): THREE.DataArrayTexture;
+    getTexture(): THREE.DataArrayTexture;
+    private assertIndex;
+    private setUnchecked;
+    private updateCounts;
+    static emptyTexture: THREE.DataArrayTexture;
+}
+export declare function applySplatEditorStateVisibility(gsplat: DynoVal<typeof Gsplat>, stateTexture: DynoVal<"usampler2DArray">, enabled: DynoVal<"bool">): DynoVal<typeof Gsplat>;
+export declare function applySplatEditorStateColor(gsplat: DynoVal<typeof Gsplat>, stateTexture: DynoVal<"usampler2DArray">, enabled: DynoVal<"bool">, selectedColor: DynoVal<"vec4">, lockedColor: DynoVal<"vec4">): DynoVal<typeof Gsplat>;
+export declare function applyCovSplatEditorStateColor(covsplat: DynoVal<typeof CovSplat>, stateTexture: DynoVal<"usampler2DArray">, enabled: DynoVal<"bool">, selectedColor: DynoVal<"vec4">, lockedColor: DynoVal<"vec4">): DynoVal<typeof CovSplat>;
