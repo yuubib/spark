@@ -9,6 +9,7 @@ import { SplatSkinning } from './SplatSkinning';
 import { SplatEncoding, SplatFileType } from './defines';
 import { DynoBool, DynoFloat, DynoInt, DynoUsampler2D, DynoUsampler2DArray, DynoVal, DynoVec4, Gsplat } from './dyno';
 import * as THREE from "three";
+export type SplatEditorStateRenderMode = "generator" | "accumulator";
 export type SplatMeshOptions = {
     url?: string;
     fileBytes?: Uint8Array | ArrayBuffer;
@@ -26,6 +27,7 @@ export type SplatMeshOptions = {
     raycastable?: boolean;
     minRaycastOpacity?: number;
     raycastEditorStateMode?: SplatEditorStateFilterMode;
+    editorStateRenderMode?: SplatEditorStateRenderMode;
     onFrame?: ({ mesh, time, deltaTime, }: {
         mesh: SplatMesh;
         time: number;
@@ -118,6 +120,7 @@ export declare class SplatMesh extends SplatGenerator {
     lastSplats?: SplatSource;
     lastEditorState?: SplatEditorState | null;
     lastEditorStateVersion: number;
+    lastEditorStateVisibilityVersion: number;
     paged?: PagedSplats;
     recolor: THREE.Color;
     opacity: number;
@@ -141,6 +144,7 @@ export declare class SplatMesh extends SplatGenerator {
     raycastable: boolean;
     minRaycastOpacity: number;
     raycastEditorStateMode: SplatEditorStateFilterMode;
+    editorStateRenderMode: SplatEditorStateRenderMode;
     raycastIndices?: {
         numSplats: number;
         indices: Uint32Array;
@@ -186,6 +190,7 @@ export declare class SplatMesh extends SplatGenerator {
     private getEditorStateBits;
     private matchesEditorStateMode;
     private updateVersionForEditorState;
+    private updateEditorStateStyleVersion;
     private updateEditorStateContext;
     set objectModifier(modifier: GsplatModifier | undefined);
     set worldModifier(modifier: GsplatModifier | undefined);

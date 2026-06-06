@@ -498,6 +498,19 @@ export declare class SparkRenderer extends THREE.Mesh {
             type: string;
             value: THREE.DataArrayTexture;
         };
+        splatEditorStateEnabled: {
+            value: boolean;
+        };
+        splatEditorStateTexture: {
+            type: string;
+            value: THREE.DataArrayTexture;
+        };
+        splatEditorSelectedColor: {
+            value: THREE.Vector4;
+        };
+        splatEditorLockedColor: {
+            value: THREE.Vector4;
+        };
         time: {
             value: number;
         };

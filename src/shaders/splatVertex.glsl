@@ -37,6 +37,10 @@ uniform float focalAdjustment;
 uniform usampler2D ordering;
 uniform usampler2DArray extSplats;
 uniform usampler2DArray extSplats2;
+uniform bool splatEditorStateEnabled;
+uniform usampler2DArray splatEditorStateTexture;
+uniform vec4 splatEditorSelectedColor;
+uniform vec4 splatEditorLockedColor;
 
 // Required by logdepthbuf_pars_vertex (normally defined in three.js #include <common>)
 bool isPerspectiveMatrix( mat4 m ) {
@@ -100,6 +104,18 @@ void main() {
         rgba.a *= 2.0;
         if ((rgba.a == 0.0) || (rgba.a < minAlpha)) {
             return;
+        }
+    }
+
+    if (splatEditorStateEnabled) {
+        uint splatEditorState = texelFetch(splatEditorStateTexture, texCoord, 0).r;
+        if ((splatEditorState & 4u) != 0u) {
+            return;
+        }
+        if ((splatEditorState & 2u) != 0u) {
+            rgba *= splatEditorLockedColor;
+        } else if ((splatEditorState & 1u) != 0u) {
+            rgba.rgb = mix(rgba.rgb, splatEditorSelectedColor.rgb, splatEditorSelectedColor.a);
         }
     }
 

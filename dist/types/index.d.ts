@@ -14,7 +14,7 @@ export * from './SplatPager';
 export { SplatGenerator, type GsplatGenerator, SplatModifier, type GsplatModifier, SplatTransformer, } from './SplatGenerator';
 export { OldSplatAccumulator } from './OldSplatAccumulator';
 export { Readback, type Rgba8Readback, type ReadbackBuffer } from './Readback';
-export { SplatMesh, type SplatMeshOptions, type SplatMeshContext, type SplatSource, type SplatStateBoundingBoxOptions, } from './SplatMesh';
+export { SplatMesh, type SplatEditorStateRenderMode, type SplatMeshOptions, type SplatMeshContext, type SplatSource, type SplatStateBoundingBoxOptions, } from './SplatMesh';
 export { SplatSkinning, type SplatSkinningOptions, SplatSkinningMode, } from './SplatSkinning';
 export { SplatEdit, type SplatEditOptions, SplatEditSdf, type SplatEditSdfOptions, SplatEditSdfType, SplatEditRgbaBlendMode, SplatEdits, } from './SplatEdit';
 export { constructGrid, constructAxes, constructSpherePoints, imageSplats, textSplats, } from './splatConstructors';

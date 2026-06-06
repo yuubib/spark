@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { FullScreenQuad } from "three/addons/postprocessing/Pass.js";
 import { Readback } from "./Readback";
 import { SplatEdit } from "./SplatEdit";
+import { SplatEditorState } from "./SplatEditorState";
 import {
   type CovSplatGenerator,
   type GsplatGenerator,
@@ -51,6 +52,7 @@ export type GeneratorMapping = {
   covGenerator?: CovSplatGenerator;
   version: number;
   sortVersion?: number;
+  styleVersion?: number;
   mappingVersion?: number;
   base: number;
   count: number;
@@ -72,11 +74,17 @@ export class SplatAccumulator {
   version = -1;
   sortVersion = -1;
   mappingVersion = -1;
+  styleVersion = -1;
   extSplats: boolean;
   covSplats: boolean;
   readback: Readback | null = null;
   readbackSplats: DynoUsampler2DArray<"extSplats", THREE.DataArrayTexture>[] =
     [];
+  editorStateData = new Uint8Array(0);
+  editorStateTexture: THREE.DataArrayTexture | null = null;
+  editorStateEnabled = false;
+  editorStateSelectedColor = new THREE.Vector4(0.38, 0.62, 1.0, 0.42);
+  editorStateLockedColor = new THREE.Vector4(0.58, 0.64, 0.72, 1.0);
 
   constructor({
     extSplats,
@@ -94,6 +102,13 @@ export class SplatAccumulator {
       this.target.dispose();
       this.target = null;
     }
+    if (this.editorStateTexture) {
+      this.editorStateTexture.dispose();
+      this.editorStateTexture.source.data = null;
+      this.editorStateTexture = null;
+    }
+    this.editorStateData = new Uint8Array(0);
+    this.editorStateEnabled = false;
   }
 
   // Returns a THREE.DataArrayTexture representing the NewSplatAccumulator
@@ -103,6 +118,108 @@ export class SplatAccumulator {
       return this.target.textures;
     }
     return SplatAccumulator.emptyTextures;
+  }
+
+  getEditorStateTexture(): THREE.DataArrayTexture {
+    return this.editorStateTexture ?? SplatEditorState.emptyTexture;
+  }
+
+  updateEditorStateTexture({
+    mapping = this.mapping,
+  }: {
+    mapping?: readonly GeneratorMapping[];
+  } = {}): boolean {
+    const stateMappings: {
+      item: GeneratorMapping;
+      state: SplatEditorState;
+    }[] = [];
+    let requiredSplats = 0;
+    for (const item of mapping) {
+      const node = item.node;
+      if (
+        !(node instanceof SplatMesh) ||
+        node.editorStateRenderMode !== "accumulator"
+      ) {
+        continue;
+      }
+
+      const state = node.getEditorState();
+      if (!state) {
+        continue;
+      }
+
+      stateMappings.push({ item, state });
+      requiredSplats = Math.max(requiredSplats, item.base + item.count);
+    }
+
+    if (stateMappings.length === 0 || requiredSplats <= 0) {
+      const wasEnabled = this.editorStateEnabled;
+      this.editorStateEnabled = false;
+      return wasEnabled;
+    }
+
+    this.ensureEditorStateTexture(requiredSplats);
+    this.editorStateData.fill(0);
+
+    let enabled = false;
+    let colorsCopied = false;
+    for (const { item, state } of stateMappings) {
+      enabled = true;
+      if (!colorsCopied) {
+        this.editorStateSelectedColor.copy(state.selectedColor);
+        this.editorStateLockedColor.copy(state.lockedColor);
+        colorsCopied = true;
+      }
+
+      const source = state.states.subarray(
+        0,
+        Math.min(item.count, state.states.length),
+      );
+      this.editorStateData.set(source, item.base);
+    }
+
+    this.editorStateEnabled = enabled;
+    if (
+      this.editorStateTexture &&
+      this.editorStateTexture.image.data !== this.editorStateData
+    ) {
+      this.editorStateTexture.image.data = this.editorStateData;
+    }
+    if (this.editorStateTexture) {
+      this.editorStateTexture.needsUpdate = true;
+    }
+    return enabled;
+  }
+
+  private ensureEditorStateTexture(maxSplats: number) {
+    const {
+      width,
+      height,
+      depth,
+      maxSplats: capacity,
+    } = getTextureSize(Math.max(1, maxSplats));
+    if (this.editorStateData.length === capacity && this.editorStateTexture) {
+      return;
+    }
+
+    if (this.editorStateTexture) {
+      this.editorStateTexture.dispose();
+      this.editorStateTexture = null;
+    }
+    this.editorStateData = new Uint8Array(capacity);
+    this.editorStateTexture = new THREE.DataArrayTexture(
+      this.editorStateData,
+      width,
+      height,
+      depth,
+    );
+    this.editorStateTexture.format = THREE.RedIntegerFormat;
+    this.editorStateTexture.type = THREE.UnsignedByteType;
+    this.editorStateTexture.internalFormat = "R8UI";
+    this.editorStateTexture.magFilter = THREE.NearestFilter;
+    this.editorStateTexture.minFilter = THREE.NearestFilter;
+    this.editorStateTexture.generateMipmaps = false;
+    this.editorStateTexture.needsUpdate = true;
   }
 
   static emptyTexture = (() => {
@@ -544,13 +661,14 @@ export class SplatAccumulator {
 
       const { generator, covGenerator } = node;
       if ((generator || covGenerator) && count > 0) {
-        const { version, sortVersion, mappingVersion } = node;
+        const { version, sortVersion, styleVersion, mappingVersion } = node;
         this.mapping.push({
           node,
           generator,
           covGenerator,
           version,
           sortVersion,
+          styleVersion,
           mappingVersion,
           base,
           count,
@@ -558,17 +676,20 @@ export class SplatAccumulator {
         this.numSplats = Math.max(this.numSplats, base + count);
       }
     });
-    const { splatsUpdated, sortUpdated, mappingUpdated } =
+    const { splatsUpdated, sortUpdated, styleUpdated, mappingUpdated } =
       previous.checkVersions(this.mapping);
     this.version = previous.version + (splatsUpdated ? 1 : 0);
     this.sortVersion = previous.sortVersion + (sortUpdated ? 1 : 0);
+    this.styleVersion = previous.styleVersion + (styleUpdated ? 1 : 0);
     this.mappingVersion = previous.mappingVersion + (mappingUpdated ? 1 : 0);
 
     return {
       sameMapping: !mappingUpdated,
       version: this.version,
       sortVersion: this.sortVersion,
+      styleVersion: this.styleVersion,
       mappingVersion: this.mappingVersion,
+      styleUpdated,
       visibleGenerators,
       generate: () => {
         this.ensureGenerate({ maxSplats });
@@ -579,6 +700,7 @@ export class SplatAccumulator {
             this.generate({ generator, covGenerator, base, count, renderer });
           }
         }
+        this.updateEditorStateTexture();
       },
       readback: async () => {
         const textures = this.getTextures();
@@ -669,7 +791,12 @@ export class SplatAccumulator {
   // the previous one. If so, we can reuse the Gsplat sort order.
   checkVersions(otherMapping: GeneratorMapping[]) {
     if (this.mapping.length !== otherMapping.length) {
-      return { splatsUpdated: true, sortUpdated: true, mappingUpdated: true };
+      return {
+        splatsUpdated: true,
+        sortUpdated: true,
+        styleUpdated: true,
+        mappingUpdated: true,
+      };
     }
     const mappingUpdated = this.mapping.some((item, i) => {
       const other = otherMapping[i];
@@ -681,7 +808,12 @@ export class SplatAccumulator {
       );
     });
     if (mappingUpdated) {
-      return { splatsUpdated: true, sortUpdated: true, mappingUpdated: true };
+      return {
+        splatsUpdated: true,
+        sortUpdated: true,
+        styleUpdated: true,
+        mappingUpdated: true,
+      };
     }
     const splatsUpdated = this.mapping.some((item, i) => {
       return item.version !== otherMapping[i].version;
@@ -689,6 +821,9 @@ export class SplatAccumulator {
     const sortUpdated = this.mapping.some((item, i) => {
       return item.sortVersion !== otherMapping[i].sortVersion;
     });
-    return { splatsUpdated, sortUpdated, mappingUpdated };
+    const styleUpdated = this.mapping.some((item, i) => {
+      return item.styleVersion !== otherMapping[i].styleVersion;
+    });
+    return { splatsUpdated, sortUpdated, styleUpdated, mappingUpdated };
   }
 }

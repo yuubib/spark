@@ -71,6 +71,7 @@ export declare class SplatGenerator extends THREE.Object3D {
     frameUpdate?: (context: FrameUpdateContext) => void;
     version: number;
     sortVersion: number;
+    styleVersion: number;
     mappingVersion: number;
     constructor({ numSplats, generator, covGenerator, construct, update, }: {
         numSplats?: number;
@@ -86,6 +87,7 @@ export declare class SplatGenerator extends THREE.Object3D {
     });
     updateVersion(): void;
     updateRenderVersion(): void;
+    updateStyleVersion(): void;
     updateMappingVersion(): void;
     set needsUpdate(value: boolean);
 }

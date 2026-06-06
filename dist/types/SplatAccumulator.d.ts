@@ -10,6 +10,7 @@ export type GeneratorMapping = {
     covGenerator?: CovSplatGenerator;
     version: number;
     sortVersion?: number;
+    styleVersion?: number;
     mappingVersion?: number;
     base: number;
     count: number;
@@ -30,16 +31,27 @@ export declare class SplatAccumulator {
     version: number;
     sortVersion: number;
     mappingVersion: number;
+    styleVersion: number;
     extSplats: boolean;
     covSplats: boolean;
     readback: Readback | null;
     readbackSplats: DynoUsampler2DArray<"extSplats", THREE.DataArrayTexture>[];
+    editorStateData: Uint8Array<ArrayBuffer>;
+    editorStateTexture: THREE.DataArrayTexture | null;
+    editorStateEnabled: boolean;
+    editorStateSelectedColor: THREE.Vector4;
+    editorStateLockedColor: THREE.Vector4;
     constructor({ extSplats, covSplats, }?: {
         extSplats?: boolean;
         covSplats?: boolean;
     });
     dispose(): void;
     getTextures(): THREE.DataArrayTexture[];
+    getEditorStateTexture(): THREE.DataArrayTexture;
+    updateEditorStateTexture({ mapping, }?: {
+        mapping?: readonly GeneratorMapping[];
+    }): boolean;
+    private ensureEditorStateTexture;
     static emptyTexture: THREE.DataArrayTexture;
     static emptyTextures: THREE.DataArrayTexture[];
     generateMapping(splatCounts: number[]): {
@@ -87,7 +99,9 @@ export declare class SplatAccumulator {
         sameMapping: boolean;
         version: number;
         sortVersion: number;
+        styleVersion: number;
         mappingVersion: number;
+        styleUpdated: boolean;
         visibleGenerators: SplatGenerator[];
         generate: () => void;
         readback: () => Promise<Uint32Array<ArrayBuffer>>;
@@ -95,6 +109,7 @@ export declare class SplatAccumulator {
     checkVersions(otherMapping: GeneratorMapping[]): {
         splatsUpdated: boolean;
         sortUpdated: boolean;
+        styleUpdated: boolean;
         mappingUpdated: boolean;
     };
 }

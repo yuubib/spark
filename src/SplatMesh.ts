@@ -65,6 +65,8 @@ import {
   unindentLines,
 } from "./dyno";
 
+export type SplatEditorStateRenderMode = "generator" | "accumulator";
+
 export type SplatMeshOptions = {
   // URL to fetch a Gaussian splat file from(supports .ply, .splat, .ksplat,
   // .spz formats). (default: undefined)
@@ -108,6 +110,13 @@ export type SplatMeshOptions = {
   minRaycastOpacity?: number;
   // Editor-state filter used by the built-in THREE.Raycaster path. (default: "visible")
   raycastEditorStateMode?: SplatEditorStateFilterMode;
+  // Controls where selected/locked editor-state styling is applied.
+  // "generator" preserves Spark's default generated-output path.
+  // "accumulator" lets the final draw shader sample accumulator-local state,
+  // avoiding generated splat output updates for selected/locked-only changes.
+  // Deleted visibility remains generator/sort-affecting in both modes.
+  // (default: "generator")
+  editorStateRenderMode?: SplatEditorStateRenderMode;
   // Callback function that is called every frame to update the mesh.
   // Call mesh.updateVersion() if splats need to be regenerated due to some change.
   // Calling updateVersion() is not necessary for object transformations, recoloring,
@@ -281,6 +290,7 @@ export class SplatMesh extends SplatGenerator {
   lastSplats?: SplatSource;
   lastEditorState?: SplatEditorState | null;
   lastEditorStateVersion = -1;
+  lastEditorStateVisibilityVersion = -1;
   paged?: PagedSplats;
 
   // A THREE.Color that can be used to tint all splats in the mesh.
@@ -324,6 +334,7 @@ export class SplatMesh extends SplatGenerator {
   raycastable: boolean;
   minRaycastOpacity: number;
   raycastEditorStateMode: SplatEditorStateFilterMode;
+  editorStateRenderMode: SplatEditorStateRenderMode;
   raycastIndices?: { numSplats: number; indices: Uint32Array };
   // Compiled SplatEdits for applying SDF edits to splat RGBA + centers
   rgbaDisplaceEdits: SplatEdits | null = null;
@@ -392,6 +403,7 @@ export class SplatMesh extends SplatGenerator {
     this.raycastable = options.raycastable ?? true;
     this.minRaycastOpacity = options.minRaycastOpacity ?? 0.2;
     this.raycastEditorStateMode = options.raycastEditorStateMode ?? "visible";
+    this.editorStateRenderMode = options.editorStateRenderMode ?? "generator";
     this.onFrame = options.onFrame;
 
     this.context = {
@@ -630,7 +642,7 @@ export class SplatMesh extends SplatGenerator {
     const state = source.ensureEditorState(numSplats || source.getNumSplats());
     this.updateEditorStateContext(state);
     if (!existing || state.version !== previousVersion) {
-      this.updateRenderVersion();
+      this.updateEditorStateStyleVersion();
     }
     return state;
   }
@@ -645,7 +657,7 @@ export class SplatMesh extends SplatGenerator {
       if (hadDeleted) {
         this.updateVersion();
       } else {
-        this.updateRenderVersion();
+        this.updateEditorStateStyleVersion();
       }
     }
   }
@@ -967,9 +979,17 @@ export class SplatMesh extends SplatGenerator {
       if (state.visibilityVersion !== previousVisibilityVersion) {
         this.updateVersion();
       } else {
-        this.updateRenderVersion();
+        this.updateEditorStateStyleVersion();
       }
     }
+  }
+
+  private updateEditorStateStyleVersion(): void {
+    if (this.editorStateRenderMode === "accumulator") {
+      this.updateStyleVersion();
+      return;
+    }
+    this.updateRenderVersion();
   }
 
   private updateEditorStateContext(
@@ -1079,13 +1099,15 @@ export class SplatMesh extends SplatGenerator {
           }
         }
 
-        gsplat = applySplatEditorStateColor(
-          gsplat,
-          context.editorStateTexture,
-          context.editorStateEnabled,
-          context.editorSelectedColor,
-          context.editorLockedColor,
-        );
+        if (this.editorStateRenderMode === "generator") {
+          gsplat = applySplatEditorStateColor(
+            gsplat,
+            context.editorStateTexture,
+            context.editorStateEnabled,
+            context.editorSelectedColor,
+            context.editorLockedColor,
+          );
+        }
 
         // We're done! Output resulting Gsplat
         return { gsplat };
@@ -1176,13 +1198,15 @@ export class SplatMesh extends SplatGenerator {
           }
         }
 
-        covsplat = applyCovSplatEditorStateColor(
-          covsplat,
-          context.editorStateTexture,
-          context.editorStateEnabled,
-          context.editorSelectedColor,
-          context.editorLockedColor,
-        );
+        if (this.editorStateRenderMode === "generator") {
+          covsplat = applyCovSplatEditorStateColor(
+            covsplat,
+            context.editorStateTexture,
+            context.editorStateEnabled,
+            context.editorSelectedColor,
+            context.editorLockedColor,
+          );
+        }
 
         // We're done! Output resulting Gsplat
         return { covsplat };
@@ -1248,14 +1272,29 @@ export class SplatMesh extends SplatGenerator {
     const editorState = this.context.splats.getEditorState?.() ?? null;
     this.updateEditorStateContext(editorState, renderer);
     const editorStateVersion = editorState?.version ?? -1;
-    if (
-      editorState !== this.lastEditorState ||
-      editorStateVersion !== this.lastEditorStateVersion
-    ) {
-      this.lastEditorState = editorState;
-      this.lastEditorStateVersion = editorStateVersion;
-      updated = true;
+    const editorStateVisibilityVersion = editorState?.visibilityVersion ?? -1;
+    if (editorState !== this.lastEditorState) {
+      if (editorState) {
+        if (editorState.getCounts().deleted > 0) {
+          this.updateVersion();
+        } else {
+          this.updateEditorStateStyleVersion();
+        }
+      } else if (this.lastEditorState) {
+        this.updateEditorStateStyleVersion();
+      }
+    } else if (editorStateVersion !== this.lastEditorStateVersion) {
+      if (editorState) {
+        this.updateVersionForEditorState(
+          editorState,
+          this.lastEditorStateVersion,
+          this.lastEditorStateVisibilityVersion,
+        );
+      }
     }
+    this.lastEditorState = editorState;
+    this.lastEditorStateVersion = editorStateVersion;
+    this.lastEditorStateVisibilityVersion = editorStateVisibilityVersion;
 
     if (!this.covSplats) {
       if (this.context.transform.update(this)) {

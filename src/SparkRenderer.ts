@@ -9,6 +9,7 @@ import {
   SplatPager,
 } from ".";
 import { SplatAccumulator } from "./SplatAccumulator";
+import { SplatEditorState } from "./SplatEditorState";
 import { SplatGeometry } from "./SplatGeometry";
 import { SplatWorker } from "./SplatWorker";
 import { SPLAT_TEX_HEIGHT, SPLAT_TEX_WIDTH } from "./defines";
@@ -656,6 +657,17 @@ export class SparkRenderer extends THREE.Mesh {
       // Gsplat collection to render
       extSplats: { type: "t", value: SplatAccumulator.emptyTexture },
       extSplats2: { type: "t", value: SplatAccumulator.emptyTexture },
+      splatEditorStateEnabled: { value: false },
+      splatEditorStateTexture: {
+        type: "t",
+        value: SplatEditorState.emptyTexture,
+      },
+      splatEditorSelectedColor: {
+        value: new THREE.Vector4(0.38, 0.62, 1.0, 0.42),
+      },
+      splatEditorLockedColor: {
+        value: new THREE.Vector4(0.58, 0.64, 0.72, 1.0),
+      },
       // Time in seconds for time-based effects
       time: { value: 0 },
       // Delta time in seconds since last frame
@@ -799,6 +811,16 @@ export class SparkRenderer extends THREE.Mesh {
       this.uniforms.extSplats.value = packedSplats[0];
       this.uniforms.extSplats2.value = packedSplats[0];
     }
+    this.uniforms.splatEditorStateEnabled.value =
+      spark.display.editorStateEnabled;
+    this.uniforms.splatEditorStateTexture.value =
+      spark.display.getEditorStateTexture();
+    this.uniforms.splatEditorSelectedColor.value.copy(
+      spark.display.editorStateSelectedColor,
+    );
+    this.uniforms.splatEditorLockedColor.value.copy(
+      spark.display.editorStateLockedColor,
+    );
 
     this.uniforms.time.value = spark.display.time;
     this.uniforms.deltaTime.value = spark.display.deltaTime;
@@ -907,8 +929,10 @@ export class SparkRenderer extends THREE.Mesh {
     const {
       version,
       sortVersion,
+      styleVersion,
       mappingVersion,
       visibleGenerators,
+      styleUpdated,
       generate,
     } = next.prepareGenerate({
       renderer,
@@ -926,6 +950,8 @@ export class SparkRenderer extends THREE.Mesh {
     const mappingUpdated = mappingVersion !== this.display.mappingVersion;
     const sortUpdated =
       sortVersion !== this.current.sortVersion || mappingUpdated;
+    const needsStyleUpdate =
+      styleUpdated || styleVersion !== this.display.styleVersion;
 
     if (autoUpdate && !needsUpdate) {
       // Triggered by auto-update but no change
@@ -939,6 +965,11 @@ export class SparkRenderer extends THREE.Mesh {
     }
 
     if (!doUpdate) {
+      if (needsStyleUpdate) {
+        this.display.updateEditorStateTexture();
+        this.display.styleVersion = styleVersion;
+        this.setDirty();
+      }
       // Restore unused accumulator to the free list
       this.accumulators.push(next);
     } else {
