@@ -201,6 +201,7 @@ export declare class SplatMesh extends SplatGenerator {
     private matchesEditorStateMode;
     private updateVersionForEditorState;
     private mutateEditorState;
+    private updateEditorStateVisibilityVersion;
     private updateEditorStateStyleVersion;
     private updateEditorStateContext;
     set objectModifier(modifier: GsplatModifier | undefined);

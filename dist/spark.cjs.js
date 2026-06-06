@@ -13461,7 +13461,7 @@ const _SplatMesh = class _SplatMesh extends SplatGenerator {
     if (state) {
       this.updateEditorStateContext(null);
       if (hadDeleted) {
-        this.updateVersion();
+        this.updateEditorStateVisibilityVersion();
       } else {
         this.updateEditorStateStyleVersion();
       }
@@ -13743,7 +13743,7 @@ const _SplatMesh = class _SplatMesh extends SplatGenerator {
     this.updateEditorStateContext(state);
     if (state.version !== previousVersion) {
       if (state.visibilityVersion !== previousVisibilityVersion) {
-        this.updateVersion();
+        this.updateEditorStateVisibilityVersion();
       } else {
         this.updateEditorStateStyleVersion();
       }
@@ -13760,6 +13760,13 @@ const _SplatMesh = class _SplatMesh extends SplatGenerator {
       previousVisibilityVersion
     );
     return result;
+  }
+  updateEditorStateVisibilityVersion() {
+    if (this.editorStateRenderMode === "accumulator") {
+      this.updateStyleVersion();
+      return;
+    }
+    this.updateVersion();
   }
   updateEditorStateStyleVersion() {
     if (this.editorStateRenderMode === "accumulator") {
@@ -13989,7 +13996,7 @@ const _SplatMesh = class _SplatMesh extends SplatGenerator {
     if (editorState !== this.lastEditorState) {
       if (editorState) {
         if (editorState.getCounts().deleted > 0) {
-          this.updateVersion();
+          this.updateEditorStateVisibilityVersion();
         } else {
           this.updateEditorStateStyleVersion();
         }
