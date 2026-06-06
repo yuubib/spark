@@ -6821,6 +6821,7 @@ const _SplatEditorState = class _SplatEditorState {
   constructor(numSplats = 0, colors = {}) {
     var _a2, _b2;
     this.version = 0;
+    this.visibilityVersion = 0;
     this.texture = null;
     this.selected = 0;
     this.locked = 0;
@@ -6845,6 +6846,7 @@ const _SplatEditorState = class _SplatEditorState {
     this.selected = 0;
     this.locked = 0;
     this.deleted = 0;
+    this.visibilityVersion = 0;
     this.dirtyRanges = [];
     this.dirtyAll = false;
     this.fullTextureUploadPending = false;
@@ -6956,12 +6958,16 @@ const _SplatEditorState = class _SplatEditorState {
   }
   clear(mask) {
     if (mask === void 0) {
+      const hadDeleted = this.deleted > 0;
       this.states.fill(0);
       this.selected = 0;
       this.locked = 0;
       this.deleted = 0;
       this.markDirtyRange(0, this.maxSplats);
       this.version++;
+      if (hadDeleted) {
+        this.visibilityVersion++;
+      }
       return;
     }
     this.setRange(0, this.maxSplats, mask, "clear");
@@ -7193,6 +7199,9 @@ const _SplatEditorState = class _SplatEditorState {
     this.updateCounts(previous, -1);
     this.states[index] = next;
     this.updateCounts(next, 1);
+    if ((previous & SPLAT_EDITOR_STATE_DELETED) !== (next & SPLAT_EDITOR_STATE_DELETED)) {
+      this.visibilityVersion++;
+    }
     if (markDirty) {
       this.markDirtyRange(index, 1);
       this.version++;
@@ -9889,6 +9898,7 @@ class SplatGenerator extends THREE.Object3D {
     this.covGenerator = covGenerator;
     this.frameUpdate = update;
     this.version = 0;
+    this.sortVersion = 0;
     this.mappingVersion = 0;
     if (construct) {
       const constructed = construct(this);
@@ -9897,10 +9907,14 @@ class SplatGenerator extends THREE.Object3D {
   }
   updateVersion() {
     this.version += 1;
+    this.sortVersion += 1;
+  }
+  updateRenderVersion() {
+    this.version += 1;
   }
   updateMappingVersion() {
     this.mappingVersion += 1;
-    this.version += 1;
+    this.updateVersion();
   }
   set needsUpdate(value) {
     if (value) {
@@ -9923,6 +9937,7 @@ const _SplatAccumulator = class _SplatAccumulator {
     this.target = null;
     this.mapping = [];
     this.version = -1;
+    this.sortVersion = -1;
     this.mappingVersion = -1;
     this.readback = null;
     this.readbackSplats = [];
@@ -10274,12 +10289,13 @@ const _SplatAccumulator = class _SplatAccumulator {
       }
       const { generator, covGenerator } = node;
       if ((generator || covGenerator) && count > 0) {
-        const { version, mappingVersion } = node;
+        const { version, sortVersion, mappingVersion } = node;
         this.mapping.push({
           node,
           generator,
           covGenerator,
           version,
+          sortVersion,
           mappingVersion,
           base,
           count
@@ -10287,14 +10303,14 @@ const _SplatAccumulator = class _SplatAccumulator {
         this.numSplats = Math.max(this.numSplats, base + count);
       }
     });
-    const { splatsUpdated, mappingUpdated } = previous.checkVersions(
-      this.mapping
-    );
+    const { splatsUpdated, sortUpdated, mappingUpdated } = previous.checkVersions(this.mapping);
     this.version = previous.version + (splatsUpdated ? 1 : 0);
+    this.sortVersion = previous.sortVersion + (sortUpdated ? 1 : 0);
     this.mappingVersion = previous.mappingVersion + (mappingUpdated ? 1 : 0);
     return {
       sameMapping: !mappingUpdated,
       version: this.version,
+      sortVersion: this.sortVersion,
       mappingVersion: this.mappingVersion,
       visibleGenerators,
       generate: () => {
@@ -10391,19 +10407,22 @@ const _SplatAccumulator = class _SplatAccumulator {
   // the previous one. If so, we can reuse the Gsplat sort order.
   checkVersions(otherMapping) {
     if (this.mapping.length !== otherMapping.length) {
-      return { splatsUpdated: true, mappingUpdated: true };
+      return { splatsUpdated: true, sortUpdated: true, mappingUpdated: true };
     }
     const mappingUpdated = this.mapping.some((item, i) => {
       const other = otherMapping[i];
       return item.node !== other.node || item.base !== other.base || item.count !== other.count || item.mappingVersion !== other.mappingVersion;
     });
     if (mappingUpdated) {
-      return { splatsUpdated: true, mappingUpdated: true };
+      return { splatsUpdated: true, sortUpdated: true, mappingUpdated: true };
     }
     const splatsUpdated = this.mapping.some((item, i) => {
       return item.version !== otherMapping[i].version;
     });
-    return { splatsUpdated, mappingUpdated };
+    const sortUpdated = this.mapping.some((item, i) => {
+      return item.sortVersion !== otherMapping[i].sortVersion;
+    });
+    return { splatsUpdated, sortUpdated, mappingUpdated };
   }
 };
 _SplatAccumulator.viewCenterUniform = new DynoVec3({ value: new THREE.Vector3() });
@@ -10860,7 +10879,13 @@ const _SparkRenderer = class _SparkRenderer extends THREE.Mesh {
         "Next accumulator is the same as the current accumulator"
       );
     }
-    const { version, mappingVersion, visibleGenerators, generate } = next.prepareGenerate({
+    const {
+      version,
+      sortVersion,
+      mappingVersion,
+      visibleGenerators,
+      generate
+    } = next.prepareGenerate({
       renderer,
       scene,
       time,
@@ -10873,6 +10898,7 @@ const _SparkRenderer = class _SparkRenderer extends THREE.Mesh {
     let doUpdate = true;
     const needsUpdate = viewChanged || version !== this.current.version;
     const mappingUpdated = mappingVersion !== this.display.mappingVersion;
+    const sortUpdated = sortVersion !== this.current.sortVersion || mappingUpdated;
     if (autoUpdate && !needsUpdate) {
       doUpdate = false;
     }
@@ -10896,7 +10922,7 @@ const _SparkRenderer = class _SparkRenderer extends THREE.Mesh {
         }
       }
       this.current = next;
-      this.sortDirty = true;
+      this.sortDirty || (this.sortDirty = viewChanged || sortUpdated);
       this.setDirty();
     }
     if (this.enableDriveLod) {
@@ -13065,7 +13091,7 @@ const _SplatMesh = class _SplatMesh extends SplatGenerator {
     const state = source.ensureEditorState(numSplats || source.getNumSplats());
     this.updateEditorStateContext(state);
     if (!existing || state.version !== previousVersion) {
-      this.updateVersion();
+      this.updateRenderVersion();
     }
     return state;
   }
@@ -13073,10 +13099,15 @@ const _SplatMesh = class _SplatMesh extends SplatGenerator {
     var _a2, _b2;
     const source = this.getEditorStateSource();
     const state = (_a2 = source.getEditorState) == null ? void 0 : _a2.call(source);
+    const hadDeleted = ((state == null ? void 0 : state.getCounts().deleted) ?? 0) > 0;
     (_b2 = source.clearEditorState) == null ? void 0 : _b2.call(source);
     if (state) {
       this.updateEditorStateContext(null);
-      this.updateVersion();
+      if (hadDeleted) {
+        this.updateVersion();
+      } else {
+        this.updateRenderVersion();
+      }
     }
   }
   getSplatState(index) {
@@ -13086,55 +13117,95 @@ const _SplatMesh = class _SplatMesh extends SplatGenerator {
   setSplatState(index, bits2) {
     const state = this.ensureEditorState();
     const previousVersion = state.version;
+    const previousVisibilityVersion = state.visibilityVersion;
     const next = state.set(index, bits2);
-    this.updateVersionForEditorState(state, previousVersion);
+    this.updateVersionForEditorState(
+      state,
+      previousVersion,
+      previousVisibilityVersion
+    );
     return next;
   }
   setSplatStateBits(index, mask) {
     const state = this.ensureEditorState();
     const previousVersion = state.version;
+    const previousVisibilityVersion = state.visibilityVersion;
     const next = state.setBits(index, mask);
-    this.updateVersionForEditorState(state, previousVersion);
+    this.updateVersionForEditorState(
+      state,
+      previousVersion,
+      previousVisibilityVersion
+    );
     return next;
   }
   clearSplatStateBits(index, mask) {
     const state = this.ensureEditorState();
     const previousVersion = state.version;
+    const previousVisibilityVersion = state.visibilityVersion;
     const next = state.clearBits(index, mask);
-    this.updateVersionForEditorState(state, previousVersion);
+    this.updateVersionForEditorState(
+      state,
+      previousVersion,
+      previousVisibilityVersion
+    );
     return next;
   }
   toggleSplatStateBits(index, mask) {
     const state = this.ensureEditorState();
     const previousVersion = state.version;
+    const previousVisibilityVersion = state.visibilityVersion;
     const next = state.toggleBits(index, mask);
-    this.updateVersionForEditorState(state, previousVersion);
+    this.updateVersionForEditorState(
+      state,
+      previousVersion,
+      previousVisibilityVersion
+    );
     return next;
   }
   updateSplatState(index, mask, operation) {
     const state = this.ensureEditorState();
     const previousVersion = state.version;
+    const previousVisibilityVersion = state.visibilityVersion;
     const next = state.update(index, mask, operation);
-    this.updateVersionForEditorState(state, previousVersion);
+    this.updateVersionForEditorState(
+      state,
+      previousVersion,
+      previousVisibilityVersion
+    );
     return next;
   }
   setSplatStateRange(start, count, bits2, operation = "replace") {
     const state = this.ensureEditorState(start + count);
     const previousVersion = state.version;
+    const previousVisibilityVersion = state.visibilityVersion;
     state.setRange(start, count, bits2, operation);
-    this.updateVersionForEditorState(state, previousVersion);
+    this.updateVersionForEditorState(
+      state,
+      previousVersion,
+      previousVisibilityVersion
+    );
   }
   setSplatStateList(indices, bits2, operation = "replace") {
     const state = this.ensureEditorState();
     const previousVersion = state.version;
+    const previousVisibilityVersion = state.visibilityVersion;
     state.setList(indices, bits2, operation);
-    this.updateVersionForEditorState(state, previousVersion);
+    this.updateVersionForEditorState(
+      state,
+      previousVersion,
+      previousVisibilityVersion
+    );
   }
   clearSplatState(mask) {
     const state = this.ensureEditorState();
     const previousVersion = state.version;
+    const previousVisibilityVersion = state.visibilityVersion;
     state.clear(mask);
-    this.updateVersionForEditorState(state, previousVersion);
+    this.updateVersionForEditorState(
+      state,
+      previousVersion,
+      previousVisibilityVersion
+    );
   }
   getSplatStateCounts() {
     var _a2;
@@ -13271,10 +13342,14 @@ const _SplatMesh = class _SplatMesh extends SplatGenerator {
       mode
     );
   }
-  updateVersionForEditorState(state, previousVersion) {
+  updateVersionForEditorState(state, previousVersion, previousVisibilityVersion) {
     this.updateEditorStateContext(state);
     if (state.version !== previousVersion) {
-      this.updateVersion();
+      if (state.visibilityVersion !== previousVisibilityVersion) {
+        this.updateVersion();
+      } else {
+        this.updateRenderVersion();
+      }
     }
   }
   updateEditorStateContext(state, renderer) {

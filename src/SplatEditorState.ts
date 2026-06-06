@@ -83,6 +83,7 @@ export class SplatEditorState {
   states: Uint8Array;
   maxSplats: number;
   version = 0;
+  visibilityVersion = 0;
   texture: THREE.DataArrayTexture | null = null;
   selectedColor: THREE.Vector4;
   lockedColor: THREE.Vector4;
@@ -114,6 +115,7 @@ export class SplatEditorState {
     this.selected = 0;
     this.locked = 0;
     this.deleted = 0;
+    this.visibilityVersion = 0;
     this.dirtyRanges = [];
     this.dirtyAll = false;
     this.fullTextureUploadPending = false;
@@ -253,12 +255,16 @@ export class SplatEditorState {
 
   clear(mask?: SplatEditorStateBits): void {
     if (mask === undefined) {
+      const hadDeleted = this.deleted > 0;
       this.states.fill(0);
       this.selected = 0;
       this.locked = 0;
       this.deleted = 0;
       this.markDirtyRange(0, this.maxSplats);
       this.version++;
+      if (hadDeleted) {
+        this.visibilityVersion++;
+      }
       return;
     }
 
@@ -541,6 +547,12 @@ export class SplatEditorState {
     this.updateCounts(previous, -1);
     this.states[index] = next;
     this.updateCounts(next, 1);
+    if (
+      (previous & SPLAT_EDITOR_STATE_DELETED) !==
+      (next & SPLAT_EDITOR_STATE_DELETED)
+    ) {
+      this.visibilityVersion++;
+    }
     if (markDirty) {
       this.markDirtyRange(index, 1);
       this.version++;

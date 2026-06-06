@@ -630,7 +630,7 @@ export class SplatMesh extends SplatGenerator {
     const state = source.ensureEditorState(numSplats || source.getNumSplats());
     this.updateEditorStateContext(state);
     if (!existing || state.version !== previousVersion) {
-      this.updateVersion();
+      this.updateRenderVersion();
     }
     return state;
   }
@@ -638,10 +638,15 @@ export class SplatMesh extends SplatGenerator {
   clearEditorState(): void {
     const source = this.getEditorStateSource();
     const state = source.getEditorState?.();
+    const hadDeleted = (state?.getCounts().deleted ?? 0) > 0;
     source.clearEditorState?.();
     if (state) {
       this.updateEditorStateContext(null);
-      this.updateVersion();
+      if (hadDeleted) {
+        this.updateVersion();
+      } else {
+        this.updateRenderVersion();
+      }
     }
   }
 
@@ -655,8 +660,13 @@ export class SplatMesh extends SplatGenerator {
   ): SplatEditorStateBits {
     const state = this.ensureEditorState();
     const previousVersion = state.version;
+    const previousVisibilityVersion = state.visibilityVersion;
     const next = state.set(index, bits);
-    this.updateVersionForEditorState(state, previousVersion);
+    this.updateVersionForEditorState(
+      state,
+      previousVersion,
+      previousVisibilityVersion,
+    );
     return next;
   }
 
@@ -666,8 +676,13 @@ export class SplatMesh extends SplatGenerator {
   ): SplatEditorStateBits {
     const state = this.ensureEditorState();
     const previousVersion = state.version;
+    const previousVisibilityVersion = state.visibilityVersion;
     const next = state.setBits(index, mask);
-    this.updateVersionForEditorState(state, previousVersion);
+    this.updateVersionForEditorState(
+      state,
+      previousVersion,
+      previousVisibilityVersion,
+    );
     return next;
   }
 
@@ -677,8 +692,13 @@ export class SplatMesh extends SplatGenerator {
   ): SplatEditorStateBits {
     const state = this.ensureEditorState();
     const previousVersion = state.version;
+    const previousVisibilityVersion = state.visibilityVersion;
     const next = state.clearBits(index, mask);
-    this.updateVersionForEditorState(state, previousVersion);
+    this.updateVersionForEditorState(
+      state,
+      previousVersion,
+      previousVisibilityVersion,
+    );
     return next;
   }
 
@@ -688,8 +708,13 @@ export class SplatMesh extends SplatGenerator {
   ): SplatEditorStateBits {
     const state = this.ensureEditorState();
     const previousVersion = state.version;
+    const previousVisibilityVersion = state.visibilityVersion;
     const next = state.toggleBits(index, mask);
-    this.updateVersionForEditorState(state, previousVersion);
+    this.updateVersionForEditorState(
+      state,
+      previousVersion,
+      previousVisibilityVersion,
+    );
     return next;
   }
 
@@ -700,8 +725,13 @@ export class SplatMesh extends SplatGenerator {
   ): SplatEditorStateBits {
     const state = this.ensureEditorState();
     const previousVersion = state.version;
+    const previousVisibilityVersion = state.visibilityVersion;
     const next = state.update(index, mask, operation);
-    this.updateVersionForEditorState(state, previousVersion);
+    this.updateVersionForEditorState(
+      state,
+      previousVersion,
+      previousVisibilityVersion,
+    );
     return next;
   }
 
@@ -713,8 +743,13 @@ export class SplatMesh extends SplatGenerator {
   ): void {
     const state = this.ensureEditorState(start + count);
     const previousVersion = state.version;
+    const previousVisibilityVersion = state.visibilityVersion;
     state.setRange(start, count, bits, operation);
-    this.updateVersionForEditorState(state, previousVersion);
+    this.updateVersionForEditorState(
+      state,
+      previousVersion,
+      previousVisibilityVersion,
+    );
   }
 
   setSplatStateList(
@@ -724,15 +759,25 @@ export class SplatMesh extends SplatGenerator {
   ): void {
     const state = this.ensureEditorState();
     const previousVersion = state.version;
+    const previousVisibilityVersion = state.visibilityVersion;
     state.setList(indices, bits, operation);
-    this.updateVersionForEditorState(state, previousVersion);
+    this.updateVersionForEditorState(
+      state,
+      previousVersion,
+      previousVisibilityVersion,
+    );
   }
 
   clearSplatState(mask?: SplatEditorStateBits): void {
     const state = this.ensureEditorState();
     const previousVersion = state.version;
+    const previousVisibilityVersion = state.visibilityVersion;
     state.clear(mask);
-    this.updateVersionForEditorState(state, previousVersion);
+    this.updateVersionForEditorState(
+      state,
+      previousVersion,
+      previousVisibilityVersion,
+    );
   }
 
   getSplatStateCounts(): SplatEditorStateCounts {
@@ -915,10 +960,15 @@ export class SplatMesh extends SplatGenerator {
   private updateVersionForEditorState(
     state: SplatEditorState,
     previousVersion: number,
+    previousVisibilityVersion: number,
   ): void {
     this.updateEditorStateContext(state);
     if (state.version !== previousVersion) {
-      this.updateVersion();
+      if (state.visibilityVersion !== previousVisibilityVersion) {
+        this.updateVersion();
+      } else {
+        this.updateRenderVersion();
+      }
     }
   }
 

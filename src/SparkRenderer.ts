@@ -904,21 +904,28 @@ export class SparkRenderer extends THREE.Mesh {
         "Next accumulator is the same as the current accumulator",
       );
     }
-    const { version, mappingVersion, visibleGenerators, generate } =
-      next.prepareGenerate({
-        renderer,
-        scene,
-        time,
-        camera,
-        sortRadial: this.sortRadial ?? true,
-        renderSize: this.renderSize,
-        previous: this.current,
-        lodInstances: this.enableLod ? this.lodInstances : undefined,
-      });
+    const {
+      version,
+      sortVersion,
+      mappingVersion,
+      visibleGenerators,
+      generate,
+    } = next.prepareGenerate({
+      renderer,
+      scene,
+      time,
+      camera,
+      sortRadial: this.sortRadial ?? true,
+      renderSize: this.renderSize,
+      previous: this.current,
+      lodInstances: this.enableLod ? this.lodInstances : undefined,
+    });
 
     let doUpdate = true;
     const needsUpdate = viewChanged || version !== this.current.version;
     const mappingUpdated = mappingVersion !== this.display.mappingVersion;
+    const sortUpdated =
+      sortVersion !== this.current.sortVersion || mappingUpdated;
 
     if (autoUpdate && !needsUpdate) {
       // Triggered by auto-update but no change
@@ -955,7 +962,7 @@ export class SparkRenderer extends THREE.Mesh {
       }
 
       this.current = next;
-      this.sortDirty = true;
+      this.sortDirty ||= viewChanged || sortUpdated;
       this.setDirty();
     }
 

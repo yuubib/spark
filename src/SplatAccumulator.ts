@@ -50,6 +50,7 @@ export type GeneratorMapping = {
   generator?: GsplatGenerator;
   covGenerator?: CovSplatGenerator;
   version: number;
+  sortVersion?: number;
   mappingVersion?: number;
   base: number;
   count: number;
@@ -69,6 +70,7 @@ export class SplatAccumulator {
   target: THREE.WebGLArrayRenderTarget | null = null;
   mapping: GeneratorMapping[] = [];
   version = -1;
+  sortVersion = -1;
   mappingVersion = -1;
   extSplats: boolean;
   covSplats: boolean;
@@ -542,12 +544,13 @@ export class SplatAccumulator {
 
       const { generator, covGenerator } = node;
       if ((generator || covGenerator) && count > 0) {
-        const { version, mappingVersion } = node;
+        const { version, sortVersion, mappingVersion } = node;
         this.mapping.push({
           node,
           generator,
           covGenerator,
           version,
+          sortVersion,
           mappingVersion,
           base,
           count,
@@ -555,15 +558,16 @@ export class SplatAccumulator {
         this.numSplats = Math.max(this.numSplats, base + count);
       }
     });
-    const { splatsUpdated, mappingUpdated } = previous.checkVersions(
-      this.mapping,
-    );
+    const { splatsUpdated, sortUpdated, mappingUpdated } =
+      previous.checkVersions(this.mapping);
     this.version = previous.version + (splatsUpdated ? 1 : 0);
+    this.sortVersion = previous.sortVersion + (sortUpdated ? 1 : 0);
     this.mappingVersion = previous.mappingVersion + (mappingUpdated ? 1 : 0);
 
     return {
       sameMapping: !mappingUpdated,
       version: this.version,
+      sortVersion: this.sortVersion,
       mappingVersion: this.mappingVersion,
       visibleGenerators,
       generate: () => {
@@ -665,7 +669,7 @@ export class SplatAccumulator {
   // the previous one. If so, we can reuse the Gsplat sort order.
   checkVersions(otherMapping: GeneratorMapping[]) {
     if (this.mapping.length !== otherMapping.length) {
-      return { splatsUpdated: true, mappingUpdated: true };
+      return { splatsUpdated: true, sortUpdated: true, mappingUpdated: true };
     }
     const mappingUpdated = this.mapping.some((item, i) => {
       const other = otherMapping[i];
@@ -677,11 +681,14 @@ export class SplatAccumulator {
       );
     });
     if (mappingUpdated) {
-      return { splatsUpdated: true, mappingUpdated: true };
+      return { splatsUpdated: true, sortUpdated: true, mappingUpdated: true };
     }
     const splatsUpdated = this.mapping.some((item, i) => {
       return item.version !== otherMapping[i].version;
     });
-    return { splatsUpdated, mappingUpdated };
+    const sortUpdated = this.mapping.some((item, i) => {
+      return item.sortVersion !== otherMapping[i].sortVersion;
+    });
+    return { splatsUpdated, sortUpdated, mappingUpdated };
   }
 }

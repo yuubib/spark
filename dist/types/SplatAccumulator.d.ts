@@ -9,6 +9,7 @@ export type GeneratorMapping = {
     generator?: GsplatGenerator;
     covGenerator?: CovSplatGenerator;
     version: number;
+    sortVersion?: number;
     mappingVersion?: number;
     base: number;
     count: number;
@@ -27,6 +28,7 @@ export declare class SplatAccumulator {
     target: THREE.WebGLArrayRenderTarget | null;
     mapping: GeneratorMapping[];
     version: number;
+    sortVersion: number;
     mappingVersion: number;
     extSplats: boolean;
     covSplats: boolean;
@@ -84,6 +86,7 @@ export declare class SplatAccumulator {
     }): {
         sameMapping: boolean;
         version: number;
+        sortVersion: number;
         mappingVersion: number;
         visibleGenerators: SplatGenerator[];
         generate: () => void;
@@ -91,6 +94,7 @@ export declare class SplatAccumulator {
     };
     checkVersions(otherMapping: GeneratorMapping[]): {
         splatsUpdated: boolean;
+        sortUpdated: boolean;
         mappingUpdated: boolean;
     };
 }

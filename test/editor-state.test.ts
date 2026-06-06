@@ -237,6 +237,30 @@ import {
 }
 
 {
+  const state = new SplatEditorState(8);
+  state.uploadDirty();
+
+  assert.strictEqual(state.visibilityVersion, 0);
+  state.setBits(1, SPLAT_EDITOR_STATE_SELECTED);
+  state.setBits(1, SPLAT_EDITOR_STATE_LOCKED);
+  assert.strictEqual(state.visibilityVersion, 0);
+
+  state.setBits(1, SPLAT_EDITOR_STATE_DELETED);
+  assert.strictEqual(state.visibilityVersion, 1);
+
+  state.setBits(1, SPLAT_EDITOR_STATE_DELETED);
+  assert.strictEqual(state.visibilityVersion, 1);
+
+  state.clearBits(1, SPLAT_EDITOR_STATE_DELETED);
+  assert.strictEqual(state.visibilityVersion, 2);
+
+  state.setRange(2, 2, SPLAT_EDITOR_STATE_DELETED, "set");
+  assert.strictEqual(state.visibilityVersion, 4);
+  state.clear();
+  assert.strictEqual(state.visibilityVersion, 5);
+}
+
+{
   const state = new SplatEditorState(12);
   state.uploadDirty();
 

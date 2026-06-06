@@ -270,6 +270,7 @@ export class SplatGenerator extends THREE.Object3D {
   covGeneratorError?: unknown;
   frameUpdate?: (context: FrameUpdateContext) => void;
   version: number;
+  sortVersion: number;
   mappingVersion: number;
 
   constructor({
@@ -297,6 +298,7 @@ export class SplatGenerator extends THREE.Object3D {
     this.covGenerator = covGenerator;
     this.frameUpdate = update;
     this.version = 0;
+    this.sortVersion = 0;
     this.mappingVersion = 0;
 
     if (construct) {
@@ -308,11 +310,16 @@ export class SplatGenerator extends THREE.Object3D {
 
   updateVersion() {
     this.version += 1;
+    this.sortVersion += 1;
+  }
+
+  updateRenderVersion() {
+    this.version += 1;
   }
 
   updateMappingVersion() {
     this.mappingVersion += 1;
-    this.version += 1;
+    this.updateVersion();
   }
 
   set needsUpdate(value: boolean) {

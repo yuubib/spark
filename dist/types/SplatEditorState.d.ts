@@ -38,6 +38,7 @@ export declare class SplatEditorState {
     states: Uint8Array;
     maxSplats: number;
     version: number;
+    visibilityVersion: number;
     texture: THREE.DataArrayTexture | null;
     selectedColor: THREE.Vector4;
     lockedColor: THREE.Vector4;
