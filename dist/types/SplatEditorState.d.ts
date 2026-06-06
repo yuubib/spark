@@ -6,6 +6,7 @@ export declare const SPLAT_EDITOR_STATE_DELETED = 4;
 export declare const SPLAT_EDITOR_STATE_NONE = 0;
 export type SplatEditorStateBits = number;
 export type SplatEditorStateOperation = "replace" | "set" | "clear" | "toggle";
+export type SplatEditorStateFilterMode = "all" | "visible" | "selected" | "editable" | "pick-add" | "pick-remove" | "pick-set";
 export interface SplatEditorStateCounts {
     readonly selected: number;
     readonly locked: number;
@@ -55,6 +56,7 @@ export declare class SplatEditorState {
     clearBits(index: number, mask: SplatEditorStateBits): SplatEditorStateBits;
     toggleBits(index: number, mask: SplatEditorStateBits): SplatEditorStateBits;
     update(index: number, mask: SplatEditorStateBits, operation: SplatEditorStateOperation): SplatEditorStateBits;
+    matches(index: number, mode: SplatEditorStateFilterMode): boolean;
     setRange(start: number, count: number, bits: SplatEditorStateBits, operation?: SplatEditorStateOperation): void;
     setList(indices: Iterable<number>, bits: SplatEditorStateBits, operation?: SplatEditorStateOperation): void;
     clear(mask?: SplatEditorStateBits): void;
@@ -78,3 +80,4 @@ export declare class SplatEditorState {
 export declare function applySplatEditorStateVisibility(gsplat: DynoVal<typeof Gsplat>, stateTexture: DynoVal<"usampler2DArray">, enabled: DynoVal<"bool">): DynoVal<typeof Gsplat>;
 export declare function applySplatEditorStateColor(gsplat: DynoVal<typeof Gsplat>, stateTexture: DynoVal<"usampler2DArray">, enabled: DynoVal<"bool">, selectedColor: DynoVal<"vec4">, lockedColor: DynoVal<"vec4">): DynoVal<typeof Gsplat>;
 export declare function applyCovSplatEditorStateColor(covsplat: DynoVal<typeof CovSplat>, stateTexture: DynoVal<"usampler2DArray">, enabled: DynoVal<"bool">, selectedColor: DynoVal<"vec4">, lockedColor: DynoVal<"vec4">): DynoVal<typeof CovSplat>;
+export declare function matchesSplatEditorStateBits(bits: SplatEditorStateBits, mode: SplatEditorStateFilterMode): boolean;

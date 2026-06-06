@@ -34,10 +34,12 @@ export {
   SPLAT_EDITOR_STATE_LOCKED,
   SPLAT_EDITOR_STATE_NONE,
   SPLAT_EDITOR_STATE_SELECTED,
+  matchesSplatEditorStateBits,
   type SplatEditorStateBits,
   type SplatEditorStateCounts,
   type SplatEditorStateDirtyRange,
   type SplatEditorStateDirtyUploadSpan,
+  type SplatEditorStateFilterMode,
   type SplatEditorStateOperation,
   type SplatEditorStateUploadMode,
   type SplatEditorStateUploadResult,
@@ -58,6 +60,7 @@ export {
   type SplatMeshOptions,
   type SplatMeshContext,
   type SplatSource,
+  type SplatStateBoundingBoxOptions,
 } from "./SplatMesh";
 export {
   SplatSkinning,

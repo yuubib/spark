@@ -6919,6 +6919,9 @@ const _SplatEditorState = class _SplatEditorState {
     );
     return this.states[index];
   }
+  matches(index, mode) {
+    return matchesSplatEditorStateBits(this.get(index), mode);
+  }
   setRange(start, count, bits2, operation = "replace") {
     const safeStart = Math.max(0, Math.floor(start));
     const safeCount = Math.max(0, Math.floor(count));
@@ -7216,14 +7219,12 @@ const _SplatEditorState = class _SplatEditorState {
     return true;
   }
   updateCounts(bits2, delta) {
-    if ((bits2 & SPLAT_EDITOR_STATE_SELECTED) !== 0) {
-      this.selected += delta;
-    }
-    if ((bits2 & SPLAT_EDITOR_STATE_LOCKED) !== 0) {
-      this.locked += delta;
-    }
     if ((bits2 & SPLAT_EDITOR_STATE_DELETED) !== 0) {
       this.deleted += delta;
+    } else if ((bits2 & SPLAT_EDITOR_STATE_LOCKED) !== 0) {
+      this.locked += delta;
+    } else if ((bits2 & SPLAT_EDITOR_STATE_SELECTED) !== 0) {
+      this.selected += delta;
     }
   }
 };
@@ -7311,6 +7312,26 @@ function applyStateOperation(previous, bits2, operation) {
       return previous ^ bits2;
     default:
       throw new Error(`Unsupported splat editor state operation: ${operation}`);
+  }
+}
+function matchesSplatEditorStateBits(bits2, mode) {
+  const state = bits2 & 255;
+  switch (mode) {
+    case "all":
+      return true;
+    case "visible":
+      return (state & SPLAT_EDITOR_STATE_DELETED) === 0;
+    case "selected":
+      return state === SPLAT_EDITOR_STATE_SELECTED;
+    case "editable":
+    case "pick-set":
+      return (state & (SPLAT_EDITOR_STATE_LOCKED | SPLAT_EDITOR_STATE_DELETED)) === 0;
+    case "pick-add":
+      return state === SPLAT_EDITOR_STATE_NONE;
+    case "pick-remove":
+      return state === SPLAT_EDITOR_STATE_SELECTED;
+    default:
+      throw new Error(`Unsupported splat editor state filter mode: ${mode}`);
   }
 }
 function createStateTexture(states, width, height, depth) {
@@ -12873,6 +12894,7 @@ const _SplatMesh = class _SplatMesh extends SplatGenerator {
     this.editable = options.editable ?? true;
     this.raycastable = options.raycastable ?? true;
     this.minRaycastOpacity = options.minRaycastOpacity ?? 0.2;
+    this.raycastEditorStateMode = options.raycastEditorStateMode ?? "visible";
     this.onFrame = options.onFrame;
     this.context = {
       transform: new SplatTransformer(),
@@ -13207,12 +13229,66 @@ const _SplatMesh = class _SplatMesh extends SplatGenerator {
     const box = new THREE__namespace.Box3(minVec, maxVec);
     return box;
   }
+  getSplatStateBoundingBox({
+    centersOnly = true,
+    mode = "visible",
+    target
+  } = {}) {
+    var _a2;
+    if (!this.initialized) {
+      throw new Error(
+        "Cannot get editor-state bounding box before SplatMesh is initialized"
+      );
+    }
+    const box = target ?? new THREE__namespace.Box3();
+    box.makeEmpty();
+    const editorState = this.getEditorState();
+    const corners = new THREE__namespace.Vector3();
+    const signs = [-1, 1];
+    (_a2 = this.splats) == null ? void 0 : _a2.forEachSplat(
+      (index, center, scales, quaternion, _opacity, _color) => {
+        if (!matchesSplatEditorStateBits(
+          this.getEditorStateBits(editorState, index),
+          mode
+        )) {
+          return;
+        }
+        if (centersOnly) {
+          box.expandByPoint(center);
+          return;
+        }
+        for (const x of signs) {
+          for (const y of signs) {
+            for (const z of signs) {
+              corners.set(x * scales.x, y * scales.y, z * scales.z);
+              corners.applyQuaternion(quaternion);
+              corners.add(center);
+              box.expandByPoint(corners);
+            }
+          }
+        }
+      }
+    );
+    return box;
+  }
   getEditorStateSource() {
     const source = this.splats ?? this.packedSplats ?? this.extSplats ?? this.paged;
     if (!source) {
       throw new Error("SplatMesh does not have a splat source");
     }
     return source;
+  }
+  getEditorStateBits(state, index) {
+    if (!state || index < 0 || index >= state.maxSplats) {
+      return SPLAT_EDITOR_STATE_NONE;
+    }
+    return state.states[index] ?? SPLAT_EDITOR_STATE_NONE;
+  }
+  matchesEditorStateMode(state, index, mode) {
+    return matchesSplatEditorStateBits(
+      this.getEditorStateBits(state, index),
+      mode
+    );
   }
   updateVersionForEditorState(state, previousVersion) {
     this.updateEditorStateContext(state);
@@ -13540,7 +13616,7 @@ const _SplatMesh = class _SplatMesh extends SplatGenerator {
   // intersections using this method to populate the provided intersects[] array
   // with each intersection point.
   raycast(raycaster, intersects) {
-    var _a2, _b2, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w;
+    var _a2, _b2, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y;
     if (!_SplatMesh.isStaticInitialized || !this.raycastable || !this.packedSplats && !this.extSplats && !this.paged) {
       return;
     }
@@ -13556,17 +13632,20 @@ const _SplatMesh = class _SplatMesh extends SplatGenerator {
     let intersections = 0;
     const numSplats = ((_c = this.raycastIndices) == null ? void 0 : _c.numSplats) ?? (paged ? (_d = this.paged) == null ? void 0 : _d.numSplats : this.context.numSplats.value) ?? 0;
     const indices = ((_e = this.raycastIndices) == null ? void 0 : _e.indices) ?? (paged ? (_f = this.paged) == null ? void 0 : _f.dynoIndices.value.image.data : this.context.enableLod.value ? this.context.lodIndices.value.image.data : null) ?? null;
+    const editorState = this.raycastEditorStateMode === "all" ? null : ((_h = (_g = this.context.splats).getEditorState) == null ? void 0 : _h.call(_g)) ?? this.getEditorState();
+    const filterEditorState = editorState != null;
     if (!ext) {
-      const packed = paged ? (_h = (_g = this.paged) == null ? void 0 : _g.pager) == null ? void 0 : _h.packedTexture.value.image.data : indices ? (_j = (_i = this.packedSplats) == null ? void 0 : _i.lodSplats) == null ? void 0 : _j.packedArray : (_k = this.packedSplats) == null ? void 0 : _k.packedArray;
+      const packed = paged ? (_j = (_i = this.paged) == null ? void 0 : _i.pager) == null ? void 0 : _j.packedTexture.value.image.data : indices ? (_l = (_k = this.packedSplats) == null ? void 0 : _k.lodSplats) == null ? void 0 : _l.packedArray : (_m = this.packedSplats) == null ? void 0 : _m.packedArray;
       if (!packed) {
         return;
       }
-      const splatEncoding = paged ? (_l = this.paged) == null ? void 0 : _l.splatEncoding : (_m = this.packedSplats) == null ? void 0 : _m.splatEncoding;
+      const splatEncoding = paged ? (_n = this.paged) == null ? void 0 : _n.splatEncoding : (_o = this.packedSplats) == null ? void 0 : _o.splatEncoding;
       for (let base = 0; base < numSplats; base += bufferSize) {
         const count = Math.min(bufferSize, numSplats - base);
-        if (!indices) {
+        let filteredCount = count;
+        if (!filterEditorState && !indices) {
           buffer.set(packed.subarray(base * 4, (base + count) * 4));
-        } else {
+        } else if (!filterEditorState && indices) {
           for (let i = 0; i < count; ++i) {
             const index = indices[base + i];
             const i4 = i * 4;
@@ -13575,6 +13654,28 @@ const _SplatMesh = class _SplatMesh extends SplatGenerator {
             buffer[i4 + 1] = packed[index4 + 1];
             buffer[i4 + 2] = packed[index4 + 2];
             buffer[i4 + 3] = packed[index4 + 3];
+          }
+        } else {
+          filteredCount = 0;
+          for (let i = 0; i < count; ++i) {
+            const index = indices ? indices[base + i] : base + i;
+            if (!this.matchesEditorStateMode(
+              editorState,
+              index,
+              this.raycastEditorStateMode
+            )) {
+              continue;
+            }
+            const i4 = filteredCount * 4;
+            const index4 = index * 4;
+            buffer[i4] = packed[index4];
+            buffer[i4 + 1] = packed[index4 + 1];
+            buffer[i4 + 2] = packed[index4 + 2];
+            buffer[i4 + 3] = packed[index4 + 3];
+            filteredCount++;
+          }
+          if (filteredCount === 0) {
+            continue;
           }
         }
         const newIntersections = raycast_packed_buffer(
@@ -13587,7 +13688,7 @@ const _SplatMesh = class _SplatMesh extends SplatGenerator {
           this.minRaycastOpacity,
           near,
           far,
-          count,
+          filteredCount,
           (splatEncoding == null ? void 0 : splatEncoding.lnScaleMin) ?? LN_SCALE_MIN,
           (splatEncoding == null ? void 0 : splatEncoding.lnScaleMax) ?? LN_SCALE_MAX,
           (splatEncoding == null ? void 0 : splatEncoding.lodOpacity) ?? false
@@ -13599,17 +13700,18 @@ const _SplatMesh = class _SplatMesh extends SplatGenerator {
       }
     } else {
       const buffer2 = get_raycast_buffer2();
-      const ext1 = paged ? (_o = (_n = this.paged) == null ? void 0 : _n.pager) == null ? void 0 : _o.packedTexture.value.image.data : indices ? (_q = (_p = this.extSplats) == null ? void 0 : _p.lodSplats) == null ? void 0 : _q.extArrays[0] : (_r = this.extSplats) == null ? void 0 : _r.extArrays[0];
-      const ext2 = paged ? (_t = (_s = this.paged) == null ? void 0 : _s.pager) == null ? void 0 : _t.extTexture.value.image.data : indices ? (_v = (_u = this.extSplats) == null ? void 0 : _u.lodSplats) == null ? void 0 : _v.extArrays[1] : (_w = this.extSplats) == null ? void 0 : _w.extArrays[1];
+      const ext1 = paged ? (_q = (_p = this.paged) == null ? void 0 : _p.pager) == null ? void 0 : _q.packedTexture.value.image.data : indices ? (_s = (_r = this.extSplats) == null ? void 0 : _r.lodSplats) == null ? void 0 : _s.extArrays[0] : (_t = this.extSplats) == null ? void 0 : _t.extArrays[0];
+      const ext2 = paged ? (_v = (_u = this.paged) == null ? void 0 : _u.pager) == null ? void 0 : _v.extTexture.value.image.data : indices ? (_x = (_w = this.extSplats) == null ? void 0 : _w.lodSplats) == null ? void 0 : _x.extArrays[1] : (_y = this.extSplats) == null ? void 0 : _y.extArrays[1];
       if (!ext1 || !ext2) {
         return;
       }
       for (let base = 0; base < numSplats; base += bufferSize) {
         const count = Math.min(bufferSize, numSplats - base);
-        if (!indices) {
+        let filteredCount = count;
+        if (!filterEditorState && !indices) {
           buffer.set(ext1.subarray(base * 4, (base + count) * 4));
           buffer2.set(ext2.subarray(base * 4, (base + count) * 4));
-        } else {
+        } else if (!filterEditorState && indices) {
           for (let i = 0; i < count; ++i) {
             const index = indices[base + i];
             const i4 = i * 4;
@@ -13623,6 +13725,32 @@ const _SplatMesh = class _SplatMesh extends SplatGenerator {
             buffer2[i4 + 2] = ext2[index4 + 2];
             buffer2[i4 + 3] = ext2[index4 + 3];
           }
+        } else {
+          filteredCount = 0;
+          for (let i = 0; i < count; ++i) {
+            const index = indices ? indices[base + i] : base + i;
+            if (!this.matchesEditorStateMode(
+              editorState,
+              index,
+              this.raycastEditorStateMode
+            )) {
+              continue;
+            }
+            const i4 = filteredCount * 4;
+            const index4 = index * 4;
+            buffer[i4] = ext1[index4];
+            buffer[i4 + 1] = ext1[index4 + 1];
+            buffer[i4 + 2] = ext1[index4 + 2];
+            buffer[i4 + 3] = ext1[index4 + 3];
+            buffer2[i4] = ext2[index4];
+            buffer2[i4 + 1] = ext2[index4 + 1];
+            buffer2[i4 + 2] = ext2[index4 + 2];
+            buffer2[i4 + 3] = ext2[index4 + 3];
+            filteredCount++;
+          }
+          if (filteredCount === 0) {
+            continue;
+          }
         }
         const newIntersections = raycast_ext_buffers(
           origin.x,
@@ -13634,7 +13762,7 @@ const _SplatMesh = class _SplatMesh extends SplatGenerator {
           this.minRaycastOpacity,
           near,
           far,
-          count
+          filteredCount
         );
         intersections = this.appendRaycastBuffer(
           intersections,
@@ -21525,6 +21653,7 @@ exports.isPcSogs = isPcSogs;
 exports.isQuest2 = isQuest2;
 exports.isVisionPro = isVisionPro;
 exports.lerpHandsSnapshots = lerpHandsSnapshots;
+exports.matchesSplatEditorStateBits = matchesSplatEditorStateBits;
 exports.modifiers = modifiers;
 exports.pixelsToPngUrl = pixelsToPngUrl;
 exports.readRgbaArray = readRgbaArray;

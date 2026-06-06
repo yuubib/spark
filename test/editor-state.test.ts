@@ -6,6 +6,7 @@ import {
   SPLAT_EDITOR_STATE_NONE,
   SPLAT_EDITOR_STATE_SELECTED,
   SplatEditorState,
+  matchesSplatEditorStateBits,
 } from "../src/SplatEditorState.js";
 
 {
@@ -23,7 +24,7 @@ import {
   state.setRange(3, 2, SPLAT_EDITOR_STATE_DELETED, "set");
 
   assert.deepStrictEqual(state.getCounts(), {
-    selected: 2,
+    selected: 1,
     locked: 1,
     deleted: 2,
   });
@@ -37,7 +38,7 @@ import {
     SPLAT_EDITOR_STATE_SELECTED | SPLAT_EDITOR_STATE_DELETED,
   );
   assert.deepStrictEqual(state.getCounts(), {
-    selected: 1,
+    selected: 0,
     locked: 1,
     deleted: 2,
   });
@@ -46,6 +47,62 @@ import {
   const texture = state.uploadDirty();
   assert.strictEqual(texture.image.data, state.states);
   assert.deepStrictEqual(state.getDirtyRanges(), []);
+}
+
+{
+  assert.strictEqual(matchesSplatEditorStateBits(0, "all"), true);
+  assert.strictEqual(matchesSplatEditorStateBits(0, "visible"), true);
+  assert.strictEqual(matchesSplatEditorStateBits(0, "editable"), true);
+  assert.strictEqual(matchesSplatEditorStateBits(0, "pick-add"), true);
+  assert.strictEqual(matchesSplatEditorStateBits(0, "pick-set"), true);
+  assert.strictEqual(matchesSplatEditorStateBits(0, "pick-remove"), false);
+
+  assert.strictEqual(
+    matchesSplatEditorStateBits(SPLAT_EDITOR_STATE_SELECTED, "selected"),
+    true,
+  );
+  assert.strictEqual(
+    matchesSplatEditorStateBits(SPLAT_EDITOR_STATE_SELECTED, "pick-remove"),
+    true,
+  );
+  assert.strictEqual(
+    matchesSplatEditorStateBits(SPLAT_EDITOR_STATE_SELECTED, "pick-set"),
+    true,
+  );
+
+  const lockedSelected =
+    SPLAT_EDITOR_STATE_SELECTED | SPLAT_EDITOR_STATE_LOCKED;
+  assert.strictEqual(
+    matchesSplatEditorStateBits(lockedSelected, "visible"),
+    true,
+  );
+  assert.strictEqual(
+    matchesSplatEditorStateBits(lockedSelected, "selected"),
+    false,
+  );
+  assert.strictEqual(
+    matchesSplatEditorStateBits(lockedSelected, "pick-add"),
+    false,
+  );
+  assert.strictEqual(
+    matchesSplatEditorStateBits(lockedSelected, "pick-remove"),
+    false,
+  );
+  assert.strictEqual(
+    matchesSplatEditorStateBits(lockedSelected, "pick-set"),
+    false,
+  );
+
+  const deletedSelected =
+    SPLAT_EDITOR_STATE_SELECTED | SPLAT_EDITOR_STATE_DELETED;
+  assert.strictEqual(
+    matchesSplatEditorStateBits(deletedSelected, "visible"),
+    false,
+  );
+  assert.strictEqual(
+    matchesSplatEditorStateBits(deletedSelected, "pick-set"),
+    false,
+  );
 }
 
 {

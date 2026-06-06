@@ -2,7 +2,7 @@ import { ExtSplats } from './ExtSplats';
 import { PackedSplats } from './PackedSplats';
 import { RgbaArray, TRgbaArray } from './RgbaArray';
 import { SplatEdit, SplatEdits } from './SplatEdit';
-import { SplatEditorState, SplatEditorStateBits, SplatEditorStateCounts, SplatEditorStateOperation, SplatEditorStateUploadResult } from './SplatEditorState';
+import { SplatEditorState, SplatEditorStateBits, SplatEditorStateCounts, SplatEditorStateFilterMode, SplatEditorStateOperation, SplatEditorStateUploadResult } from './SplatEditorState';
 import { CovSplatModifier, CovSplatTransformer, FrameUpdateContext, GsplatModifier, SplatGenerator, SplatTransformer } from './SplatGenerator';
 import { PagedSplats, SplatPager } from './SplatPager';
 import { SplatSkinning } from './SplatSkinning';
@@ -25,6 +25,7 @@ export type SplatMeshOptions = {
     editable?: boolean;
     raycastable?: boolean;
     minRaycastOpacity?: number;
+    raycastEditorStateMode?: SplatEditorStateFilterMode;
     onFrame?: ({ mesh, time, deltaTime, }: {
         mesh: SplatMesh;
         time: number;
@@ -87,6 +88,11 @@ export interface SplatSource {
     }): DynoVal<typeof Gsplat>;
     forEachSplat(callback: (index: number, center: THREE.Vector3, scales: THREE.Vector3, quaternion: THREE.Quaternion, opacity: number, color: THREE.Color) => void): void;
 }
+export type SplatStateBoundingBoxOptions = {
+    centersOnly?: boolean;
+    mode?: SplatEditorStateFilterMode;
+    target?: THREE.Box3;
+};
 export declare class EmptySplatSource implements SplatSource {
     fetchDyno: DynoVal<{
         type: "Gsplat";
@@ -134,6 +140,7 @@ export declare class SplatMesh extends SplatGenerator {
     editable: boolean;
     raycastable: boolean;
     minRaycastOpacity: number;
+    raycastEditorStateMode: SplatEditorStateFilterMode;
     raycastIndices?: {
         numSplats: number;
         indices: Uint32Array;
@@ -174,7 +181,10 @@ export declare class SplatMesh extends SplatGenerator {
     uploadDirtySplatStateWithResult(renderer?: THREE.WebGLRenderer): SplatEditorStateUploadResult;
     dispose(): void;
     getBoundingBox(centers_only?: boolean): THREE.Box3;
+    getSplatStateBoundingBox({ centersOnly, mode, target, }?: SplatStateBoundingBoxOptions): THREE.Box3;
     private getEditorStateSource;
+    private getEditorStateBits;
+    private matchesEditorStateMode;
     private updateVersionForEditorState;
     private updateEditorStateContext;
     set objectModifier(modifier: GsplatModifier | undefined);

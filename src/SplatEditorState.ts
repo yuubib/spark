@@ -19,6 +19,14 @@ export const SPLAT_EDITOR_STATE_NONE = 0;
 
 export type SplatEditorStateBits = number;
 export type SplatEditorStateOperation = "replace" | "set" | "clear" | "toggle";
+export type SplatEditorStateFilterMode =
+  | "all"
+  | "visible"
+  | "selected"
+  | "editable"
+  | "pick-add"
+  | "pick-remove"
+  | "pick-set";
 
 export interface SplatEditorStateCounts {
   readonly selected: number;
@@ -173,6 +181,10 @@ export class SplatEditorState {
       applyStateOperation(this.states[index], mask, operation),
     );
     return this.states[index];
+  }
+
+  matches(index: number, mode: SplatEditorStateFilterMode): boolean {
+    return matchesSplatEditorStateBits(this.get(index), mode);
   }
 
   setRange(
@@ -537,14 +549,12 @@ export class SplatEditorState {
   }
 
   private updateCounts(bits: number, delta: number): void {
-    if ((bits & SPLAT_EDITOR_STATE_SELECTED) !== 0) {
-      this.selected += delta;
-    }
-    if ((bits & SPLAT_EDITOR_STATE_LOCKED) !== 0) {
-      this.locked += delta;
-    }
     if ((bits & SPLAT_EDITOR_STATE_DELETED) !== 0) {
       this.deleted += delta;
+    } else if ((bits & SPLAT_EDITOR_STATE_LOCKED) !== 0) {
+      this.locked += delta;
+    } else if ((bits & SPLAT_EDITOR_STATE_SELECTED) !== 0) {
+      this.selected += delta;
     }
   }
 
@@ -670,6 +680,32 @@ function applyStateOperation(
       return previous ^ bits;
     default:
       throw new Error(`Unsupported splat editor state operation: ${operation}`);
+  }
+}
+
+export function matchesSplatEditorStateBits(
+  bits: SplatEditorStateBits,
+  mode: SplatEditorStateFilterMode,
+): boolean {
+  const state = bits & 0xff;
+  switch (mode) {
+    case "all":
+      return true;
+    case "visible":
+      return (state & SPLAT_EDITOR_STATE_DELETED) === 0;
+    case "selected":
+      return state === SPLAT_EDITOR_STATE_SELECTED;
+    case "editable":
+    case "pick-set":
+      return (
+        (state & (SPLAT_EDITOR_STATE_LOCKED | SPLAT_EDITOR_STATE_DELETED)) === 0
+      );
+    case "pick-add":
+      return state === SPLAT_EDITOR_STATE_NONE;
+    case "pick-remove":
+      return state === SPLAT_EDITOR_STATE_SELECTED;
+    default:
+      throw new Error(`Unsupported splat editor state filter mode: ${mode}`);
   }
 }
 
