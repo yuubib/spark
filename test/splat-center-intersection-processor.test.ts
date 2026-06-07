@@ -1,5 +1,8 @@
 import assert from "node:assert";
 
+import type * as THREE from "three";
+
+import { SparkRenderer } from "../dist/spark.module.js";
 import {
   compactSplatCenterIntersectionBitsetBytes,
   compactSplatCenterIntersectionBytes,
@@ -222,5 +225,24 @@ assert.throws(
     }),
   /Splat center bitset buffer too small/,
 );
+
+{
+  const renderer = Object.create(SparkRenderer.prototype) as SparkRenderer;
+  const material = (
+    renderer as unknown as {
+      ensureSplatCenterIntersectionMaterial: () => THREE.RawShaderMaterial;
+    }
+  ).ensureSplatCenterIntersectionMaterial();
+
+  assert.ok("selectedTransformEnabled" in material.uniforms);
+  assert.ok("selectedTransformPivot" in material.uniforms);
+  assert.ok("selectedTransformTranslate" in material.uniforms);
+  assert.ok("selectedTransformRotate" in material.uniforms);
+  assert.ok("selectedTransformScale" in material.uniforms);
+  assert.match(material.fragmentShader, /bits == 1u/);
+  assert.match(material.fragmentShader, /applySelectedTransform/);
+  assert.match(material.fragmentShader, /rotateByQuaternion/);
+  material.dispose();
+}
 
 console.log("Splat center intersection processor tests passed");

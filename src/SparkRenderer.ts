@@ -2503,7 +2503,6 @@ export class SparkRenderer extends THREE.Mesh {
 
     const collectStats = createSplatScreenPickCenterCollectStats();
     const requestedProcessor = options.centerProcessor ?? "auto";
-    const selectedTransformActive = target.getSelectedSplatTransform() != null;
     if (
       requestedProcessor === "auto" &&
       shouldPreferCpuSplatCenterProcessor(target.numSplats)
@@ -2513,13 +2512,6 @@ export class SparkRenderer extends THREE.Mesh {
         requestedProcessor,
         "cpu",
         "auto-cpu-estimated-faster",
-      );
-    } else if (selectedTransformActive && requestedProcessor !== "cpu") {
-      setSplatScreenPickCenterProcessorStats(
-        collectStats,
-        requestedProcessor,
-        "cpu",
-        "selected-transform-preview",
       );
     } else if (requestedProcessor !== "cpu") {
       setSplatScreenPickCenterProcessorStats(
@@ -3329,16 +3321,21 @@ export class SparkRenderer extends THREE.Mesh {
     }
 
     const editorState = target.getEditorState();
+    const selectedTransform = target.getSelectedSplatTransform();
+    const selectedTransformEnabled =
+      selectedTransform != null && editorState != null;
     const skipEditorStateFilter = canSkipSplatScreenPickEditorStateFilter(
       editorState,
       editorStateMode,
     );
+    const skipEditorStateUpload =
+      !selectedTransformEnabled && skipEditorStateFilter;
     const editorStateTexture =
-      !skipEditorStateFilter && editorState
+      !skipEditorStateUpload && editorState
         ? editorState.uploadDirtyWithResult(this.renderer).texture
         : SplatEditorState.emptyTexture;
     const editorStateMaxSplats =
-      !skipEditorStateFilter && editorState ? editorState.maxSplats : 0;
+      !skipEditorStateUpload && editorState ? editorState.maxSplats : 0;
 
     target.updateMatrixWorld(true);
     const objectToClip = new THREE.Matrix4().multiplyMatrices(
@@ -3379,9 +3376,28 @@ export class SparkRenderer extends THREE.Mesh {
       editorStateMaxSplats,
     );
     uniforms.editorStateEnabled.value =
-      !skipEditorStateFilter && editorState != null;
+      !skipEditorStateUpload && editorState != null;
     uniforms.editorStateFilterMode.value =
       splatEditorStateFilterModeToPickUniform(editorStateMode);
+    uniforms.selectedTransformEnabled.value = selectedTransformEnabled;
+    if (selectedTransform) {
+      uniforms.selectedTransformPivot.value.copy(selectedTransform.pivot);
+      uniforms.selectedTransformTranslate.value.copy(
+        selectedTransform.translate,
+      );
+      uniforms.selectedTransformRotate.value.set(
+        selectedTransform.rotate.x,
+        selectedTransform.rotate.y,
+        selectedTransform.rotate.z,
+        selectedTransform.rotate.w,
+      );
+      uniforms.selectedTransformScale.value = selectedTransform.scale;
+    } else {
+      uniforms.selectedTransformPivot.value.set(0, 0, 0);
+      uniforms.selectedTransformTranslate.value.set(0, 0, 0);
+      uniforms.selectedTransformRotate.value.set(0, 0, 0, 1);
+      uniforms.selectedTransformScale.value = 1;
+    }
     uniforms.numSplats.value = numSplats;
     uniforms.outputWidth.value = width;
     uniforms.outputEncoding.value =
@@ -3559,6 +3575,11 @@ export class SparkRenderer extends THREE.Mesh {
         editorStateTextureSize: { value: new THREE.Vector4(1, 1, 1, 0) },
         editorStateEnabled: { value: false },
         editorStateFilterMode: { value: 0 },
+        selectedTransformEnabled: { value: false },
+        selectedTransformPivot: { value: new THREE.Vector3() },
+        selectedTransformTranslate: { value: new THREE.Vector3() },
+        selectedTransformRotate: { value: new THREE.Vector4(0, 0, 0, 1) },
+        selectedTransformScale: { value: 1 },
         maskTexture: { value: emptyMask },
         maskEnabled: { value: false },
         maskSize: { value: new THREE.Vector2(1, 1) },
@@ -3593,6 +3614,11 @@ export class SparkRenderer extends THREE.Mesh {
         uniform vec4 editorStateTextureSize;
         uniform bool editorStateEnabled;
         uniform int editorStateFilterMode;
+        uniform bool selectedTransformEnabled;
+        uniform vec3 selectedTransformPivot;
+        uniform vec3 selectedTransformTranslate;
+        uniform vec4 selectedTransformRotate;
+        uniform float selectedTransformScale;
         uniform sampler2D maskTexture;
         uniform bool maskEnabled;
         uniform vec2 maskSize;
@@ -3641,6 +3667,19 @@ export class SparkRenderer extends THREE.Mesh {
           return (state & 6u) == 0u;
         }
 
+        vec3 rotateByQuaternion(vec3 value, vec4 quaternion) {
+          vec3 uv = cross(quaternion.xyz, value);
+          vec3 uuv = cross(quaternion.xyz, uv);
+          return value + ((uv * quaternion.w) + uuv) * 2.0;
+        }
+
+        vec3 applySelectedTransform(vec3 center) {
+          vec3 local =
+            (center - selectedTransformPivot) * selectedTransformScale;
+          local = rotateByQuaternion(local, selectedTransformRotate);
+          return local + selectedTransformPivot + selectedTransformTranslate;
+        }
+
         bool isMaskEnabledAt(vec2 screen) {
           if (!maskEnabled) {
             return true;
@@ -3679,8 +3718,9 @@ export class SparkRenderer extends THREE.Mesh {
           if (center.a <= 0.0) {
             return false;
           }
+          uint bits = 0u;
           if (editorStateEnabled && splatIndex < int(editorStateTextureSize.w)) {
-            uint bits = texelFetch(
+            bits = texelFetch(
               editorStateTexture,
               texelForIndex(splatIndex, editorStateTextureSize),
               0
@@ -3692,7 +3732,12 @@ export class SparkRenderer extends THREE.Mesh {
             return false;
           }
 
-          vec4 clip = objectToClip * vec4(center.xyz, 1.0);
+          vec3 centerPosition = center.xyz;
+          if (selectedTransformEnabled && bits == 1u) {
+            centerPosition = applySelectedTransform(centerPosition);
+          }
+
+          vec4 clip = objectToClip * vec4(centerPosition, 1.0);
           if (clip.w == 0.0) {
             return false;
           }

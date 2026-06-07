@@ -273,6 +273,44 @@ transformMesh.setSelectedSplatTransform({
 });
 
 let selectedTransformGpuStats: SplatScreenPickStats | null = null;
+let selectedTransformGpuCalled = false;
+const originalTransformGpuCollector = (
+  transformRenderer as unknown as {
+    tryCollectSplatScreenPickCenterIndicesGpu?: unknown;
+  }
+).tryCollectSplatScreenPickCenterIndicesGpu;
+(
+  transformRenderer as unknown as {
+    tryCollectSplatScreenPickCenterIndicesGpu: (options: {
+      target: SplatMesh;
+      editorStateMode: string;
+      stats: {
+        centerCount: number;
+        candidateCenterCount: number;
+        uniqueHitCount: number;
+      };
+    }) => Promise<{
+      indices: Uint32Array;
+      renderMs: number;
+      readbackMs: number;
+      compactMs: number;
+    }>;
+  }
+).tryCollectSplatScreenPickCenterIndicesGpu = async (options) => {
+  selectedTransformGpuCalled = true;
+  assert.strictEqual(options.target, transformMesh);
+  assert.ok(options.target.getSelectedSplatTransform());
+  assert.strictEqual(options.editorStateMode, "all");
+  options.stats.centerCount = 3;
+  options.stats.candidateCenterCount = 2;
+  options.stats.uniqueHitCount = 2;
+  return {
+    indices: new Uint32Array([0, 2]),
+    renderMs: 0.1,
+    readbackMs: 0.2,
+    compactMs: 0.3,
+  };
+};
 const selectedTransformIndices =
   await transformRenderer.pickSplatCandidateIndices({
     target: transformMesh,
@@ -289,15 +327,22 @@ const selectedTransformIndices =
     },
   });
 
+(
+  transformRenderer as unknown as {
+    tryCollectSplatScreenPickCenterIndicesGpu?: unknown;
+  }
+).tryCollectSplatScreenPickCenterIndicesGpu = originalTransformGpuCollector;
+
 assert.deepStrictEqual([...(selectedTransformIndices ?? [])], [0, 2]);
+assert.strictEqual(selectedTransformGpuCalled, true);
 assert.strictEqual(
   selectedTransformGpuStats?.centerCollect?.requestedProcessor,
   "gpu",
 );
-assert.strictEqual(selectedTransformGpuStats?.centerCollect?.processor, "cpu");
+assert.strictEqual(selectedTransformGpuStats?.centerCollect?.processor, "gpu");
 assert.strictEqual(
   selectedTransformGpuStats?.centerCollect?.fallbackReason,
-  "selected-transform-preview",
+  undefined,
 );
 
 const selectedTransformHits = await transformRenderer.pickSplatCandidates({
