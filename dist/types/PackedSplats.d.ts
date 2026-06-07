@@ -26,6 +26,12 @@ export type PackedSplatsOptions = {
     lodAbove?: number;
     lodSplats?: PackedSplats;
 };
+export type PackedSplatTransformOptions = {
+    pivot: THREE.Vector3;
+    translate: THREE.Vector3;
+    rotate: THREE.Quaternion;
+    scale: number;
+};
 export declare class PackedSplats implements SplatSource {
     maxSplats: number;
     numSplats: number;
@@ -81,6 +87,7 @@ export declare class PackedSplats implements SplatSource {
         color: THREE.Color;
     };
     setSplat(index: number, center: THREE.Vector3, scales: THREE.Vector3, quaternion: THREE.Quaternion, opacity: number, color: THREE.Color): void;
+    transformSplat(index: number, { pivot, translate, rotate, scale }: PackedSplatTransformOptions): boolean;
     pushSplat(center: THREE.Vector3, scales: THREE.Vector3, quaternion: THREE.Quaternion, opacity: number, color: THREE.Color): void;
     forEachSplat(callback: (index: number, center: THREE.Vector3, scales: THREE.Vector3, quaternion: THREE.Quaternion, opacity: number, color: THREE.Color) => void): void;
     forEachSplatCenter(callback: (index: number, center: THREE.Vector3) => void): void;

@@ -17825,27 +17825,38 @@ const _SplatMesh = class _SplatMesh extends SplatGenerator {
       };
     }
     const sourceCount = source.getNumSplats();
-    editorState.forEachSelectedIndex((index) => {
-      if (index < 0 || index >= sourceCount) {
-        return;
-      }
-      const splat = source.getSplat(index);
-      applySelectedTransformToDecodedSplat(
-        splat.center,
-        splat.scales,
-        splat.quaternion,
-        selectedTransform
-      );
-      source.setSplat(
-        index,
-        splat.center,
-        splat.scales,
-        splat.quaternion,
-        splat.opacity,
-        splat.color
-      );
-      result.changed += 1;
-    });
+    if (source instanceof PackedSplats) {
+      editorState.forEachSelectedIndex((index) => {
+        if (index < 0 || index >= sourceCount) {
+          return;
+        }
+        if (source.transformSplat(index, selectedTransform)) {
+          result.changed += 1;
+        }
+      });
+    } else {
+      editorState.forEachSelectedIndex((index) => {
+        if (index < 0 || index >= sourceCount) {
+          return;
+        }
+        const splat = source.getSplat(index);
+        applySelectedTransformToDecodedSplat(
+          splat.center,
+          splat.scales,
+          splat.quaternion,
+          selectedTransform
+        );
+        source.setSplat(
+          index,
+          splat.center,
+          splat.scales,
+          splat.quaternion,
+          splat.opacity,
+          splat.color
+        );
+        result.changed += 1;
+      });
+    }
     if (result.changed > 0) {
       markMutableSplatSourceUpdated(source);
       this.updateVersion();
@@ -20531,6 +20542,52 @@ const _PackedSplats = class _PackedSplats {
     );
     this.numSplats = Math.max(this.numSplats, index + 1);
     this.writeCenterMatchXyz(index, center);
+  }
+  transformSplat(index, { pivot, translate, rotate, scale }) {
+    if (!this.packedArray || !Number.isInteger(index) || index < 0 || index >= this.numSplats) {
+      return false;
+    }
+    const splat = unpackSplat(this.packedArray, index, this.splatEncoding);
+    const centers = this.centerMatchXyz;
+    if (centers) {
+      const offset = index * 3;
+      if (offset + 2 < centers.length) {
+        splat.center.set(
+          centers[offset],
+          centers[offset + 1],
+          centers[offset + 2]
+        );
+      }
+    }
+    splat.center.sub(pivot).multiplyScalar(scale).applyQuaternion(rotate);
+    splat.center.add(pivot).add(translate);
+    splat.scales.multiplyScalar(scale);
+    splat.quaternion.premultiply(rotate);
+    setPackedSplatCenter(
+      this.packedArray,
+      index,
+      splat.center.x,
+      splat.center.y,
+      splat.center.z
+    );
+    setPackedSplatScales(
+      this.packedArray,
+      index,
+      splat.scales.x,
+      splat.scales.y,
+      splat.scales.z,
+      this.splatEncoding
+    );
+    setPackedSplatQuat(
+      this.packedArray,
+      index,
+      splat.quaternion.x,
+      splat.quaternion.y,
+      splat.quaternion.z,
+      splat.quaternion.w
+    );
+    this.writeCenterMatchXyz(index, splat.center);
+    return true;
   }
   // Effectively calls this.setSplat(this.numSplats++, center, ...), useful on
   // construction where you just want to iterate and create a collection of Gsplats.

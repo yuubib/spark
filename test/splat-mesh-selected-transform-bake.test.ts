@@ -13,6 +13,7 @@ function createMesh(): SplatMesh {
   const splats = new PackedSplats();
   const identity = new THREE.Quaternion();
   const white = new THREE.Color(1, 1, 1);
+  const selectedColor = new THREE.Color(0.25, 0.5, 0.75);
   splats.pushSplat(
     new THREE.Vector3(0, 0, 0),
     new THREE.Vector3(1, 1, 1),
@@ -25,7 +26,7 @@ function createMesh(): SplatMesh {
     new THREE.Vector3(1, 2, 3),
     identity,
     0.8,
-    white,
+    selectedColor,
   );
   return new SplatMesh({ packedSplats: splats });
 }
@@ -70,6 +71,20 @@ function assertQuaternionClose(
   );
 }
 
+function assertColorClose(
+  actual: THREE.Color | undefined,
+  expected: THREE.Color,
+  epsilon = 1e-6,
+): void {
+  assert.ok(actual);
+  assert.ok(
+    Math.abs(actual.r - expected.r) < epsilon &&
+      Math.abs(actual.g - expected.g) < epsilon &&
+      Math.abs(actual.b - expected.b) < epsilon,
+    `${actual.toArray()} differs from ${expected.toArray()}`,
+  );
+}
+
 {
   const mesh = createMesh();
   const source = mesh.packedSplats;
@@ -80,6 +95,9 @@ function assertQuaternionClose(
   const untouchedScalesBefore = untouchedBefore.scales.clone();
   const selectedBefore = source.getSplat(1);
   const selectedScalesBefore = selectedBefore.scales.clone();
+  const selectedColorBefore = selectedBefore.color.clone();
+  assert.ok(source.packedArray);
+  const selectedPackedRgbaBefore = source.packedArray[4];
   mesh.setSplatState(1, SPLAT_EDITOR_STATE_SELECTED);
   const rotate = new THREE.Quaternion().setFromAxisAngle(
     new THREE.Vector3(0, 0, 1),
@@ -90,8 +108,19 @@ function assertQuaternionClose(
     rotate,
     scale: 2,
   });
+  const versionBefore = mesh.version;
+  const sortVersionBefore = mesh.sortVersion;
 
-  const result = mesh.bakeSelectedSplatTransform();
+  const originalSetSplat = source.setSplat;
+  source.setSplat = (() => {
+    throw new Error("packed selected transform bake should not call setSplat");
+  }) as typeof source.setSplat;
+  let result: ReturnType<SplatMesh["bakeSelectedSplatTransform"]>;
+  try {
+    result = mesh.bakeSelectedSplatTransform();
+  } finally {
+    source.setSplat = originalSetSplat;
+  }
 
   assert.deepStrictEqual(result, {
     applied: true,
@@ -102,16 +131,56 @@ function assertQuaternionClose(
   });
   assert.strictEqual(mesh.getSelectedSplatTransform(), null);
   assert.strictEqual(source.needsUpdate, true);
+  assert.strictEqual(mesh.version, versionBefore + 2);
+  assert.strictEqual(mesh.sortVersion, sortVersionBefore + 2);
 
   const untouched = source.getSplat(0);
   assertVectorClose(untouched.center, new THREE.Vector3(0, 0, 0));
   assertVectorClose(untouched.scales, untouchedScalesBefore);
 
+  assert.strictEqual(source.packedArray[4], selectedPackedRgbaBefore);
   const baked = source.getSplat(1);
   assertVectorClose(baked.center, new THREE.Vector3(10, 2, 0));
   assertVectorClose(baked.scales, selectedScalesBefore.multiplyScalar(2), 0.3);
   assertQuaternionClose(baked.quaternion, rotate, 1e-4);
   assert.strictEqual(baked.opacity, 0.8);
+  assertColorClose(baked.color, selectedColorBefore, 1e-2);
+
+  mesh.dispose();
+}
+
+{
+  const mesh = createMesh();
+  const source = mesh.packedSplats;
+  assert.ok(source);
+  const rawCenters = new Float32Array(source.maxSplats * 3);
+  rawCenters.set([0, 0, 0, 1.25, -2.5, 3.75]);
+  source.centerMatchXyz = rawCenters;
+  source.extra.centerMatchXyz = rawCenters;
+  const texture = source.getCenterMatchTexture();
+  assert.ok(texture);
+  const textureData = texture.image.data as Float32Array;
+  assert.deepStrictEqual(
+    Array.from(textureData.slice(4, 8)),
+    [1.25, -2.5, 3.75, 1],
+  );
+  mesh.setSplatState(1, SPLAT_EDITOR_STATE_SELECTED);
+  mesh.setSelectedSplatTransform({
+    translate: new THREE.Vector3(10, 0.5, -1),
+  });
+
+  const result = mesh.bakeSelectedSplatTransform();
+
+  assert.strictEqual(result.applied, true);
+  assert.strictEqual(result.changed, 1);
+  const rawCenter = { x: 0, y: 0, z: 0 };
+  assert.strictEqual(mesh.getSplatCenterRaw(1, rawCenter), true);
+  assert.deepStrictEqual(rawCenter, { x: 11.25, y: -2, z: 2.75 });
+  assert.strictEqual(source.getCenterMatchTexture(), texture);
+  assert.deepStrictEqual(
+    Array.from(textureData.slice(4, 8)),
+    [11.25, -2, 2.75, 1],
+  );
 
   mesh.dispose();
 }

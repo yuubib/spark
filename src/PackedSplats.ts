@@ -49,6 +49,9 @@ import {
   fromHalf,
   getTextureSize,
   setPackedSplat,
+  setPackedSplatCenter,
+  setPackedSplatQuat,
+  setPackedSplatScales,
   unpackSplat,
   unpackSplatCenter,
 } from "./utils";
@@ -105,6 +108,13 @@ export type PackedSplatsOptions = {
   lodAbove?: number;
   // The LoD version of the PackedSplats
   lodSplats?: PackedSplats;
+};
+
+export type PackedSplatTransformOptions = {
+  pivot: THREE.Vector3;
+  translate: THREE.Vector3;
+  rotate: THREE.Quaternion;
+  scale: number;
 };
 
 function readColorMatchRgbExtra(
@@ -666,6 +676,64 @@ export class PackedSplats implements SplatSource {
     );
     this.numSplats = Math.max(this.numSplats, index + 1);
     this.writeCenterMatchXyz(index, center);
+  }
+
+  transformSplat(
+    index: number,
+    { pivot, translate, rotate, scale }: PackedSplatTransformOptions,
+  ): boolean {
+    if (
+      !this.packedArray ||
+      !Number.isInteger(index) ||
+      index < 0 ||
+      index >= this.numSplats
+    ) {
+      return false;
+    }
+
+    const splat = unpackSplat(this.packedArray, index, this.splatEncoding);
+    const centers = this.centerMatchXyz;
+    if (centers) {
+      const offset = index * 3;
+      if (offset + 2 < centers.length) {
+        splat.center.set(
+          centers[offset],
+          centers[offset + 1],
+          centers[offset + 2],
+        );
+      }
+    }
+
+    splat.center.sub(pivot).multiplyScalar(scale).applyQuaternion(rotate);
+    splat.center.add(pivot).add(translate);
+    splat.scales.multiplyScalar(scale);
+    splat.quaternion.premultiply(rotate);
+
+    setPackedSplatCenter(
+      this.packedArray,
+      index,
+      splat.center.x,
+      splat.center.y,
+      splat.center.z,
+    );
+    setPackedSplatScales(
+      this.packedArray,
+      index,
+      splat.scales.x,
+      splat.scales.y,
+      splat.scales.z,
+      this.splatEncoding,
+    );
+    setPackedSplatQuat(
+      this.packedArray,
+      index,
+      splat.quaternion.x,
+      splat.quaternion.y,
+      splat.quaternion.z,
+      splat.quaternion.w,
+    );
+    this.writeCenterMatchXyz(index, splat.center);
+    return true;
   }
 
   // Effectively calls this.setSplat(this.numSplats++, center, ...), useful on

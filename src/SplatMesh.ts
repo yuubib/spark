@@ -1464,27 +1464,38 @@ export class SplatMesh extends SplatGenerator {
     }
 
     const sourceCount = source.getNumSplats();
-    editorState.forEachSelectedIndex((index) => {
-      if (index < 0 || index >= sourceCount) {
-        return;
-      }
-      const splat = source.getSplat(index);
-      applySelectedTransformToDecodedSplat(
-        splat.center,
-        splat.scales,
-        splat.quaternion,
-        selectedTransform,
-      );
-      source.setSplat(
-        index,
-        splat.center,
-        splat.scales,
-        splat.quaternion,
-        splat.opacity,
-        splat.color,
-      );
-      result.changed += 1;
-    });
+    if (source instanceof PackedSplats) {
+      editorState.forEachSelectedIndex((index) => {
+        if (index < 0 || index >= sourceCount) {
+          return;
+        }
+        if (source.transformSplat(index, selectedTransform)) {
+          result.changed += 1;
+        }
+      });
+    } else {
+      editorState.forEachSelectedIndex((index) => {
+        if (index < 0 || index >= sourceCount) {
+          return;
+        }
+        const splat = source.getSplat(index);
+        applySelectedTransformToDecodedSplat(
+          splat.center,
+          splat.scales,
+          splat.quaternion,
+          selectedTransform,
+        );
+        source.setSplat(
+          index,
+          splat.center,
+          splat.scales,
+          splat.quaternion,
+          splat.opacity,
+          splat.color,
+        );
+        result.changed += 1;
+      });
+    }
 
     if (result.changed > 0) {
       markMutableSplatSourceUpdated(source);
