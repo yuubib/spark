@@ -745,6 +745,10 @@ const projectionCacheFirst = await sparkRenderer.pickSplatCandidateIndices({
     projectionCacheFirstStats = nextStats;
   },
 });
+assert.deepStrictEqual([...(projectionCacheFirst ?? [])], [0, 1]);
+assert.strictEqual(projectionCacheRawIterations, 1);
+assert.strictEqual(projectionCacheFirstStats?.centerCollect?.centerCount, 3);
+
 let projectionCacheSecondStats: SplatScreenPickStats | null = null;
 const projectionCacheSecond = await sparkRenderer.pickSplatCandidateIndices({
   target: projectionCacheMesh,
@@ -760,10 +764,8 @@ const projectionCacheSecond = await sparkRenderer.pickSplatCandidateIndices({
   },
 });
 
-assert.deepStrictEqual([...(projectionCacheFirst ?? [])], [0, 1]);
 assert.deepStrictEqual([...(projectionCacheSecond ?? [])], [0, 1]);
 assert.strictEqual(projectionCacheRawIterations, 1);
-assert.strictEqual(projectionCacheFirstStats?.centerCollect?.centerCount, 3);
 assert.strictEqual(projectionCacheSecondStats?.centerCollect?.centerCount, 3);
 
 const projectionCacheViewportMiss =
@@ -790,6 +792,7 @@ const projectionCacheViewportHit =
   });
 
 assert.deepStrictEqual([...(projectionCacheViewportMiss ?? [])], [0, 1]);
+assert.strictEqual(projectionCacheRawIterations, 2);
 assert.deepStrictEqual([...(projectionCacheViewportHit ?? [])], [0, 1]);
 assert.strictEqual(projectionCacheRawIterations, 2);
 scene.remove(projectionCacheMesh);

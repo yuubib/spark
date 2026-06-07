@@ -15130,35 +15130,10 @@ const _SparkRenderer = class _SparkRenderer extends THREE__namespace.Mesh {
     this.centerProjectionCache ?? (this.centerProjectionCache = /* @__PURE__ */ new WeakMap());
     const cached = this.centerProjectionCache.get(target);
     if (cached && cached.numSplats === numSplats && cached.targetVersion === target.version && cached.viewportWidth === viewportWidth && cached.viewportHeight === viewportHeight && matrixElementsEqual(cached.objectToClipElements, objectToClipElements)) {
-      return cached;
+      return { cache: cached, hit: true };
     }
     const projectedCenters = cached && cached.projectedCenters.length >= numSplats * 3 ? cached.projectedCenters : new Float64Array(numSplats * 3);
     projectedCenters.fill(Number.NaN, 0, numSplats * 3);
-    const projectedCenter = {
-      x: 0,
-      y: 0,
-      ndcZ: 0
-    };
-    target.forEachSplatCenterRaw((index, centerX, centerY, centerZ) => {
-      if (!Number.isInteger(index) || index < 0 || index >= numSplats) {
-        return;
-      }
-      const offset = index * 3;
-      if (!projectSplatScreenPickCenter(
-        objectToClipElements,
-        centerX,
-        centerY,
-        centerZ,
-        viewportWidth,
-        viewportHeight,
-        projectedCenter
-      )) {
-        return;
-      }
-      projectedCenters[offset] = projectedCenter.x;
-      projectedCenters[offset + 1] = projectedCenter.y;
-      projectedCenters[offset + 2] = projectedCenter.ndcZ;
-    });
     const nextCache = {
       numSplats,
       targetVersion: target.version,
@@ -15168,7 +15143,7 @@ const _SparkRenderer = class _SparkRenderer extends THREE__namespace.Mesh {
       projectedCenters
     };
     this.centerProjectionCache.set(target, nextCache);
-    return nextCache;
+    return { cache: nextCache, hit: false };
   }
   collectSplatScreenPickCenterIndices({
     scene,
@@ -15257,32 +15232,24 @@ const _SparkRenderer = class _SparkRenderer extends THREE__namespace.Mesh {
       const sourceSplatCount = (_b2 = (_a2 = target.splats) == null ? void 0 : _a2.getNumSplats) == null ? void 0 : _b2.call(_a2);
       const sourceCountMatches = sourceSplatCount == null || sourceSplatCount === targetSplatCount;
       if (!selectedTransform && !shouldUseSelectedIndexPath && !Number.isFinite(max2) && sourceCountMatches) {
-        const projectionCache = this.getSplatScreenPickProjectionCache({
-          target,
-          objectToClip,
-          viewportWidth,
-          viewportHeight
-        });
-        const projectedCenters = projectionCache.projectedCenters;
-        for (let index = 0; index < targetSplatCount; index += 1) {
+        const processProjectedCenter = (index, screenX, screenY, ndcZ) => {
           if (indexCount >= max2) {
             stats.earlyExit = true;
-            break;
+            return false;
           }
           stats.centerCount += 1;
           const bits2 = !skipEditorStateFilter && editorState && index < editorState.maxSplats ? editorState.states[index] ?? 0 : 0;
           if (!skipEditorStateFilter && !matchesSplatEditorStateBits(bits2, editorStateMode)) {
             stats.stateRejectedCenterCount += 1;
-            continue;
+            return true;
           }
-          const offset = index * 3;
-          projectedCenter.x = projectedCenters[offset];
-          projectedCenter.y = projectedCenters[offset + 1];
-          projectedCenter.ndcZ = projectedCenters[offset + 2];
-          if (!Number.isFinite(projectedCenter.x) || !Number.isFinite(projectedCenter.y) || !Number.isFinite(projectedCenter.ndcZ)) {
+          if (!Number.isFinite(screenX) || !Number.isFinite(screenY) || !Number.isFinite(ndcZ)) {
             stats.viewRejectedCenterCount += 1;
-            continue;
+            return true;
           }
+          projectedCenter.x = screenX;
+          projectedCenter.y = screenY;
+          projectedCenter.ndcZ = ndcZ;
           recordSplatScreenPickProjectedCenter(stats, projectedCenter);
           if (!testSplatScreenPickCenter(
             rect,
@@ -15291,12 +15258,65 @@ const _SparkRenderer = class _SparkRenderer extends THREE__namespace.Mesh {
             stats,
             boundsMode
           )) {
-            continue;
+            return true;
           }
           stats.candidateCenterCount += 1;
           recordSplatScreenPickCandidateCenter(stats, projectedCenter);
           pushIndex(index);
+          return true;
+        };
+        const projectionCacheLookup = this.getSplatScreenPickProjectionCache({
+          target,
+          objectToClip,
+          viewportWidth,
+          viewportHeight
+        });
+        const projectedCenters = projectionCacheLookup.cache.projectedCenters;
+        if (projectionCacheLookup.hit) {
+          for (let index = 0; index < targetSplatCount; index += 1) {
+            const offset = index * 3;
+            if (processProjectedCenter(
+              index,
+              projectedCenters[offset],
+              projectedCenters[offset + 1],
+              projectedCenters[offset + 2]
+            ) === false) {
+              break;
+            }
+          }
+          return;
         }
+        target.forEachSplatCenterRaw((index, centerX, centerY, centerZ) => {
+          if (!Number.isInteger(index) || index < 0 || index >= targetSplatCount) {
+            return;
+          }
+          const offset = index * 3;
+          if (projectSplatScreenPickCenter(
+            objectToClipElements,
+            centerX,
+            centerY,
+            centerZ,
+            viewportWidth,
+            viewportHeight,
+            projectedCenter
+          )) {
+            projectedCenters[offset] = projectedCenter.x;
+            projectedCenters[offset + 1] = projectedCenter.y;
+            projectedCenters[offset + 2] = projectedCenter.ndcZ;
+            return processProjectedCenter(
+              index,
+              projectedCenter.x,
+              projectedCenter.y,
+              projectedCenter.ndcZ
+            );
+          }
+          return processProjectedCenter(
+            index,
+            Number.NaN,
+            Number.NaN,
+            Number.NaN
+          );
+        });
         return;
       }
       this.forEachSplatScreenPickTargetCenterRaw({
