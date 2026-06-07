@@ -2302,7 +2302,7 @@ export class SparkRenderer extends THREE.Mesh {
       objectToClip.multiplyMatrices(viewProjection, object.matrixWorld);
       const objectToClipElements = objectToClip.elements;
 
-      object.forEachSplatCenter((index, center) => {
+      object.forEachSplatCenterRaw((index, centerX, centerY, centerZ) => {
         if (hits.length >= max) {
           stats.earlyExit = true;
           return;
@@ -2321,9 +2321,9 @@ export class SparkRenderer extends THREE.Mesh {
         if (
           !projectSplatScreenPickCenter(
             objectToClipElements,
-            center.x,
-            center.y,
-            center.z,
+            centerX,
+            centerY,
+            centerZ,
             viewportWidth,
             viewportHeight,
             projectedCenter,
@@ -2458,7 +2458,7 @@ export class SparkRenderer extends THREE.Mesh {
       objectToClip.multiplyMatrices(viewProjection, target.matrixWorld);
       const objectToClipElements = objectToClip.elements;
 
-      target.forEachSplatCenter((index, center) => {
+      target.forEachSplatCenterRaw((index, centerX, centerY, centerZ) => {
         if (indexCount >= max) {
           stats.earlyExit = true;
           return;
@@ -2477,9 +2477,9 @@ export class SparkRenderer extends THREE.Mesh {
         if (
           !projectSplatScreenPickCenter(
             objectToClipElements,
-            center.x,
-            center.y,
-            center.z,
+            centerX,
+            centerY,
+            centerZ,
             viewportWidth,
             viewportHeight,
             projectedCenter,

@@ -33,6 +33,18 @@ const collectCenters = (
   return values;
 };
 
+const collectRawCenters = (
+  each: (
+    callback: (index: number, x: number, y: number, z: number) => void,
+  ) => void,
+) => {
+  const values: Array<[number, number, number, number]> = [];
+  each((index, x, y, z) => {
+    values.push([index, x, y, z]);
+  });
+  return values;
+};
+
 {
   const packed = new PackedSplats();
   splat(packed, new THREE.Vector3(1, 2, 3));
@@ -40,6 +52,13 @@ const collectCenters = (
 
   assert.deepStrictEqual(
     collectCenters(packed.forEachSplatCenter.bind(packed)),
+    [
+      [0, 1, 2, 3],
+      [1, -4, 5, -6],
+    ],
+  );
+  assert.deepStrictEqual(
+    collectRawCenters(packed.forEachSplatCenterRaw.bind(packed)),
     [
       [0, 1, 2, 3],
       [1, -4, 5, -6],
@@ -56,10 +75,18 @@ const collectCenters = (
     [0, 0.25, -0.5, 1.5],
     [1, 12, 13, 14],
   ]);
+  assert.deepStrictEqual(
+    collectRawCenters(ext.forEachSplatCenterRaw.bind(ext)),
+    [
+      [0, 0.25, -0.5, 1.5],
+      [1, 12, 13, 14],
+    ],
+  );
 }
 
 {
   let fullDecodeCount = 0;
+  let rawCenterCount = 0;
   const source: SplatSource = {
     prepareFetchSplat() {},
     dispose() {},
@@ -81,12 +108,23 @@ const collectCenters = (
         new THREE.Color(0, 1, 0),
       );
     },
+    forEachSplatCenterRaw(callback) {
+      rawCenterCount += 1;
+      callback(0, 7, 8, 9);
+    },
   };
   const mesh = new SplatMesh({ splats: source });
 
   assert.deepStrictEqual(collectCenters(mesh.forEachSplatCenter.bind(mesh)), [
     [0, 7, 8, 9],
   ]);
+  assert.strictEqual(fullDecodeCount, 1);
+
+  assert.deepStrictEqual(
+    collectRawCenters(mesh.forEachSplatCenterRaw.bind(mesh)),
+    [[0, 7, 8, 9]],
+  );
+  assert.strictEqual(rawCenterCount, 1);
   assert.strictEqual(fullDecodeCount, 1);
 }
 

@@ -59,6 +59,15 @@ sparkRenderer.display = {
 };
 
 let stats: SplatScreenPickStats | null = null;
+let rawCenterIteratorUsed = false;
+const originalRawCenterIterator = mesh.forEachSplatCenterRaw.bind(mesh);
+mesh.forEachSplatCenterRaw = (callback) => {
+  rawCenterIteratorUsed = true;
+  originalRawCenterIterator(callback);
+};
+mesh.forEachSplatCenter = () => {
+  throw new Error("compact center picking should use raw center iteration");
+};
 const indices = await sparkRenderer.pickSplatCandidateIndices({
   target: mesh,
   scene,
@@ -74,6 +83,7 @@ const indices = await sparkRenderer.pickSplatCandidateIndices({
 });
 
 assert.deepStrictEqual([...(indices ?? [])], [0, 1]);
+assert.strictEqual(rawCenterIteratorUsed, true);
 assert.strictEqual(stats?.candidateMode, "centers");
 assert.strictEqual(stats?.mappedHitCount, 2);
 assert.strictEqual(stats?.sourceStableHitCount, 2);

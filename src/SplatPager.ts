@@ -19,7 +19,9 @@ import { pagedSplatTexCoord } from "./dyno";
 import {
   decodeExtSplat,
   decodeExtSplatCenter,
+  fromHalf,
   getTextureSize,
+  uintBitsToFloat,
   unpackSplat,
   unpackSplatCenter,
 } from "./utils";
@@ -501,6 +503,45 @@ export class PagedSplats implements SplatSource {
         extSplats
           ? decodeExtSplatCenter(extArrays, splatIndex)
           : unpackSplatCenter(packedSplatArray, splatIndex),
+      );
+    }
+  }
+
+  forEachSplatCenterRaw(
+    callback: (index: number, x: number, y: number, z: number) => void,
+  ) {
+    if (!this.pager || !this.numSplats) {
+      return;
+    }
+    const extSplats = this.pager.extSplats;
+    const indices = this.dynoIndices.value.image.data as Uint32Array;
+    const packedSplatArray = this.pager.packedTexture.value.image
+      .data as Uint32Array;
+
+    if (extSplats) {
+      for (let i = 0; i < this.numSplats; ++i) {
+        const splatIndex = indices[i];
+        const i4 = splatIndex * 4;
+        callback(
+          i,
+          uintBitsToFloat(packedSplatArray[i4]),
+          uintBitsToFloat(packedSplatArray[i4 + 1]),
+          uintBitsToFloat(packedSplatArray[i4 + 2]),
+        );
+      }
+      return;
+    }
+
+    for (let i = 0; i < this.numSplats; ++i) {
+      const splatIndex = indices[i];
+      const i4 = splatIndex * 4;
+      const word1 = packedSplatArray[i4 + 1];
+      const word2 = packedSplatArray[i4 + 2];
+      callback(
+        i,
+        fromHalf(word1 & 0xffff),
+        fromHalf((word1 >>> 16) & 0xffff),
+        fromHalf(word2 & 0xffff),
       );
     }
   }

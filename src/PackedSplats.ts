@@ -46,6 +46,7 @@ import {
 } from "./dyno/splats";
 import { getShaders } from "./shaders";
 import {
+  fromHalf,
   getTextureSize,
   setPackedSplat,
   unpackSplat,
@@ -671,6 +672,25 @@ export class PackedSplats implements SplatSource {
     }
     for (let i = 0; i < this.numSplats; ++i) {
       callback(i, unpackSplatCenter(this.packedArray, i));
+    }
+  }
+
+  forEachSplatCenterRaw(
+    callback: (index: number, x: number, y: number, z: number) => void,
+  ) {
+    if (!this.packedArray || !this.numSplats) {
+      return;
+    }
+    for (let i = 0; i < this.numSplats; ++i) {
+      const i4 = i * 4;
+      const word1 = this.packedArray[i4 + 1];
+      const word2 = this.packedArray[i4 + 2];
+      callback(
+        i,
+        fromHalf(word1 & 0xffff),
+        fromHalf((word1 >>> 16) & 0xffff),
+        fromHalf(word2 & 0xffff),
+      );
     }
   }
 

@@ -284,6 +284,10 @@ export interface SplatSource {
   forEachSplatCenter?(
     callback: (index: number, center: THREE.Vector3) => void,
   ): void;
+
+  forEachSplatCenterRaw?(
+    callback: (index: number, x: number, y: number, z: number) => void,
+  ): void;
 }
 
 export type SplatStateBoundingBoxOptions = {
@@ -325,6 +329,8 @@ export class EmptySplatSource implements SplatSource {
   forEachSplat() {}
 
   forEachSplatCenter() {}
+
+  forEachSplatCenterRaw() {}
 }
 
 export class SplatMesh extends SplatGenerator {
@@ -717,6 +723,24 @@ export class SplatMesh extends SplatGenerator {
       return;
     }
     source.forEachSplat((index, center) => callback(index, center));
+  }
+
+  // Iterate over raw splat center components. Center-mode editor picking uses
+  // this path to avoid creating or mutating Three.js vectors per source center.
+  forEachSplatCenterRaw(
+    callback: (index: number, x: number, y: number, z: number) => void,
+  ) {
+    const source = this.splats;
+    if (!source) {
+      return;
+    }
+    if (source.forEachSplatCenterRaw) {
+      source.forEachSplatCenterRaw(callback);
+      return;
+    }
+    this.forEachSplatCenter((index, center) =>
+      callback(index, center.x, center.y, center.z),
+    );
   }
 
   getEditorState(): SplatEditorState | null {

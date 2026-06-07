@@ -8937,6 +8937,21 @@ const _ExtSplats = class _ExtSplats {
       callback(i, decodeExtSplatCenter(this.extArrays, i));
     }
   }
+  forEachSplatCenterRaw(callback) {
+    if (!this.numSplats) {
+      return;
+    }
+    const extA = this.extArrays[0];
+    for (let i = 0; i < this.numSplats; ++i) {
+      const i4 = i * 4;
+      callback(
+        i,
+        uintBitsToFloat$1(extA[i4]),
+        uintBitsToFloat$1(extA[i4 + 1]),
+        uintBitsToFloat$1(extA[i4 + 2])
+      );
+    }
+  }
   // Check if source texture needs to be created/updated
   updateTextures() {
     if (this.textures[0] !== _ExtSplats.emptyTexture) {
@@ -13646,7 +13661,7 @@ const _SparkRenderer = class _SparkRenderer extends THREE.Mesh {
       object.updateMatrixWorld(true);
       objectToClip.multiplyMatrices(viewProjection, object.matrixWorld);
       const objectToClipElements = objectToClip.elements;
-      object.forEachSplatCenter((index, center) => {
+      object.forEachSplatCenterRaw((index, centerX, centerY, centerZ) => {
         if (hits.length >= max2) {
           stats.earlyExit = true;
           return;
@@ -13659,9 +13674,9 @@ const _SparkRenderer = class _SparkRenderer extends THREE.Mesh {
         }
         if (!projectSplatScreenPickCenter(
           objectToClipElements,
-          center.x,
-          center.y,
-          center.z,
+          centerX,
+          centerY,
+          centerZ,
           viewportWidth,
           viewportHeight,
           projectedCenter
@@ -13766,7 +13781,7 @@ const _SparkRenderer = class _SparkRenderer extends THREE.Mesh {
       target.updateMatrixWorld(true);
       objectToClip.multiplyMatrices(viewProjection, target.matrixWorld);
       const objectToClipElements = objectToClip.elements;
-      target.forEachSplatCenter((index, center) => {
+      target.forEachSplatCenterRaw((index, centerX, centerY, centerZ) => {
         if (indexCount >= max2) {
           stats.earlyExit = true;
           return;
@@ -13779,9 +13794,9 @@ const _SparkRenderer = class _SparkRenderer extends THREE.Mesh {
         }
         if (!projectSplatScreenPickCenter(
           objectToClipElements,
-          center.x,
-          center.y,
-          center.z,
+          centerX,
+          centerY,
+          centerZ,
           viewportWidth,
           viewportHeight,
           projectedCenter
@@ -14579,6 +14594,39 @@ class PagedSplats {
       );
     }
   }
+  forEachSplatCenterRaw(callback) {
+    if (!this.pager || !this.numSplats) {
+      return;
+    }
+    const extSplats = this.pager.extSplats;
+    const indices = this.dynoIndices.value.image.data;
+    const packedSplatArray = this.pager.packedTexture.value.image.data;
+    if (extSplats) {
+      for (let i = 0; i < this.numSplats; ++i) {
+        const splatIndex = indices[i];
+        const i4 = splatIndex * 4;
+        callback(
+          i,
+          uintBitsToFloat$1(packedSplatArray[i4]),
+          uintBitsToFloat$1(packedSplatArray[i4 + 1]),
+          uintBitsToFloat$1(packedSplatArray[i4 + 2])
+        );
+      }
+      return;
+    }
+    for (let i = 0; i < this.numSplats; ++i) {
+      const splatIndex = indices[i];
+      const i4 = splatIndex * 4;
+      const word1 = packedSplatArray[i4 + 1];
+      const word2 = packedSplatArray[i4 + 2];
+      callback(
+        i,
+        fromHalf(word1 & 65535),
+        fromHalf(word1 >>> 16 & 65535),
+        fromHalf(word2 & 65535)
+      );
+    }
+  }
 }
 const _SplatPager = class _SplatPager {
   constructor(options) {
@@ -15319,6 +15367,8 @@ class EmptySplatSource {
   }
   forEachSplatCenter() {
   }
+  forEachSplatCenterRaw() {
+  }
 }
 const _SplatMesh = class _SplatMesh extends SplatGenerator {
   constructor(options = {}) {
@@ -15585,6 +15635,21 @@ const _SplatMesh = class _SplatMesh extends SplatGenerator {
       return;
     }
     source.forEachSplat((index, center) => callback(index, center));
+  }
+  // Iterate over raw splat center components. Center-mode editor picking uses
+  // this path to avoid creating or mutating Three.js vectors per source center.
+  forEachSplatCenterRaw(callback) {
+    const source = this.splats;
+    if (!source) {
+      return;
+    }
+    if (source.forEachSplatCenterRaw) {
+      source.forEachSplatCenterRaw(callback);
+      return;
+    }
+    this.forEachSplatCenter(
+      (index, center) => callback(index, center.x, center.y, center.z)
+    );
   }
   getEditorState() {
     var _a2;
@@ -18400,6 +18465,22 @@ const _PackedSplats = class _PackedSplats {
     }
     for (let i = 0; i < this.numSplats; ++i) {
       callback(i, unpackSplatCenter(this.packedArray, i));
+    }
+  }
+  forEachSplatCenterRaw(callback) {
+    if (!this.packedArray || !this.numSplats) {
+      return;
+    }
+    for (let i = 0; i < this.numSplats; ++i) {
+      const i4 = i * 4;
+      const word1 = this.packedArray[i4 + 1];
+      const word2 = this.packedArray[i4 + 2];
+      callback(
+        i,
+        fromHalf(word1 & 65535),
+        fromHalf(word1 >>> 16 & 65535),
+        fromHalf(word2 & 65535)
+      );
     }
   }
   // Ensures our PackedSplats.target render target has enough space to generate

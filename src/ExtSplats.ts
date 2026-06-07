@@ -30,6 +30,7 @@ import {
   decodeExtSplatCenter,
   encodeExtSplat,
   getTextureSize,
+  uintBitsToFloat,
 } from "./utils";
 
 export type ExtSplatsOptions = {
@@ -616,6 +617,24 @@ export class ExtSplats implements SplatSource {
     }
     for (let i = 0; i < this.numSplats; ++i) {
       callback(i, decodeExtSplatCenter(this.extArrays, i));
+    }
+  }
+
+  forEachSplatCenterRaw(
+    callback: (index: number, x: number, y: number, z: number) => void,
+  ) {
+    if (!this.numSplats) {
+      return;
+    }
+    const extA = this.extArrays[0];
+    for (let i = 0; i < this.numSplats; ++i) {
+      const i4 = i * 4;
+      callback(
+        i,
+        uintBitsToFloat(extA[i4]),
+        uintBitsToFloat(extA[i4 + 1]),
+        uintBitsToFloat(extA[i4 + 2]),
+      );
     }
   }
 

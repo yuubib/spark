@@ -55,6 +55,7 @@ export declare class PagedSplats implements SplatSource {
     }): dyno.DynoVal<typeof dyno.Gsplat>;
     forEachSplat(callback: (index: number, center: THREE.Vector3, scales: THREE.Vector3, quaternion: THREE.Quaternion, opacity: number, color: THREE.Color) => void): void;
     forEachSplatCenter(callback: (index: number, center: THREE.Vector3) => void): void;
+    forEachSplatCenterRaw(callback: (index: number, x: number, y: number, z: number) => void): void;
 }
 export interface SplatPagerOptions {
     /**
