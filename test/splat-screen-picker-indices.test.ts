@@ -266,6 +266,200 @@ assert.strictEqual(
   selectedIndexModeGpuStats?.centerCollect?.fallbackReason,
   undefined,
 );
+
+sparkRenderer.renderer.capabilities = { isWebGL2: true };
+const originalSelectedAutoNumSplats = mesh.numSplats;
+const selectedAutoGpuCollector = (
+  sparkRenderer as unknown as {
+    tryCollectSplatScreenPickCenterIndicesGpu?: unknown;
+  }
+).tryCollectSplatScreenPickCenterIndicesGpu;
+mesh.numSplats = 1_100_000;
+mesh.selectSplatStateCandidates([1], "set");
+
+let sparseSelectedAutoStats: SplatScreenPickStats | null = null;
+let sparseSelectedAutoGpuCalled = false;
+(
+  sparkRenderer as unknown as {
+    tryCollectSplatScreenPickCenterIndicesGpu: () => Promise<{
+      indices: Uint32Array;
+      renderMs: number;
+      readbackMs: number;
+      compactMs: number;
+    }>;
+  }
+).tryCollectSplatScreenPickCenterIndicesGpu = async () => {
+  sparseSelectedAutoGpuCalled = true;
+  return {
+    indices: new Uint32Array(),
+    renderMs: 0,
+    readbackMs: 0,
+    compactMs: 0,
+  };
+};
+const sparseSelectedAutoIndices = await sparkRenderer.pickSplatCandidateIndices(
+  {
+    target: mesh,
+    scene,
+    camera,
+    candidateMode: "centers",
+    shape: { kind: "rect", x: 0, y: 0, width: 1, height: 1 },
+    width: 100,
+    height: 100,
+    operation: "remove",
+    onStats: (nextStats) => {
+      sparseSelectedAutoStats = nextStats;
+    },
+  },
+);
+
+assert.deepStrictEqual([...(sparseSelectedAutoIndices ?? [])], [1]);
+assert.strictEqual(sparseSelectedAutoGpuCalled, false);
+assert.strictEqual(
+  sparseSelectedAutoStats?.centerCollect?.requestedProcessor,
+  "auto",
+);
+assert.strictEqual(sparseSelectedAutoStats?.centerCollect?.processor, "cpu");
+assert.strictEqual(
+  sparseSelectedAutoStats?.centerCollect?.fallbackReason,
+  "auto-cpu-estimated-faster",
+);
+
+let denseSelectedAutoStats: SplatScreenPickStats | null = null;
+let denseSelectedAutoGpuCalled = false;
+mesh.ensureEditorState(1_100_000).selectAll();
+(
+  sparkRenderer as unknown as {
+    tryCollectSplatScreenPickCenterIndicesGpu: (options: {
+      target: SplatMesh;
+      editorStateMode: string;
+      stats: {
+        centerCount: number;
+        candidateCenterCount: number;
+        uniqueHitCount: number;
+      };
+    }) => Promise<{
+      indices: Uint32Array;
+      renderMs: number;
+      readbackMs: number;
+      compactMs: number;
+    }>;
+  }
+).tryCollectSplatScreenPickCenterIndicesGpu = async (options) => {
+  denseSelectedAutoGpuCalled = true;
+  assert.strictEqual(options.target, mesh);
+  assert.strictEqual(options.editorStateMode, "pick-remove");
+  options.stats.centerCount = 1_100_000;
+  options.stats.candidateCenterCount = 2;
+  options.stats.uniqueHitCount = 2;
+  return {
+    indices: new Uint32Array([0, 1]),
+    renderMs: 0.1,
+    readbackMs: 0.2,
+    compactMs: 0.3,
+  };
+};
+const denseSelectedAutoIndices = await sparkRenderer.pickSplatCandidateIndices({
+  target: mesh,
+  scene,
+  camera,
+  candidateMode: "centers",
+  shape: { kind: "rect", x: 0, y: 0, width: 1, height: 1 },
+  width: 100,
+  height: 100,
+  operation: "remove",
+  onStats: (nextStats) => {
+    denseSelectedAutoStats = nextStats;
+  },
+});
+
+(
+  sparkRenderer as unknown as {
+    tryCollectSplatScreenPickCenterIndicesGpu?: unknown;
+  }
+).tryCollectSplatScreenPickCenterIndicesGpu = selectedAutoGpuCollector;
+mesh.clearSplatStateSelection();
+mesh.numSplats = originalSelectedAutoNumSplats;
+
+assert.deepStrictEqual([...(denseSelectedAutoIndices ?? [])], [0, 1]);
+assert.strictEqual(denseSelectedAutoGpuCalled, true);
+assert.strictEqual(
+  denseSelectedAutoStats?.centerCollect?.requestedProcessor,
+  "auto",
+);
+assert.strictEqual(denseSelectedAutoStats?.centerCollect?.processor, "gpu");
+assert.strictEqual(
+  denseSelectedAutoStats?.centerCollect?.fallbackReason,
+  undefined,
+);
+
+mesh.numSplats = 1_100_000;
+mesh.ensureEditorState(1_100_000).selectAll();
+sparkRenderer.renderer.capabilities = undefined;
+const selectedAutoCpuCollector = (
+  sparkRenderer as unknown as {
+    collectSplatScreenPickCenterIndices?: unknown;
+  }
+).collectSplatScreenPickCenterIndices;
+let denseSelectedAutoFallbackStats: SplatScreenPickStats | null = null;
+let denseSelectedAutoCpuFallbackCalled = false;
+(
+  sparkRenderer as unknown as {
+    collectSplatScreenPickCenterIndices: (options: {
+      target: SplatMesh;
+      editorStateMode: string;
+      stats: {
+        centerCount: number;
+        candidateCenterCount: number;
+        uniqueHitCount: number;
+      };
+    }) => Uint32Array;
+  }
+).collectSplatScreenPickCenterIndices = (options) => {
+  denseSelectedAutoCpuFallbackCalled = true;
+  assert.strictEqual(options.target, mesh);
+  assert.strictEqual(options.editorStateMode, "pick-remove");
+  options.stats.centerCount = 1_100_000;
+  options.stats.candidateCenterCount = 1;
+  options.stats.uniqueHitCount = 1;
+  return new Uint32Array([1]);
+};
+const denseSelectedAutoFallbackIndices =
+  await sparkRenderer.pickSplatCandidateIndices({
+    target: mesh,
+    scene,
+    camera,
+    candidateMode: "centers",
+    shape: { kind: "rect", x: 0, y: 0, width: 1, height: 1 },
+    width: 100,
+    height: 100,
+    operation: "remove",
+    onStats: (nextStats) => {
+      denseSelectedAutoFallbackStats = nextStats;
+    },
+  });
+(
+  sparkRenderer as unknown as {
+    collectSplatScreenPickCenterIndices?: unknown;
+  }
+).collectSplatScreenPickCenterIndices = selectedAutoCpuCollector;
+mesh.clearSplatStateSelection();
+mesh.numSplats = originalSelectedAutoNumSplats;
+
+assert.deepStrictEqual([...(denseSelectedAutoFallbackIndices ?? [])], [1]);
+assert.strictEqual(denseSelectedAutoCpuFallbackCalled, true);
+assert.strictEqual(
+  denseSelectedAutoFallbackStats?.centerCollect?.requestedProcessor,
+  "auto",
+);
+assert.strictEqual(
+  denseSelectedAutoFallbackStats?.centerCollect?.processor,
+  "cpu",
+);
+assert.strictEqual(
+  denseSelectedAutoFallbackStats?.centerCollect?.fallbackReason,
+  "webgl2-unavailable",
+);
 sparkRenderer.renderer.capabilities = undefined;
 
 const transformMesh = new SplatMesh({

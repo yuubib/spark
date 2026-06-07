@@ -260,6 +260,10 @@ function applySelectedTransformToRawCenter(
 
 const SPLAT_CENTER_INTERSECTION_OUTPUT_WIDTH = 4096;
 const SPLAT_CENTER_INTERSECTION_AUTO_CPU_MAX_SPLATS = 1_250_000;
+const SPLAT_CENTER_INTERSECTION_AUTO_SELECTED_GPU_MIN_SPLATS = Math.floor(
+  SPLAT_CENTER_INTERSECTION_AUTO_CPU_MAX_SPLATS * 0.25,
+);
+const SPLAT_CENTER_INTERSECTION_AUTO_SELECTED_GPU_MIN_RATIO = 0.25;
 const SPLAT_CENTER_INTERSECTION_OUTPUT_ENCODING_BITSET =
   "bitset-rgba8" satisfies SplatCenterIntersectionOutputEncoding;
 const SPLAT_CENTER_INTERSECTION_SYNC_READBACK_MAX_BYTES = 256 * 1024;
@@ -317,6 +321,35 @@ function shouldPreferCpuSplatCenterProcessor(numSplats: number): boolean {
     Number.isFinite(numSplats) &&
     numSplats > 0 &&
     numSplats <= SPLAT_CENTER_INTERSECTION_AUTO_CPU_MAX_SPLATS
+  );
+}
+
+function shouldPreferGpuSplatCenterProcessorForSelectedFilter(
+  numSplats: number,
+  editorState: SplatEditorState | null | undefined,
+  editorStateMode: NonNullable<SplatScreenPickOptions["editorStateMode"]>,
+): boolean {
+  if (!canUseSelectedSplatCenterIndexMode(editorStateMode) || !editorState) {
+    return false;
+  }
+
+  const safeNumSplats = Math.max(0, Math.floor(numSplats));
+  if (
+    !Number.isFinite(safeNumSplats) ||
+    safeNumSplats <= 0 ||
+    safeNumSplats > SPLAT_CENTER_INTERSECTION_AUTO_CPU_MAX_SPLATS
+  ) {
+    return false;
+  }
+
+  const selectedCount = Math.min(
+    safeNumSplats,
+    Math.max(0, Math.floor(editorState.getCounts().selected)),
+  );
+  return (
+    selectedCount > SPLAT_CENTER_INTERSECTION_AUTO_SELECTED_GPU_MIN_SPLATS &&
+    selectedCount / safeNumSplats >
+      SPLAT_CENTER_INTERSECTION_AUTO_SELECTED_GPU_MIN_RATIO
   );
 }
 
@@ -2503,10 +2536,16 @@ export class SparkRenderer extends THREE.Mesh {
 
     const collectStats = createSplatScreenPickCenterCollectStats();
     const requestedProcessor = options.centerProcessor ?? "auto";
-    if (
+    const editorState = target.getEditorState();
+    const shouldUseCpuAuto =
       requestedProcessor === "auto" &&
-      shouldPreferCpuSplatCenterProcessor(target.numSplats)
-    ) {
+      shouldPreferCpuSplatCenterProcessor(target.numSplats) &&
+      !shouldPreferGpuSplatCenterProcessorForSelectedFilter(
+        target.numSplats,
+        editorState,
+        editorStateMode,
+      );
+    if (shouldUseCpuAuto) {
       setSplatScreenPickCenterProcessorStats(
         collectStats,
         requestedProcessor,
