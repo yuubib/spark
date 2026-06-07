@@ -7954,12 +7954,17 @@ const _SplatEditorState = class _SplatEditorState {
     const previousValues = new Uint8Array(length2);
     const nextValues = new Uint8Array(length2);
     const dirtyIndices = [];
+    const skipSelectedIndexTracking = length2 > this.getSparseSelectionSetThreshold();
     let fullRange = false;
     let changed = 0;
     for (let offset = 0; offset < length2; offset++) {
       const index = this.normalizeIndex(indices[offset]);
       if (index === null || this.states[index] !== SPLAT_EDITOR_STATE_NONE) {
         continue;
+      }
+      if (skipSelectedIndexTracking && this.selectedIndicesComplete) {
+        this.selectedIndices.clear();
+        this.selectedIndicesComplete = false;
       }
       if (!this.setUnchecked(index, SPLAT_EDITOR_STATE_SELECTED, false)) {
         continue;

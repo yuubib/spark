@@ -1623,6 +1623,8 @@ export class SplatEditorState {
     const previousValues = new Uint8Array(length);
     const nextValues = new Uint8Array(length);
     const dirtyIndices: number[] = [];
+    const skipSelectedIndexTracking =
+      length > this.getSparseSelectionSetThreshold();
     let fullRange = false;
     let changed = 0;
 
@@ -1630,6 +1632,10 @@ export class SplatEditorState {
       const index = this.normalizeIndex(indices[offset]);
       if (index === null || this.states[index] !== SPLAT_EDITOR_STATE_NONE) {
         continue;
+      }
+      if (skipSelectedIndexTracking && this.selectedIndicesComplete) {
+        this.selectedIndices.clear();
+        this.selectedIndicesComplete = false;
       }
       if (!this.setUnchecked(index, SPLAT_EDITOR_STATE_SELECTED, false)) {
         continue;

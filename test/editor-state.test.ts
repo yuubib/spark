@@ -1040,6 +1040,63 @@ import {
 }
 
 {
+  const state = new SplatEditorState(20);
+  const result = state.selectCandidates(
+    new Uint32Array([0, 1, 2, 3, 4, 5, 6]),
+    "set",
+    {
+      recordChanges: true,
+      changeFormat: "packed",
+    },
+  );
+
+  assert.strictEqual(result.changed, 7);
+  assert.strictEqual(result.changeSet?.kind, "packed-list");
+  assert.deepStrictEqual(state.listIndices("selected"), [0, 1, 2, 3, 4, 5, 6]);
+  assert.strictEqual(
+    (state as unknown as { selectedIndicesComplete: boolean })
+      .selectedIndicesComplete,
+    false,
+  );
+
+  const selectedViaIterator: number[] = [];
+  state.forEachSelectedIndex((index) => {
+    selectedViaIterator.push(index);
+  });
+  assert.deepStrictEqual(selectedViaIterator, [0, 1, 2, 3, 4, 5, 6]);
+
+  assert.ok(result.changeSet && result.changeSet.kind === "packed-list");
+  state.applyChangeSet(result.changeSet, "previous");
+  assert.deepStrictEqual(state.listIndices("selected"), []);
+}
+
+{
+  const state = new SplatEditorState(20);
+  const result = state.selectCandidates(
+    new Uint32Array([4, 4, 4, 4, 4, 4, 4]),
+    "set",
+    {
+      recordChanges: true,
+      changeFormat: "packed",
+    },
+  );
+
+  assert.strictEqual(result.changed, 1);
+  assert.deepStrictEqual(state.listIndices("selected"), [4]);
+  assert.strictEqual(
+    (state as unknown as { selectedIndicesComplete: boolean })
+      .selectedIndicesComplete,
+    true,
+  );
+
+  const selectedViaIterator: number[] = [];
+  state.forEachSelectedIndex((index) => {
+    selectedViaIterator.push(index);
+  });
+  assert.deepStrictEqual(selectedViaIterator, [4]);
+}
+
+{
   const state = new SplatEditorState(6);
   state.replace(
     new Uint8Array([
