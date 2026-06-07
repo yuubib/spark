@@ -95,6 +95,8 @@ export declare class SplatEditorState {
     private uniformStateBits;
     private selectedIndices;
     private selectedIndicesComplete;
+    private deletedIndices;
+    private deletedIndicesComplete;
     private dirtyRanges;
     private renderDirtyRanges;
     private dirtyAll;
@@ -158,19 +160,26 @@ export declare class SplatEditorState {
     private collectDirtyIndex;
     private getSparseSelectionSetThreshold;
     private shouldTrackSelectedIndices;
+    private shouldTrackDeletedIndices;
     private ensureSelectedIndicesCompleteForSparse;
+    private ensureDeletedIndicesCompleteForSparse;
     private rebuildSelectedIndices;
+    private rebuildDeletedIndices;
     private refreshSelectedIndexTracking;
+    private refreshDeletedIndexTracking;
     private resetSelectedIndexTrackingForUniform;
+    private resetDeletedIndexTrackingForUniform;
     private setUnchecked;
     private selectCandidateSetFromEmpty;
     private selectCandidateSetFromEmptyPackedArrayLike;
     private selectCandidateSetDense;
     private selectCandidateSetSparse;
     private commitSparseSelectedMutation;
+    private commitSparseDeletedReset;
     private setMutationUnchecked;
     private updateCounts;
     private updateSelectedIndex;
+    private updateDeletedIndex;
     static emptyTexture: THREE.DataArrayTexture;
 }
 export declare function applySplatEditorStateVisibility(gsplat: DynoVal<typeof Gsplat>, stateTexture: DynoVal<"usampler2DArray">, enabled: DynoVal<"bool">): DynoVal<typeof Gsplat>;

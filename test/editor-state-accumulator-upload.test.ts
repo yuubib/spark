@@ -3,6 +3,7 @@ import assert from "node:assert";
 import { SplatAccumulator, SplatMesh } from "../dist/spark.module.js";
 import {
   SPLAT_EDITOR_STATE_DELETED,
+  SPLAT_EDITOR_STATE_NONE,
   SPLAT_EDITOR_STATE_SELECTED,
 } from "../src/SplatEditorState.js";
 
@@ -179,6 +180,43 @@ function createMockRenderer() {
     [...accumulator.editorStateData.slice(0, 4)],
     [0, SPLAT_EDITOR_STATE_SELECTED, 0, 0],
   );
+
+  accumulator.dispose();
+  mesh.dispose();
+}
+
+{
+  const mesh = new SplatMesh({ editorStateRenderMode: "accumulator" });
+  const state = mesh.ensureEditorState(5000);
+  const accumulator = new SplatAccumulator();
+  const mapping = [
+    {
+      node: mesh,
+      version: 0,
+      sortVersion: 0,
+      styleVersion: 0,
+      mappingVersion: 0,
+      base: 0,
+      count: 5000,
+    },
+  ];
+
+  state.setList([2, 4099], SPLAT_EDITOR_STATE_DELETED, "set");
+
+  assert.strictEqual(accumulator.updateEditorStateTexture({ mapping }), true);
+  assert.strictEqual(accumulator.editorStateVisibleCount, 4998);
+  assert.strictEqual(accumulator.editorStateUniformValue, null);
+  assert.ok(accumulator.editorStateTexture);
+
+  state.resetDeleted();
+
+  assert.strictEqual(accumulator.updateEditorStateTexture({ mapping }), true);
+  assert.strictEqual(accumulator.editorStateVisibleCount, 5000);
+  assert.strictEqual(
+    accumulator.editorStateUniformValue,
+    SPLAT_EDITOR_STATE_NONE,
+  );
+  assert.ok(accumulator.editorStateTexture);
 
   accumulator.dispose();
   mesh.dispose();
