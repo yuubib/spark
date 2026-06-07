@@ -12320,6 +12320,9 @@ function collectSplatScreenPickHitsFromRgba8(pixels, rect, options = {}) {
 }
 function createSplatScreenPickCenterCollectStats() {
   return {
+    requestedProcessor: "cpu",
+    processor: "cpu",
+    fallbackReason: "requested-cpu",
     centerCount: 0,
     candidateCenterCount: 0,
     maskTestedCenterCount: 0,
@@ -12331,6 +12334,69 @@ function createSplatScreenPickCenterCollectStats() {
     candidateBounds: null,
     earlyExit: false
   };
+}
+function setSplatScreenPickCenterProcessorStats(stats, requestedProcessor = "auto", processor = "cpu", fallbackReason) {
+  stats.requestedProcessor = requestedProcessor;
+  stats.processor = processor;
+  if (fallbackReason) {
+    stats.fallbackReason = fallbackReason;
+  } else {
+    stats.fallbackReason = void 0;
+  }
+}
+function createSplatCenterIntersectionCompactStats() {
+  return {
+    byteCount: 0,
+    candidateByteCount: 0,
+    uniqueHitCount: 0,
+    earlyExit: false
+  };
+}
+function compactSplatCenterIntersectionBytes(bytes, options = {}) {
+  var _a2;
+  const maxCandidates = options.maxCandidates != null ? Math.max(0, Math.floor(options.maxCandidates)) : Number.POSITIVE_INFINITY;
+  let indices = ((_a2 = options.indexBuffer) == null ? void 0 : _a2.buffer) ?? new Uint32Array(
+    Math.min(Number.isFinite(maxCandidates) ? maxCandidates : 1024, 1024)
+  );
+  let indexCount = 0;
+  const stats = createSplatCenterIntersectionCompactStats();
+  stats.byteCount = bytes.length;
+  const finish = () => {
+    stats.uniqueHitCount = indexCount;
+    if (options.stats) {
+      Object.assign(options.stats, stats);
+    }
+    return indices.subarray(0, indexCount);
+  };
+  if (maxCandidates <= 0) {
+    stats.earlyExit = true;
+    return finish();
+  }
+  for (let index = 0; index < bytes.length; index += 1) {
+    if ((bytes[index] ?? 0) === 0) {
+      continue;
+    }
+    stats.candidateByteCount += 1;
+    if (indexCount >= maxCandidates) {
+      stats.earlyExit = true;
+      return finish();
+    }
+    if (indexCount >= indices.length) {
+      const nextCapacity = Math.min(
+        Number.isFinite(maxCandidates) ? maxCandidates : Number.POSITIVE_INFINITY,
+        Math.max(indices.length ? indices.length * 2 : 1024, indexCount + 1)
+      );
+      const next = new Uint32Array(nextCapacity);
+      next.set(indices.subarray(0, indexCount));
+      indices = next;
+      if (options.indexBuffer) {
+        options.indexBuffer.buffer = next;
+      }
+    }
+    indices[indexCount] = index;
+    indexCount += 1;
+  }
+  return finish();
 }
 function recordSplatScreenPickProjectedCenter(stats, center) {
   stats.projectedBounds = expandSplatScreenPickCenterBounds(
@@ -13849,6 +13915,12 @@ const _SparkRenderer = class _SparkRenderer extends THREE.Mesh {
         updateMs = readNowMs() - updateStartedAt;
       }
       const collectStats2 = createSplatScreenPickCenterCollectStats();
+      setSplatScreenPickCenterProcessorStats(
+        collectStats2,
+        options.centerProcessor ?? "auto",
+        "cpu",
+        options.centerProcessor === "cpu" ? "requested-cpu" : "gpu-unavailable"
+      );
       const collectStartedAt = readNowMs();
       const hits2 = this.collectSplatScreenPickCenterHits({
         scene,
@@ -14027,6 +14099,12 @@ const _SparkRenderer = class _SparkRenderer extends THREE.Mesh {
       updateMs = readNowMs() - updateStartedAt;
     }
     const collectStats = createSplatScreenPickCenterCollectStats();
+    setSplatScreenPickCenterProcessorStats(
+      collectStats,
+      options.centerProcessor ?? "auto",
+      "cpu",
+      options.centerProcessor === "cpu" ? "requested-cpu" : "gpu-unavailable"
+    );
     const collectStartedAt = readNowMs();
     const indices = this.collectSplatScreenPickCenterIndices({
       scene,
@@ -14144,6 +14222,12 @@ const _SparkRenderer = class _SparkRenderer extends THREE.Mesh {
       updateMs = readNowMs() - updateStartedAt;
     }
     const collectStats = createSplatScreenPickCenterCollectStats();
+    setSplatScreenPickCenterProcessorStats(
+      collectStats,
+      options.centerProcessor ?? "auto",
+      "cpu",
+      options.centerProcessor === "cpu" ? "requested-cpu" : "gpu-unavailable"
+    );
     const collectStartedAt = readNowMs();
     const hit = this.collectNearestSplatScreenPickCenterIndex({
       scene,
@@ -25901,9 +25985,11 @@ export {
   XrHand,
   XrHands,
   collectSplatScreenPickHitsFromRgba8,
+  compactSplatCenterIntersectionBytes,
   constructAxes,
   constructGrid,
   constructSpherePoints,
+  createSplatCenterIntersectionCompactStats,
   createSplatScreenFloodMaskFromRgba8,
   createSplatScreenPickCenterCollectStats,
   decodePlyDcColorChannel,

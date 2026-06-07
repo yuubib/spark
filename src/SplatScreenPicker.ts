@@ -111,6 +111,11 @@ export type SplatScreenFloodMaskRenderStats = {
 
 export type SplatScreenPickRenderMode = "viewport" | "shape";
 export type SplatScreenPickCandidateMode = "rendered-id" | "centers";
+export type SplatScreenPickCenterProcessor = "auto" | "cpu" | "gpu";
+export type SplatScreenPickCenterProcessorMode = "cpu" | "gpu";
+export type SplatScreenPickCenterProcessorFallbackReason =
+  | "requested-cpu"
+  | "gpu-unavailable";
 
 export type SplatScreenPickOptions = {
   scene: THREE.Object3D;
@@ -124,6 +129,7 @@ export type SplatScreenPickOptions = {
   maxCandidates?: number;
   sort?: boolean;
   candidateMode?: SplatScreenPickCandidateMode;
+  centerProcessor?: SplatScreenPickCenterProcessor;
   renderMode?: SplatScreenPickRenderMode;
   onStats?: (stats: SplatScreenPickStats) => void;
 };
@@ -258,6 +264,9 @@ export type SplatScreenPickCollectStats = {
 };
 
 export type SplatScreenPickCenterCollectStats = {
+  requestedProcessor: SplatScreenPickCenterProcessor;
+  processor: SplatScreenPickCenterProcessorMode;
+  fallbackReason?: SplatScreenPickCenterProcessorFallbackReason;
   centerCount: number;
   candidateCenterCount: number;
   maskTestedCenterCount: number;
@@ -267,6 +276,13 @@ export type SplatScreenPickCenterCollectStats = {
   uniqueHitCount: number;
   projectedBounds: SplatScreenPickCenterBounds | null;
   candidateBounds: SplatScreenPickCenterBounds | null;
+  earlyExit: boolean;
+};
+
+export type SplatCenterIntersectionCompactStats = {
+  byteCount: number;
+  candidateByteCount: number;
+  uniqueHitCount: number;
   earlyExit: boolean;
 };
 
@@ -757,6 +773,9 @@ export function collectSplatScreenPickHitsFromRgba8(
 
 export function createSplatScreenPickCenterCollectStats(): SplatScreenPickCenterCollectStats {
   return {
+    requestedProcessor: "cpu",
+    processor: "cpu",
+    fallbackReason: "requested-cpu",
     centerCount: 0,
     candidateCenterCount: 0,
     maskTestedCenterCount: 0,
@@ -768,6 +787,94 @@ export function createSplatScreenPickCenterCollectStats(): SplatScreenPickCenter
     candidateBounds: null,
     earlyExit: false,
   };
+}
+
+export function setSplatScreenPickCenterProcessorStats(
+  stats: SplatScreenPickCenterCollectStats,
+  requestedProcessor: SplatScreenPickCenterProcessor = "auto",
+  processor: SplatScreenPickCenterProcessorMode = "cpu",
+  fallbackReason?: SplatScreenPickCenterProcessorFallbackReason,
+): void {
+  stats.requestedProcessor = requestedProcessor;
+  stats.processor = processor;
+  if (fallbackReason) {
+    stats.fallbackReason = fallbackReason;
+  } else {
+    stats.fallbackReason = undefined;
+  }
+}
+
+export function createSplatCenterIntersectionCompactStats(): SplatCenterIntersectionCompactStats {
+  return {
+    byteCount: 0,
+    candidateByteCount: 0,
+    uniqueHitCount: 0,
+    earlyExit: false,
+  };
+}
+
+export function compactSplatCenterIntersectionBytes(
+  bytes: ArrayLike<number>,
+  options: {
+    maxCandidates?: number;
+    indexBuffer?: SplatScreenPickIndexBuffer;
+    stats?: SplatCenterIntersectionCompactStats;
+  } = {},
+): Uint32Array {
+  const maxCandidates =
+    options.maxCandidates != null
+      ? Math.max(0, Math.floor(options.maxCandidates))
+      : Number.POSITIVE_INFINITY;
+  let indices =
+    options.indexBuffer?.buffer ??
+    new Uint32Array(
+      Math.min(Number.isFinite(maxCandidates) ? maxCandidates : 1024, 1024),
+    );
+  let indexCount = 0;
+  const stats = createSplatCenterIntersectionCompactStats();
+  stats.byteCount = bytes.length;
+
+  const finish = () => {
+    stats.uniqueHitCount = indexCount;
+    if (options.stats) {
+      Object.assign(options.stats, stats);
+    }
+    return indices.subarray(0, indexCount);
+  };
+
+  if (maxCandidates <= 0) {
+    stats.earlyExit = true;
+    return finish();
+  }
+
+  for (let index = 0; index < bytes.length; index += 1) {
+    if ((bytes[index] ?? 0) === 0) {
+      continue;
+    }
+    stats.candidateByteCount += 1;
+    if (indexCount >= maxCandidates) {
+      stats.earlyExit = true;
+      return finish();
+    }
+    if (indexCount >= indices.length) {
+      const nextCapacity = Math.min(
+        Number.isFinite(maxCandidates)
+          ? maxCandidates
+          : Number.POSITIVE_INFINITY,
+        Math.max(indices.length ? indices.length * 2 : 1024, indexCount + 1),
+      );
+      const next = new Uint32Array(nextCapacity);
+      next.set(indices.subarray(0, indexCount));
+      indices = next;
+      if (options.indexBuffer) {
+        options.indexBuffer.buffer = next;
+      }
+    }
+    indices[indexCount] = index;
+    indexCount += 1;
+  }
+
+  return finish();
 }
 
 export function recordSplatScreenPickProjectedCenter(

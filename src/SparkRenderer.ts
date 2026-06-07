@@ -43,6 +43,7 @@ import {
   recordSplatScreenPickCandidateCenter,
   recordSplatScreenPickProjectedCenter,
   resolveSplatScreenPickRenderLayout,
+  setSplatScreenPickCenterProcessorStats,
   splatEditorStateFilterModeToPickUniform,
   testSplatScreenPickCenter,
 } from "./SplatScreenPicker";
@@ -2157,6 +2158,12 @@ export class SparkRenderer extends THREE.Mesh {
       }
 
       const collectStats = createSplatScreenPickCenterCollectStats();
+      setSplatScreenPickCenterProcessorStats(
+        collectStats,
+        options.centerProcessor ?? "auto",
+        "cpu",
+        options.centerProcessor === "cpu" ? "requested-cpu" : "gpu-unavailable",
+      );
       const collectStartedAt = readNowMs();
       const hits = this.collectSplatScreenPickCenterHits({
         scene,
@@ -2351,6 +2358,12 @@ export class SparkRenderer extends THREE.Mesh {
     }
 
     const collectStats = createSplatScreenPickCenterCollectStats();
+    setSplatScreenPickCenterProcessorStats(
+      collectStats,
+      options.centerProcessor ?? "auto",
+      "cpu",
+      options.centerProcessor === "cpu" ? "requested-cpu" : "gpu-unavailable",
+    );
     const collectStartedAt = readNowMs();
     const indices = this.collectSplatScreenPickCenterIndices({
       scene,
@@ -2487,6 +2500,12 @@ export class SparkRenderer extends THREE.Mesh {
     }
 
     const collectStats = createSplatScreenPickCenterCollectStats();
+    setSplatScreenPickCenterProcessorStats(
+      collectStats,
+      options.centerProcessor ?? "auto",
+      "cpu",
+      options.centerProcessor === "cpu" ? "requested-cpu" : "gpu-unavailable",
+    );
     const collectStartedAt = readNowMs();
     const hit = this.collectNearestSplatScreenPickCenterIndex({
       scene,

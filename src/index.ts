@@ -12,6 +12,8 @@ export {
   type SparkRendererOptions,
 } from "./SparkRenderer";
 export {
+  compactSplatCenterIntersectionBytes,
+  createSplatCenterIntersectionCompactStats,
   collectSplatScreenPickHitsFromRgba8,
   createSplatScreenFloodMaskFromRgba8,
   editorSelectionOperationToPickFilterMode,
@@ -29,9 +31,13 @@ export {
   type SplatScreenFloodMaskShape,
   type SplatScreenFloodMaskWorkspace,
   type SplatScreenPickCandidateMode,
+  type SplatScreenPickCenterProcessor,
+  type SplatScreenPickCenterProcessorFallbackReason,
+  type SplatScreenPickCenterProcessorMode,
   type SplatScreenPickCenterBoundsMode,
   type SplatScreenPickCenterCollectStats,
   type SplatScreenPickCollectStats,
+  type SplatCenterIntersectionCompactStats,
   type SplatScreenPickHit,
   type SplatScreenPickIndexBuffer,
   type SplatScreenPickIndexOptions,

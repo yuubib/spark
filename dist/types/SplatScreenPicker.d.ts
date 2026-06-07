@@ -95,6 +95,9 @@ export type SplatScreenFloodMaskRenderStats = {
 };
 export type SplatScreenPickRenderMode = "viewport" | "shape";
 export type SplatScreenPickCandidateMode = "rendered-id" | "centers";
+export type SplatScreenPickCenterProcessor = "auto" | "cpu" | "gpu";
+export type SplatScreenPickCenterProcessorMode = "cpu" | "gpu";
+export type SplatScreenPickCenterProcessorFallbackReason = "requested-cpu" | "gpu-unavailable";
 export type SplatScreenPickOptions = {
     scene: THREE.Object3D;
     camera: THREE.Camera;
@@ -107,6 +110,7 @@ export type SplatScreenPickOptions = {
     maxCandidates?: number;
     sort?: boolean;
     candidateMode?: SplatScreenPickCandidateMode;
+    centerProcessor?: SplatScreenPickCenterProcessor;
     renderMode?: SplatScreenPickRenderMode;
     onStats?: (stats: SplatScreenPickStats) => void;
 };
@@ -215,6 +219,9 @@ export type SplatScreenPickCollectStats = {
     earlyExit: boolean;
 };
 export type SplatScreenPickCenterCollectStats = {
+    requestedProcessor: SplatScreenPickCenterProcessor;
+    processor: SplatScreenPickCenterProcessorMode;
+    fallbackReason?: SplatScreenPickCenterProcessorFallbackReason;
     centerCount: number;
     candidateCenterCount: number;
     maskTestedCenterCount: number;
@@ -224,6 +231,12 @@ export type SplatScreenPickCenterCollectStats = {
     uniqueHitCount: number;
     projectedBounds: SplatScreenPickCenterBounds | null;
     candidateBounds: SplatScreenPickCenterBounds | null;
+    earlyExit: boolean;
+};
+export type SplatCenterIntersectionCompactStats = {
+    byteCount: number;
+    candidateByteCount: number;
+    uniqueHitCount: number;
     earlyExit: boolean;
 };
 export type SplatScreenPickStats = {
@@ -270,6 +283,13 @@ export declare function collectSplatScreenPickHitsFromRgba8(pixels: ArrayLike<nu
     stats?: SplatScreenPickCollectStats;
 }): SplatScreenPickPixelHit[];
 export declare function createSplatScreenPickCenterCollectStats(): SplatScreenPickCenterCollectStats;
+export declare function setSplatScreenPickCenterProcessorStats(stats: SplatScreenPickCenterCollectStats, requestedProcessor?: SplatScreenPickCenterProcessor, processor?: SplatScreenPickCenterProcessorMode, fallbackReason?: SplatScreenPickCenterProcessorFallbackReason): void;
+export declare function createSplatCenterIntersectionCompactStats(): SplatCenterIntersectionCompactStats;
+export declare function compactSplatCenterIntersectionBytes(bytes: ArrayLike<number>, options?: {
+    maxCandidates?: number;
+    indexBuffer?: SplatScreenPickIndexBuffer;
+    stats?: SplatCenterIntersectionCompactStats;
+}): Uint32Array;
 export declare function recordSplatScreenPickProjectedCenter(stats: SplatScreenPickCenterCollectStats, center: SplatScreenPickProjectedCenter): void;
 export declare function recordSplatScreenPickCandidateCenter(stats: SplatScreenPickCenterCollectStats, center: SplatScreenPickProjectedCenter): void;
 export declare function projectSplatScreenPickCenter(objectToClipElements: ArrayLike<number>, centerX: number, centerY: number, centerZ: number, viewportWidth: number, viewportHeight: number, target: SplatScreenPickProjectedCenter): boolean;

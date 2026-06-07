@@ -107,6 +107,30 @@ assert.deepStrictEqual(stats?.centerCollect?.candidateBounds, {
   maxNdcZ: -0.8,
 });
 
+let cpuProcessorStats: SplatScreenPickStats | null = null;
+const explicitCpuIndices = await sparkRenderer.pickSplatCandidateIndices({
+  target: mesh,
+  scene,
+  camera,
+  candidateMode: "centers",
+  centerProcessor: "cpu",
+  shape: { kind: "rect", x: 0, y: 0, width: 1, height: 1 },
+  width: 100,
+  height: 100,
+  operation: "set",
+  onStats: (nextStats) => {
+    cpuProcessorStats = nextStats;
+  },
+});
+
+assert.deepStrictEqual([...(explicitCpuIndices ?? [])], [0, 1]);
+assert.strictEqual(cpuProcessorStats?.centerCollect?.requestedProcessor, "cpu");
+assert.strictEqual(cpuProcessorStats?.centerCollect?.processor, "cpu");
+assert.strictEqual(
+  cpuProcessorStats?.centerCollect?.fallbackReason,
+  "requested-cpu",
+);
+
 const capped = await sparkRenderer.pickSplatCandidateIndices({
   target: mesh,
   scene,
