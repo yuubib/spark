@@ -3,6 +3,7 @@ import assert from "node:assert";
 import * as THREE from "three";
 
 import {
+  SPLAT_EDITOR_STATE_DELETED,
   SPLAT_EDITOR_STATE_SELECTED,
   SplatEditorState,
   SplatMesh,
@@ -179,6 +180,88 @@ await SplatMesh.staticInitialized;
   });
   assertVectorClose(bounds.min, new THREE.Vector3(10, 2, 0));
   assertVectorClose(bounds.max, new THREE.Vector3(10, 2, 0));
+  assert.strictEqual(rawCenterCalls, 1);
+
+  mesh.dispose();
+}
+
+{
+  const state = new SplatEditorState(2);
+  state.setRange(0, 2, SPLAT_EDITOR_STATE_DELETED);
+  let rawCenterCalls = 0;
+  const source: SplatSource = {
+    prepareFetchSplat() {},
+    dispose() {},
+    getNumSplats: () => 2,
+    hasRgbDir: () => false,
+    getNumSh: () => 0,
+    setMaxSh() {},
+    fetchSplat() {
+      throw new Error("fetchSplat is not used by this test");
+    },
+    getEditorState: () => state,
+    ensureEditorState: () => state,
+    forEachSplat() {
+      throw new Error("deleted uniform state bounds should not decode splats");
+    },
+    forEachSplatCenterRaw() {
+      rawCenterCalls += 1;
+      throw new Error("deleted uniform state bounds should not read centers");
+    },
+  };
+  const mesh = new SplatMesh({ splats: source });
+  await mesh.initialized;
+
+  const target = new THREE.Box3();
+  target.set(new THREE.Vector3(-1, -1, -1), new THREE.Vector3(1, 1, 1));
+  const bounds = mesh.getSplatStateBoundingBox({
+    centersOnly: true,
+    mode: "visible",
+    target,
+  });
+  assert.strictEqual(bounds, target);
+  assert.strictEqual(bounds.isEmpty(), true);
+  assert.strictEqual(rawCenterCalls, 0);
+
+  mesh.dispose();
+}
+
+{
+  const state = new SplatEditorState(2);
+  let rawCenterCalls = 0;
+  const source: SplatSource = {
+    prepareFetchSplat() {},
+    dispose() {},
+    getNumSplats: () => 2,
+    hasRgbDir: () => false,
+    getNumSh: () => 0,
+    setMaxSh() {},
+    fetchSplat() {
+      throw new Error("fetchSplat is not used by this test");
+    },
+    getEditorState: () => state,
+    ensureEditorState: () => state,
+    forEachSplat() {
+      throw new Error("center-only uniform bounds should not decode splats");
+    },
+    forEachSplatCenterRaw(callback) {
+      rawCenterCalls += 1;
+      callback(0, -1, 2, 0);
+      callback(1, 3, -4, 5);
+    },
+  };
+  const mesh = new SplatMesh({ splats: source });
+  await mesh.initialized;
+
+  const target = new THREE.Box3();
+  const bounds = mesh.getSplatStateBoundingBox({
+    centersOnly: true,
+    mode: "visible",
+    target,
+  });
+  assert.strictEqual(bounds, target);
+  assertVectorClose(bounds.min, new THREE.Vector3(-1, -4, 0));
+  assertVectorClose(bounds.max, new THREE.Vector3(3, 2, 5));
   assert.strictEqual(rawCenterCalls, 1);
 
   mesh.dispose();

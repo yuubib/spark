@@ -18146,6 +18146,16 @@ const _SplatMesh = class _SplatMesh extends SplatGenerator {
     box.makeEmpty();
     const editorState = this.getEditorState();
     const selectedTransform = applySelectedTransform ? this.getSelectedSplatTransform() : null;
+    const uniformStateBits = (editorState == null ? void 0 : editorState.getUniformStateBits(this.numSplats)) ?? null;
+    if (uniformStateBits !== null) {
+      if (!matchesSplatEditorStateBits(uniformStateBits, mode)) {
+        return box;
+      }
+      if (!selectedTransform || uniformStateBits !== SPLAT_EDITOR_STATE_SELECTED) {
+        box.copy(this.getBoundingBox(centersOnly));
+        return box;
+      }
+    }
     const corners = new THREE__namespace.Vector3();
     const signs = [-1, 1];
     if (centersOnly) {

@@ -1678,6 +1678,20 @@ export class SplatMesh extends SplatGenerator {
     const selectedTransform = applySelectedTransform
       ? this.getSelectedSplatTransform()
       : null;
+    const uniformStateBits =
+      editorState?.getUniformStateBits(this.numSplats) ?? null;
+    if (uniformStateBits !== null) {
+      if (!matchesSplatEditorStateBits(uniformStateBits, mode)) {
+        return box;
+      }
+      if (
+        !selectedTransform ||
+        uniformStateBits !== SPLAT_EDITOR_STATE_SELECTED
+      ) {
+        box.copy(this.getBoundingBox(centersOnly));
+        return box;
+      }
+    }
     const corners = new THREE.Vector3();
     const signs = [-1, 1];
 
