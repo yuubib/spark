@@ -598,6 +598,13 @@ assert.deepStrictEqual(
   [0, 2],
 );
 
+let nearestTransformRawIterations = 0;
+const originalNearestTransformRawIterator =
+  transformMesh.forEachSplatCenterRaw.bind(transformMesh);
+transformMesh.forEachSplatCenterRaw = (callback) => {
+  nearestTransformRawIterations += 1;
+  originalNearestTransformRawIterator(callback);
+};
 const nearestTransformed = await transformRenderer.pickNearestSplatCenterIndex({
   target: transformMesh,
   scene: transformScene,
@@ -608,6 +615,7 @@ const nearestTransformed = await transformRenderer.pickNearestSplatCenterIndex({
   editorStateMode: "all",
 });
 assert.strictEqual(nearestTransformed?.index, 0);
+assert.strictEqual(nearestTransformRawIterations, 1);
 
 transformMesh.clearSplatStateSelection();
 transformMesh.selectSplatStateCandidates([2], "set");
@@ -1026,7 +1034,7 @@ assert.deepStrictEqual(nearest, {
   screenDistanceSq: 25,
   ndcZ: -0.8,
 });
-assert.strictEqual(rawCenterIteratorUsed, true);
+assert.strictEqual(rawCenterIteratorUsed, false);
 assert.strictEqual(nearestStats?.mappedHitCount, 1);
 assert.strictEqual(nearestStats?.sourceStableHitCount, 1);
 assert.strictEqual(nearestStats?.centerCollect?.candidateCenterCount, 1);
@@ -1053,6 +1061,97 @@ const maskedNearest = await sparkRenderer.pickNearestSplatCenterIndex({
 });
 
 assert.strictEqual(maskedNearest?.index, 0);
+
+const nearestCacheMesh = new SplatMesh({
+  constructSplats: (splats) => {
+    splats.pushSplat(
+      new THREE.Vector3(0, 0, -1),
+      new THREE.Vector3(0.1, 0.1, 0.1),
+      new THREE.Quaternion(),
+      1,
+      new THREE.Color(1, 0, 0),
+    );
+    splats.pushSplat(
+      new THREE.Vector3(0, 0, 0),
+      new THREE.Vector3(0.1, 0.1, 0.1),
+      new THREE.Quaternion(),
+      1,
+      new THREE.Color(0, 1, 0),
+    );
+    splats.pushSplat(
+      new THREE.Vector3(0.75, 0, 0),
+      new THREE.Vector3(0.1, 0.1, 0.1),
+      new THREE.Quaternion(),
+      1,
+      new THREE.Color(0, 0, 1),
+    );
+  },
+});
+await nearestCacheMesh.initialized;
+scene.add(nearestCacheMesh);
+let nearestCacheRawIterations = 0;
+const originalNearestCacheRawIterator =
+  nearestCacheMesh.forEachSplatCenterRaw.bind(nearestCacheMesh);
+nearestCacheMesh.forEachSplatCenterRaw = (callback) => {
+  nearestCacheRawIterations += 1;
+  originalNearestCacheRawIterator(callback);
+};
+
+const nearestCacheFirst = await sparkRenderer.pickNearestSplatCenterIndex({
+  target: nearestCacheMesh,
+  scene,
+  camera,
+  candidateMode: "centers",
+  shape: { kind: "point", x: 0.5, y: 0.5, radiusPixels: 3 },
+  width: 100,
+  height: 100,
+  operation: "set",
+});
+const nearestCacheSecond = await sparkRenderer.pickNearestSplatCenterIndex({
+  target: nearestCacheMesh,
+  scene,
+  camera,
+  candidateMode: "centers",
+  shape: { kind: "point", x: 0.5, y: 0.5, radiusPixels: 3 },
+  width: 100,
+  height: 100,
+  operation: "set",
+});
+
+assert.strictEqual(nearestCacheFirst?.index, 1);
+assert.strictEqual(nearestCacheSecond?.index, 1);
+assert.strictEqual(nearestCacheRawIterations, 1);
+
+const nearestCacheViewportMiss =
+  await sparkRenderer.pickNearestSplatCenterIndex({
+    target: nearestCacheMesh,
+    scene,
+    camera,
+    candidateMode: "centers",
+    shape: { kind: "point", x: 0.5, y: 0.5, radiusPixels: 3 },
+    width: 101,
+    height: 100,
+    operation: "set",
+  });
+const nearestCacheViewportHit = await sparkRenderer.pickNearestSplatCenterIndex(
+  {
+    target: nearestCacheMesh,
+    scene,
+    camera,
+    candidateMode: "centers",
+    shape: { kind: "point", x: 0.5, y: 0.5, radiusPixels: 3 },
+    width: 101,
+    height: 100,
+    operation: "set",
+  },
+);
+
+assert.strictEqual(nearestCacheViewportMiss?.index, 1);
+assert.strictEqual(nearestCacheRawIterations, 2);
+assert.strictEqual(nearestCacheViewportHit?.index, 1);
+assert.strictEqual(nearestCacheRawIterations, 2);
+scene.remove(nearestCacheMesh);
+nearestCacheMesh.dispose();
 
 mesh.clearSplatStateSelection();
 const selectedShortcutRawIterator = mesh.forEachSplatCenterRaw;
