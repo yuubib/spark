@@ -2081,6 +2081,7 @@ export class SparkRenderer extends THREE.Mesh {
       renderer.setScissorTest(scissorTest);
       renderer.setClearColor(clearColor, clearAlpha);
       this.resetRenderState(renderer, renderState);
+      this.setDirty();
     }
   }
 

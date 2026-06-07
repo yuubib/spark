@@ -13189,6 +13189,7 @@ const _SparkRenderer = class _SparkRenderer extends THREE__namespace.Mesh {
       renderer.setScissorTest(scissorTest);
       renderer.setClearColor(clearColor, clearAlpha);
       this.resetRenderState(renderer, renderState);
+      this.setDirty();
     }
   }
   createScreenPickViewOffsetCamera(camera, viewOffset) {
