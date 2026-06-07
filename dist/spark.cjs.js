@@ -17091,6 +17091,20 @@ function normalizeColorMatchThreshold(threshold = 0) {
 function splatColorMatchesThreshold(color, seed, threshold) {
   return Math.abs(color.r - seed.r) <= threshold && Math.abs(color.g - seed.g) <= threshold && Math.abs(color.b - seed.b) <= threshold;
 }
+const SPLAT_COLOR_MATCH_INITIAL_INDEX_CAPACITY = 64 * 1024;
+function getSplatColorMatchIndexLimit(sourceCount, maxMatches) {
+  const safeSourceCount = Math.max(0, Math.floor(sourceCount));
+  return Math.min(
+    safeSourceCount,
+    Number.isFinite(maxMatches) ? Math.max(0, Math.floor(maxMatches)) : safeSourceCount
+  );
+}
+function getSplatColorMatchInitialIndexCapacity(sourceCount, maxMatches) {
+  return Math.min(
+    getSplatColorMatchIndexLimit(sourceCount, maxMatches),
+    SPLAT_COLOR_MATCH_INITIAL_INDEX_CAPACITY
+  );
+}
 function copySplatColorRaw(color) {
   return {
     r: color.r,
@@ -17529,8 +17543,10 @@ const _SplatMesh = class _SplatMesh extends SplatGenerator {
     }
     const safeThreshold = normalizeColorMatchThreshold(threshold);
     const max2 = maxMatches != null ? Math.max(0, Math.floor(maxMatches)) : Number.POSITIVE_INFINITY;
+    const sourceCount = source.getNumSplats();
+    const indexLimit = getSplatColorMatchIndexLimit(sourceCount, max2);
     let indices = new Uint32Array(
-      Math.min(Number.isFinite(max2) ? max2 : 1024, 1024)
+      getSplatColorMatchInitialIndexCapacity(sourceCount, max2)
     );
     let matched = 0;
     let tested = 0;
@@ -17545,9 +17561,11 @@ const _SplatMesh = class _SplatMesh extends SplatGenerator {
         return false;
       }
       if (matched >= indices.length) {
-        const next = new Uint32Array(
-          indices.length ? indices.length * 2 : 1024
+        const nextCapacity = Math.min(
+          indexLimit,
+          Math.max(indices.length ? indices.length * 2 : 1024, matched + 1)
         );
+        const next = new Uint32Array(nextCapacity);
         next.set(indices);
         indices = next;
       }
@@ -17577,8 +17595,7 @@ const _SplatMesh = class _SplatMesh extends SplatGenerator {
       return true;
     };
     if (this.hasIndexedSplatColorMatches()) {
-      const count = source.getNumSplats();
-      for (let index = 0; index < count; index++) {
+      for (let index = 0; index < sourceCount; index++) {
         if (!this.getSplatColorMatchRaw(index, color)) {
           continue;
         }

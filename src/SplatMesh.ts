@@ -345,6 +345,31 @@ function splatColorMatchesThreshold(
   );
 }
 
+const SPLAT_COLOR_MATCH_INITIAL_INDEX_CAPACITY = 64 * 1024;
+
+function getSplatColorMatchIndexLimit(
+  sourceCount: number,
+  maxMatches: number,
+): number {
+  const safeSourceCount = Math.max(0, Math.floor(sourceCount));
+  return Math.min(
+    safeSourceCount,
+    Number.isFinite(maxMatches)
+      ? Math.max(0, Math.floor(maxMatches))
+      : safeSourceCount,
+  );
+}
+
+function getSplatColorMatchInitialIndexCapacity(
+  sourceCount: number,
+  maxMatches: number,
+): number {
+  return Math.min(
+    getSplatColorMatchIndexLimit(sourceCount, maxMatches),
+    SPLAT_COLOR_MATCH_INITIAL_INDEX_CAPACITY,
+  );
+}
+
 function copySplatColorRaw(color: SplatColorRaw): SplatColorRaw {
   return {
     r: color.r,
@@ -1008,8 +1033,10 @@ export class SplatMesh extends SplatGenerator {
       maxMatches != null
         ? Math.max(0, Math.floor(maxMatches))
         : Number.POSITIVE_INFINITY;
+    const sourceCount = source.getNumSplats();
+    const indexLimit = getSplatColorMatchIndexLimit(sourceCount, max);
     let indices = new Uint32Array(
-      Math.min(Number.isFinite(max) ? max : 1024, 1024),
+      getSplatColorMatchInitialIndexCapacity(sourceCount, max),
     );
     let matched = 0;
     let tested = 0;
@@ -1024,9 +1051,11 @@ export class SplatMesh extends SplatGenerator {
         return false;
       }
       if (matched >= indices.length) {
-        const next = new Uint32Array(
-          indices.length ? indices.length * 2 : 1024,
+        const nextCapacity = Math.min(
+          indexLimit,
+          Math.max(indices.length ? indices.length * 2 : 1024, matched + 1),
         );
+        const next = new Uint32Array(nextCapacity);
         next.set(indices);
         indices = next;
       }
@@ -1057,8 +1086,7 @@ export class SplatMesh extends SplatGenerator {
     };
 
     if (this.hasIndexedSplatColorMatches()) {
-      const count = source.getNumSplats();
-      for (let index = 0; index < count; index++) {
+      for (let index = 0; index < sourceCount; index++) {
         if (!this.getSplatColorMatchRaw(index, color)) {
           continue;
         }

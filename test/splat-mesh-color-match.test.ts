@@ -139,6 +139,7 @@ assert.strictEqual(allMatches?.tested, 5);
 assert.strictEqual(allMatches?.matched, 4);
 assert.strictEqual(allMatches?.stateRejected, 0);
 assert.strictEqual(allMatches?.earlyExit, false);
+assert.strictEqual(allMatches?.indices.buffer.byteLength, 5 * 4);
 assert.ok(indexedColorReads >= 6);
 
 const originalGetEditorState = mesh.getEditorState.bind(mesh);
@@ -182,6 +183,7 @@ const capped = mesh.findSplatColorMatches({
 assert.deepStrictEqual([...(capped?.indices ?? [])], [0]);
 assert.strictEqual(capped?.threshold, 1);
 assert.strictEqual(capped?.earlyExit, true);
+assert.strictEqual(capped?.indices.buffer.byteLength, 1 * 4);
 
 const clamped = mesh.findSplatColorMatches({
   seedIndex: 0,
