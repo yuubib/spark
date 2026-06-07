@@ -582,6 +582,141 @@ import {
 }
 
 {
+  const state = new SplatEditorState(10000);
+  state.setList([9000, 10, 4099], SPLAT_EDITOR_STATE_SELECTED, "set");
+  state.uploadDirty();
+  state.clearRenderDirtyRanges();
+
+  const result = state.clearSelection({
+    recordChanges: true,
+    changeFormat: "compact",
+  });
+
+  assert.strictEqual(result.changed, 3);
+  assert.strictEqual(result.changeSet?.kind, "list");
+  assert.deepStrictEqual(result.changes, [
+    {
+      index: 10,
+      previous: SPLAT_EDITOR_STATE_SELECTED,
+      next: SPLAT_EDITOR_STATE_NONE,
+    },
+    {
+      index: 4099,
+      previous: SPLAT_EDITOR_STATE_SELECTED,
+      next: SPLAT_EDITOR_STATE_NONE,
+    },
+    {
+      index: 9000,
+      previous: SPLAT_EDITOR_STATE_SELECTED,
+      next: SPLAT_EDITOR_STATE_NONE,
+    },
+  ]);
+  assert.deepStrictEqual(result.counts, {
+    selected: 0,
+    locked: 0,
+    deleted: 0,
+  });
+  assert.deepStrictEqual(state.getDirtyRanges(), [
+    { start: 10, count: 1 },
+    { start: 4099, count: 1 },
+    { start: 9000, count: 1 },
+  ]);
+  assert.deepStrictEqual(state.getRenderDirtyRanges(), [
+    { start: 10, count: 1 },
+    { start: 4099, count: 1 },
+    { start: 9000, count: 1 },
+  ]);
+}
+
+{
+  const state = new SplatEditorState(10000);
+  state.setList([9000, 10, 4099], SPLAT_EDITOR_STATE_SELECTED, "set");
+  state.uploadDirty();
+  state.clearRenderDirtyRanges();
+  const visibilityVersion = state.visibilityVersion;
+
+  const result = state.hideSelected({
+    recordChanges: true,
+    changeFormat: "compact",
+  });
+
+  assert.strictEqual(result.changed, 3);
+  assert.strictEqual(result.changeSet?.kind, "list");
+  assert.deepStrictEqual(result.changes, [
+    {
+      index: 10,
+      previous: SPLAT_EDITOR_STATE_SELECTED,
+      next: SPLAT_EDITOR_STATE_SELECTED | SPLAT_EDITOR_STATE_LOCKED,
+    },
+    {
+      index: 4099,
+      previous: SPLAT_EDITOR_STATE_SELECTED,
+      next: SPLAT_EDITOR_STATE_SELECTED | SPLAT_EDITOR_STATE_LOCKED,
+    },
+    {
+      index: 9000,
+      previous: SPLAT_EDITOR_STATE_SELECTED,
+      next: SPLAT_EDITOR_STATE_SELECTED | SPLAT_EDITOR_STATE_LOCKED,
+    },
+  ]);
+  assert.deepStrictEqual(result.counts, {
+    selected: 0,
+    locked: 3,
+    deleted: 0,
+  });
+  assert.strictEqual(state.visibilityVersion, visibilityVersion);
+  assert.deepStrictEqual(state.getDirtyRanges(), [
+    { start: 10, count: 1 },
+    { start: 4099, count: 1 },
+    { start: 9000, count: 1 },
+  ]);
+}
+
+{
+  const state = new SplatEditorState(10000);
+  state.setList([9000, 10, 4099], SPLAT_EDITOR_STATE_SELECTED, "set");
+  state.uploadDirty();
+  state.clearRenderDirtyRanges();
+  const visibilityVersion = state.visibilityVersion;
+
+  const result = state.deleteSelected({
+    recordChanges: true,
+    changeFormat: "compact",
+  });
+
+  assert.strictEqual(result.changed, 3);
+  assert.strictEqual(result.changeSet?.kind, "list");
+  assert.deepStrictEqual(result.changes, [
+    {
+      index: 10,
+      previous: SPLAT_EDITOR_STATE_SELECTED,
+      next: SPLAT_EDITOR_STATE_SELECTED | SPLAT_EDITOR_STATE_DELETED,
+    },
+    {
+      index: 4099,
+      previous: SPLAT_EDITOR_STATE_SELECTED,
+      next: SPLAT_EDITOR_STATE_SELECTED | SPLAT_EDITOR_STATE_DELETED,
+    },
+    {
+      index: 9000,
+      previous: SPLAT_EDITOR_STATE_SELECTED,
+      next: SPLAT_EDITOR_STATE_SELECTED | SPLAT_EDITOR_STATE_DELETED,
+    },
+  ]);
+  assert.deepStrictEqual(result.counts, {
+    selected: 0,
+    locked: 0,
+    deleted: 3,
+  });
+  assert.strictEqual(state.visibilityVersion, visibilityVersion + 3);
+  assert.deepStrictEqual(state.getDirtyRanges(), [
+    { start: 10, count: 1 },
+    { start: 4099, count: 1 },
+    { start: 9000, count: 1 },
+  ]);
+}
+
+{
   const state = new SplatEditorState(64);
   state.uploadDirty();
   state.clearRenderDirtyRanges();

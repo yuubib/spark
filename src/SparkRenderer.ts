@@ -2114,7 +2114,7 @@ export class SparkRenderer extends THREE.Mesh {
       renderer.clear(true, true, true);
       SparkRenderer.sparkOverride = this;
       renderer.render(this, pickCamera);
-      await renderer.readRenderTargetPixelsAsync(
+      renderer.readRenderTargetPixels(
         target,
         readRect.x,
         target.height - readRect.y - readRect.height,

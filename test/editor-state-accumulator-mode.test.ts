@@ -1,6 +1,10 @@
 import assert from "node:assert";
 
-import { SplatAccumulator, SplatMesh } from "../dist/spark.module.js";
+import {
+  SplatAccumulator,
+  SplatEditorState,
+  SplatMesh,
+} from "../dist/spark.module.js";
 
 function readVersions(mesh: InstanceType<typeof SplatMesh>) {
   return {
@@ -23,6 +27,14 @@ type ProgramPreparingAccumulator = InstanceType<typeof SplatAccumulator> & {
     covGenerator?: unknown,
   ): { program: { shader: string } };
 };
+
+type EditorStateTextureMesh = InstanceType<typeof SplatMesh> & {
+  context: { editorStateTexture: { value: unknown } };
+};
+
+function readEditorStateTexture(mesh: InstanceType<typeof SplatMesh>): unknown {
+  return (mesh as EditorStateTextureMesh).context.editorStateTexture.value;
+}
 
 function compileGeneratedShader(mesh: InstanceType<typeof SplatMesh>): string {
   const generatorMesh = mesh as GeneratorConstructableMesh;
@@ -77,6 +89,42 @@ assertGeneratorVisibilityBaking({
   covSplats: true,
   expected: false,
 });
+
+{
+  const mesh = new SplatMesh({ editorStateRenderMode: "accumulator" });
+  const state = mesh.ensureEditorState(10000);
+
+  assert.strictEqual(state.texture, null);
+  assert.strictEqual(
+    readEditorStateTexture(mesh),
+    SplatEditorState.emptyTexture,
+  );
+
+  mesh.selectAllSplatState({
+    recordChanges: true,
+    changeFormat: "compact",
+  });
+  assert.strictEqual(state.texture, null);
+  assert.strictEqual(
+    readEditorStateTexture(mesh),
+    SplatEditorState.emptyTexture,
+  );
+  assert.deepStrictEqual(state.getDirtyRanges(), [
+    { start: 0, count: state.maxSplats },
+  ]);
+
+  assert.strictEqual(mesh.setSelectedSplatTransform(), true);
+  assert.ok(state.texture);
+  assert.strictEqual(readEditorStateTexture(mesh), state.texture);
+
+  assert.strictEqual(mesh.clearSelectedSplatTransform(), true);
+  assert.strictEqual(
+    readEditorStateTexture(mesh),
+    SplatEditorState.emptyTexture,
+  );
+
+  mesh.dispose();
+}
 
 {
   const mesh = new SplatMesh({ editorStateRenderMode: "accumulator" });

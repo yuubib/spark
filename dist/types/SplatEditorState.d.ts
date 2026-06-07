@@ -131,6 +131,7 @@ export declare class SplatEditorState {
     uploadDirty(): THREE.DataArrayTexture;
     uploadDirtyWithResult(renderer?: THREE.WebGLRenderer): SplatEditorStateUploadResult;
     getTexture(): THREE.DataArrayTexture;
+    deferDirtyTextureUpload(): void;
     private clearDirty;
     private uploadDirtySpans;
     private assertIndex;
@@ -151,6 +152,7 @@ export declare class SplatEditorState {
     private setUnchecked;
     private selectCandidateSetDense;
     private selectCandidateSetSparse;
+    private commitSparseSelectedMutation;
     private setMutationUnchecked;
     private updateCounts;
     private updateSelectedIndex;

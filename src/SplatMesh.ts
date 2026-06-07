@@ -994,6 +994,7 @@ export class SplatMesh extends SplatGenerator {
     this.context.editorSelectedTransformTranslate.value.copy(nextTranslate);
     this.context.editorSelectedTransformRotate.value.copy(nextRotate);
     this.context.editorSelectedTransformScale.value = scale;
+    this.updateEditorStateContext(this.getEditorState());
     this.updateVersion();
     return true;
   }
@@ -1008,6 +1009,7 @@ export class SplatMesh extends SplatGenerator {
     this.context.editorSelectedTransformTranslate.value.set(0, 0, 0);
     this.context.editorSelectedTransformRotate.value.identity();
     this.context.editorSelectedTransformScale.value = 1;
+    this.updateEditorStateContext(this.getEditorState());
     this.updateVersion();
     return true;
   }
@@ -1276,11 +1278,19 @@ export class SplatMesh extends SplatGenerator {
     state: SplatEditorState | null,
     renderer?: THREE.WebGLRenderer,
   ): void {
+    const needsSourceTexture =
+      this.editorStateRenderMode === "generator" ||
+      this.context.editorSelectedTransformEnabled.value;
+
     this.context.editorStateEnabled.value = state != null;
-    this.context.editorStateTexture.value =
-      (renderer
-        ? state?.uploadDirtyWithResult(renderer).texture
-        : state?.getTexture()) ?? SplatEditorState.emptyTexture;
+    if (state && needsSourceTexture) {
+      this.context.editorStateTexture.value = renderer
+        ? state.uploadDirtyWithResult(renderer).texture
+        : state.getTexture();
+    } else {
+      state?.deferDirtyTextureUpload();
+      this.context.editorStateTexture.value = SplatEditorState.emptyTexture;
+    }
     if (state) {
       this.context.editorSelectedColor.value.copy(state.selectedColor);
       this.context.editorLockedColor.value.copy(state.lockedColor);

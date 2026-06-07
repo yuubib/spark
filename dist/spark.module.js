@@ -7101,6 +7101,13 @@ const _SplatEditorState = class _SplatEditorState {
       );
     }
     const changes = createMutationChanges(options);
+    const sparseResult = this.commitSparseSelectedMutation(
+      SPLAT_EDITOR_STATE_NONE,
+      changes
+    );
+    if (sparseResult) {
+      return sparseResult;
+    }
     const dirtyIndices = [];
     let fullRange = false;
     let changed = 0;
@@ -7194,6 +7201,13 @@ const _SplatEditorState = class _SplatEditorState {
       );
     }
     const changes = createMutationChanges(options);
+    const sparseResult = this.commitSparseSelectedMutation(
+      SPLAT_EDITOR_STATE_SELECTED | SPLAT_EDITOR_STATE_LOCKED,
+      changes
+    );
+    if (sparseResult) {
+      return sparseResult;
+    }
     const dirtyIndices = [];
     let fullRange = false;
     let changed = 0;
@@ -7246,6 +7260,13 @@ const _SplatEditorState = class _SplatEditorState {
       );
     }
     const changes = createMutationChanges(options);
+    const sparseResult = this.commitSparseSelectedMutation(
+      SPLAT_EDITOR_STATE_SELECTED | SPLAT_EDITOR_STATE_DELETED,
+      changes
+    );
+    if (sparseResult) {
+      return sparseResult;
+    }
     const dirtyIndices = [];
     let fullRange = false;
     let changed = 0;
@@ -7549,6 +7570,14 @@ const _SplatEditorState = class _SplatEditorState {
     }
     return this.texture;
   }
+  deferDirtyTextureUpload() {
+    if (this.maxSplats <= 0 || !this.fullTextureUploadPending && !this.dirtyAll && this.dirtyRanges.length === 0) {
+      return;
+    }
+    this.fullTextureUploadPending = true;
+    this.dirtyAll = true;
+    this.dirtyRanges = [];
+  }
   clearDirty() {
     this.dirtyAll = false;
     this.dirtyRanges = [];
@@ -7849,6 +7878,25 @@ const _SplatEditorState = class _SplatEditorState {
     let fullRange = false;
     let changed = 0;
     for (const { index, next } of mutations) {
+      if (this.setMutationUnchecked(index, next, changes)) {
+        changed++;
+        fullRange || (fullRange = this.collectDirtyIndex(dirtyIndices, index));
+      }
+    }
+    return this.commitMutation(changed, dirtyIndices, fullRange, changes);
+  }
+  commitSparseSelectedMutation(next, changes) {
+    if (this.selected <= 0) {
+      return this.commitMutation(0, [], false, changes);
+    }
+    if (!this.ensureSelectedIndicesCompleteForSparse()) {
+      return null;
+    }
+    const indices = [...this.selectedIndices].sort((a, b) => a - b);
+    const dirtyIndices = [];
+    let fullRange = false;
+    let changed = 0;
+    for (const index of indices) {
       if (this.setMutationUnchecked(index, next, changes)) {
         changed++;
         fullRange || (fullRange = this.collectDirtyIndex(dirtyIndices, index));
@@ -13246,7 +13294,7 @@ const _SparkRenderer = class _SparkRenderer extends THREE.Mesh {
       renderer.clear(true, true, true);
       _SparkRenderer.sparkOverride = this;
       renderer.render(this, pickCamera);
-      await renderer.readRenderTargetPixelsAsync(
+      renderer.readRenderTargetPixels(
         target,
         readRect.x,
         target.height - readRect.y - readRect.height,
@@ -15121,6 +15169,7 @@ const _SplatMesh = class _SplatMesh extends SplatGenerator {
     this.context.editorSelectedTransformTranslate.value.copy(nextTranslate);
     this.context.editorSelectedTransformRotate.value.copy(nextRotate);
     this.context.editorSelectedTransformScale.value = scale;
+    this.updateEditorStateContext(this.getEditorState());
     this.updateVersion();
     return true;
   }
@@ -15133,6 +15182,7 @@ const _SplatMesh = class _SplatMesh extends SplatGenerator {
     this.context.editorSelectedTransformTranslate.value.set(0, 0, 0);
     this.context.editorSelectedTransformRotate.value.identity();
     this.context.editorSelectedTransformScale.value = 1;
+    this.updateEditorStateContext(this.getEditorState());
     this.updateVersion();
     return true;
   }
@@ -15340,8 +15390,14 @@ const _SplatMesh = class _SplatMesh extends SplatGenerator {
     this.updateRenderVersion();
   }
   updateEditorStateContext(state, renderer) {
+    const needsSourceTexture = this.editorStateRenderMode === "generator" || this.context.editorSelectedTransformEnabled.value;
     this.context.editorStateEnabled.value = state != null;
-    this.context.editorStateTexture.value = (renderer ? state == null ? void 0 : state.uploadDirtyWithResult(renderer).texture : state == null ? void 0 : state.getTexture()) ?? SplatEditorState.emptyTexture;
+    if (state && needsSourceTexture) {
+      this.context.editorStateTexture.value = renderer ? state.uploadDirtyWithResult(renderer).texture : state.getTexture();
+    } else {
+      state == null ? void 0 : state.deferDirtyTextureUpload();
+      this.context.editorStateTexture.value = SplatEditorState.emptyTexture;
+    }
     if (state) {
       this.context.editorSelectedColor.value.copy(state.selectedColor);
       this.context.editorLockedColor.value.copy(state.lockedColor);

@@ -494,6 +494,14 @@ export class SplatEditorState {
     }
 
     const changes = createMutationChanges(options);
+    const sparseResult = this.commitSparseSelectedMutation(
+      SPLAT_EDITOR_STATE_NONE,
+      changes,
+    );
+    if (sparseResult) {
+      return sparseResult;
+    }
+
     const dirtyIndices: number[] = [];
     let fullRange = false;
     let changed = 0;
@@ -626,6 +634,14 @@ export class SplatEditorState {
     }
 
     const changes = createMutationChanges(options);
+    const sparseResult = this.commitSparseSelectedMutation(
+      SPLAT_EDITOR_STATE_SELECTED | SPLAT_EDITOR_STATE_LOCKED,
+      changes,
+    );
+    if (sparseResult) {
+      return sparseResult;
+    }
+
     const dirtyIndices: number[] = [];
     let fullRange = false;
     let changed = 0;
@@ -707,6 +723,14 @@ export class SplatEditorState {
     }
 
     const changes = createMutationChanges(options);
+    const sparseResult = this.commitSparseSelectedMutation(
+      SPLAT_EDITOR_STATE_SELECTED | SPLAT_EDITOR_STATE_DELETED,
+      changes,
+    );
+    if (sparseResult) {
+      return sparseResult;
+    }
+
     const dirtyIndices: number[] = [];
     let fullRange = false;
     let changed = 0;
@@ -1083,6 +1107,20 @@ export class SplatEditorState {
       this.fullTextureUploadPending = true;
     }
     return this.texture;
+  }
+
+  deferDirtyTextureUpload(): void {
+    if (
+      this.maxSplats <= 0 ||
+      (!this.fullTextureUploadPending &&
+        !this.dirtyAll &&
+        this.dirtyRanges.length === 0)
+    ) {
+      return;
+    }
+    this.fullTextureUploadPending = true;
+    this.dirtyAll = true;
+    this.dirtyRanges = [];
   }
 
   private clearDirty(): void {
@@ -1493,6 +1531,30 @@ export class SplatEditorState {
     let fullRange = false;
     let changed = 0;
     for (const { index, next } of mutations) {
+      if (this.setMutationUnchecked(index, next, changes)) {
+        changed++;
+        fullRange ||= this.collectDirtyIndex(dirtyIndices, index);
+      }
+    }
+    return this.commitMutation(changed, dirtyIndices, fullRange, changes);
+  }
+
+  private commitSparseSelectedMutation(
+    next: SplatEditorStateBits,
+    changes?: SplatEditorStateChange[],
+  ): SplatEditorStateMutationResult | null {
+    if (this.selected <= 0) {
+      return this.commitMutation(0, [], false, changes);
+    }
+    if (!this.ensureSelectedIndicesCompleteForSparse()) {
+      return null;
+    }
+
+    const indices = [...this.selectedIndices].sort((a, b) => a - b);
+    const dirtyIndices: number[] = [];
+    let fullRange = false;
+    let changed = 0;
+    for (const index of indices) {
       if (this.setMutationUnchecked(index, next, changes)) {
         changed++;
         fullRange ||= this.collectDirtyIndex(dirtyIndices, index);
