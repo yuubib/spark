@@ -11,6 +11,15 @@ import {
 import { SplatAccumulator } from "./SplatAccumulator";
 import { SplatEditorState } from "./SplatEditorState";
 import { SplatGeometry } from "./SplatGeometry";
+import {
+  type SplatScreenPickHit,
+  type SplatScreenPickOptions,
+  type SplatScreenPickRect,
+  collectSplatScreenPickHitsFromRgba8,
+  editorSelectionOperationToPickFilterMode,
+  normalizeSplatScreenPickShape,
+  splatEditorStateFilterModeToPickUniform,
+} from "./SplatScreenPicker";
 import { SplatWorker } from "./SplatWorker";
 import { SPLAT_TEX_HEIGHT, SPLAT_TEX_WIDTH } from "./defines";
 import { getShaders } from "./shaders";
@@ -458,6 +467,9 @@ export class SparkRenderer extends THREE.Mesh {
   superPixels?: Uint8Array;
   targetPixels?: Uint8Array;
   superXY = 1;
+  private screenPickTarget?: THREE.WebGLRenderTarget;
+  private screenPickPixels?: Uint8Array;
+  private screenPickRenderSize?: THREE.Vector2;
 
   flushAfterGenerate = false;
   flushAfterRead = false;
@@ -668,6 +680,8 @@ export class SparkRenderer extends THREE.Mesh {
       splatEditorLockedColor: {
         value: new THREE.Vector4(0.58, 0.64, 0.72, 1.0),
       },
+      splatEditorStateFilterMode: { value: 0 },
+      splatPickOutputMode: { value: 0 },
       // Time in seconds for time-based effects
       time: { value: 0 },
       // Delta time in seconds since last frame
@@ -686,6 +700,10 @@ export class SparkRenderer extends THREE.Mesh {
     if (this.backTarget) {
       this.backTarget.dispose();
       this.backTarget = undefined;
+    }
+    if (this.screenPickTarget) {
+      this.screenPickTarget.dispose();
+      this.screenPickTarget = undefined;
     }
     if (this.orderingTexture) {
       this.orderingTexture.dispose();
@@ -740,7 +758,9 @@ export class SparkRenderer extends THREE.Mesh {
     const isNewFrame = frame !== spark.lastFrame;
     spark.lastFrame = frame;
 
-    if (spark.target) {
+    if (spark.screenPickRenderSize) {
+      spark.renderSize.copy(spark.screenPickRenderSize);
+    } else if (spark.target) {
       spark.renderSize.set(spark.target.width, spark.target.height);
     } else {
       const renderSize = renderer.getDrawingBufferSize(spark.renderSize);
@@ -1800,6 +1820,170 @@ export class SparkRenderer extends THREE.Mesh {
     } finally {
       SparkRenderer.sparkOverride = undefined;
     }
+  }
+
+  async pickSplatCandidates(
+    options: SplatScreenPickOptions,
+  ): Promise<SplatScreenPickHit[]> {
+    const { scene, camera } = options;
+    const size = this.renderer.getDrawingBufferSize(new THREE.Vector2());
+    const width = Math.max(1, Math.floor(options.width ?? size.x));
+    const height = Math.max(1, Math.floor(options.height ?? size.y));
+    const rect = normalizeSplatScreenPickShape(options.shape, width, height);
+
+    if (options.update !== false) {
+      await this.update({ scene: scene as THREE.Scene, camera });
+    }
+
+    const target = this.ensureScreenPickTarget(width, height);
+    const pixels = await this.renderSplatScreenPickPass({
+      target,
+      scene,
+      camera,
+      rect,
+      editorStateMode:
+        options.editorStateMode ??
+        editorSelectionOperationToPickFilterMode(options.operation ?? "set"),
+    });
+    const pixelHits = collectSplatScreenPickHitsFromRgba8(pixels, rect, {
+      maxCandidates: options.maxCandidates,
+      sort: options.sort,
+    });
+
+    return this.mapSplatScreenPickHits(pixelHits);
+  }
+
+  private ensureScreenPickTarget(width: number, height: number) {
+    const current = this.screenPickTarget;
+    if (current && current.width === width && current.height === height) {
+      return current;
+    }
+    current?.dispose();
+    const target = new THREE.WebGLRenderTarget(width, height, {
+      format: THREE.RGBAFormat,
+      type: THREE.UnsignedByteType,
+      minFilter: THREE.NearestFilter,
+      magFilter: THREE.NearestFilter,
+      depthBuffer: true,
+      stencilBuffer: false,
+      colorSpace: THREE.NoColorSpace,
+    });
+    target.texture.generateMipmaps = false;
+    target.texture.name = "Spark screen pick ids";
+    this.screenPickTarget = target;
+    return target;
+  }
+
+  private async renderSplatScreenPickPass({
+    target,
+    scene,
+    camera,
+    rect,
+    editorStateMode,
+  }: {
+    target: THREE.WebGLRenderTarget;
+    scene: THREE.Object3D;
+    camera: THREE.Camera;
+    rect: SplatScreenPickRect;
+    editorStateMode: SplatScreenPickOptions["editorStateMode"];
+  }) {
+    const renderer = this.renderer;
+    const byteLength = rect.width * rect.height * 4;
+    if (!this.screenPickPixels || this.screenPickPixels.length < byteLength) {
+      this.screenPickPixels = new Uint8Array(byteLength);
+    }
+    const pixels = this.screenPickPixels.subarray(0, byteLength);
+
+    const renderState = this.saveRenderState(renderer);
+    const viewport = renderer.getViewport(new THREE.Vector4());
+    const scissor = renderer.getScissor(new THREE.Vector4());
+    const scissorTest = renderer.getScissorTest();
+    const clearColor = renderer.getClearColor(new THREE.Color());
+    const clearAlpha = renderer.getClearAlpha();
+    const material = this.material;
+    const materialState = {
+      blending: material.blending,
+      depthWrite: material.depthWrite,
+      transparent: material.transparent,
+    };
+    const previousPickOutputMode = this.uniforms.splatPickOutputMode.value;
+    const previousFilterMode = this.uniforms.splatEditorStateFilterMode.value;
+    const previousRenderSize = this.screenPickRenderSize;
+    const previousAutoUpdate = this.autoUpdate;
+
+    try {
+      this.autoUpdate = false;
+      this.screenPickRenderSize = new THREE.Vector2(
+        target.width,
+        target.height,
+      );
+      this.uniforms.splatPickOutputMode.value = 1;
+      this.uniforms.splatEditorStateFilterMode.value =
+        splatEditorStateFilterModeToPickUniform(editorStateMode);
+      material.blending = THREE.NoBlending;
+      material.depthWrite = true;
+      material.transparent = false;
+      renderer.xr.enabled = false;
+      renderer.autoClear = false;
+      renderer.setRenderTarget(target);
+      renderer.setViewport(0, 0, target.width, target.height);
+      renderer.setScissorTest(false);
+      renderer.setClearColor(0, 0);
+      renderer.clear(true, true, true);
+      SparkRenderer.sparkOverride = this;
+      renderer.render(this, camera);
+      await renderer.readRenderTargetPixelsAsync(
+        target,
+        rect.x,
+        target.height - rect.y - rect.height,
+        rect.width,
+        rect.height,
+        pixels,
+      );
+      return pixels;
+    } finally {
+      SparkRenderer.sparkOverride = undefined;
+      this.autoUpdate = previousAutoUpdate;
+      this.screenPickRenderSize = previousRenderSize;
+      this.uniforms.splatPickOutputMode.value = previousPickOutputMode;
+      this.uniforms.splatEditorStateFilterMode.value = previousFilterMode;
+      material.blending = materialState.blending;
+      material.depthWrite = materialState.depthWrite;
+      material.transparent = materialState.transparent;
+      renderer.setViewport(viewport);
+      renderer.setScissor(scissor);
+      renderer.setScissorTest(scissorTest);
+      renderer.setClearColor(clearColor, clearAlpha);
+      this.resetRenderState(renderer, renderState);
+    }
+  }
+
+  private mapSplatScreenPickHits(
+    pixelHits: { accumulatorIndex: number; pixel: { x: number; y: number } }[],
+  ): SplatScreenPickHit[] {
+    const hits: SplatScreenPickHit[] = [];
+    for (const hit of pixelHits) {
+      const mapping = this.display.mapping.find(
+        ({ base, count }) =>
+          hit.accumulatorIndex >= base && hit.accumulatorIndex < base + count,
+      );
+      if (!mapping) {
+        continue;
+      }
+      const localIndex = hit.accumulatorIndex - mapping.base;
+      const sourceIndexStable =
+        mapping.node instanceof SplatMesh &&
+        mapping.node.context.enableLod.value === false &&
+        !mapping.node.paged;
+      hits.push({
+        object: mapping.node,
+        index: localIndex,
+        accumulatorIndex: hit.accumulatorIndex,
+        sourceIndexStable,
+        pixel: hit.pixel,
+      });
+    }
+    return hits;
   }
 
   renderTarget({

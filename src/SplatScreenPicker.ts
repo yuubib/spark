@@ -1,0 +1,290 @@
+import type * as THREE from "three";
+
+import type {
+  SplatEditorSelectionOperation,
+  SplatEditorStateFilterMode,
+} from "./SplatEditorState";
+import type { SplatGenerator } from "./SplatGenerator";
+
+export type SplatScreenPickShape =
+  | {
+      kind: "point";
+      x: number;
+      y: number;
+      radiusPixels?: number;
+    }
+  | {
+      kind: "rect";
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+    }
+  | {
+      kind: "mask";
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+      mask: ArrayLike<number>;
+      maskWidth: number;
+      maskHeight: number;
+      maskChannel?: 0 | 1 | 2 | 3;
+      maskThreshold?: number;
+    };
+
+export type SplatScreenPickOptions = {
+  scene: THREE.Object3D;
+  camera: THREE.Camera;
+  shape: SplatScreenPickShape;
+  width?: number;
+  height?: number;
+  editorStateMode?: SplatEditorStateFilterMode;
+  operation?: SplatEditorSelectionOperation;
+  update?: boolean;
+  maxCandidates?: number;
+  sort?: boolean;
+};
+
+export type SplatScreenPickHit = {
+  object: SplatGenerator;
+  index: number;
+  accumulatorIndex: number;
+  sourceIndexStable: boolean;
+  pixel?: {
+    x: number;
+    y: number;
+  };
+};
+
+export type SplatScreenPickRect = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  mask?: SplatScreenPickMask;
+};
+
+export type SplatScreenPickMask = {
+  data: ArrayLike<number>;
+  width: number;
+  height: number;
+  channel: 0 | 1 | 2 | 3;
+  threshold: number;
+};
+
+export type SplatScreenPickPixelHit = {
+  accumulatorIndex: number;
+  pixel: {
+    x: number;
+    y: number;
+  };
+};
+
+export const SPLAT_SCREEN_PICK_FILTER_OFF = 0;
+export const SPLAT_SCREEN_PICK_FILTER_ALL = 1;
+export const SPLAT_SCREEN_PICK_FILTER_VISIBLE = 2;
+export const SPLAT_SCREEN_PICK_FILTER_SELECTED = 3;
+export const SPLAT_SCREEN_PICK_FILTER_EDITABLE = 4;
+export const SPLAT_SCREEN_PICK_FILTER_PICK_ADD = 5;
+export const SPLAT_SCREEN_PICK_FILTER_PICK_REMOVE = 6;
+
+export function editorSelectionOperationToPickFilterMode(
+  operation: SplatEditorSelectionOperation,
+): SplatEditorStateFilterMode {
+  switch (operation) {
+    case "add":
+      return "pick-add";
+    case "remove":
+      return "pick-remove";
+    case "set":
+      return "pick-set";
+    default:
+      throw new Error(`Unsupported editor selection operation: ${operation}`);
+  }
+}
+
+export function splatEditorStateFilterModeToPickUniform(
+  mode?: SplatEditorStateFilterMode,
+): number {
+  switch (mode) {
+    case undefined:
+      return SPLAT_SCREEN_PICK_FILTER_PICK_SET;
+    case "all":
+      return SPLAT_SCREEN_PICK_FILTER_ALL;
+    case "visible":
+      return SPLAT_SCREEN_PICK_FILTER_VISIBLE;
+    case "selected":
+      return SPLAT_SCREEN_PICK_FILTER_SELECTED;
+    case "editable":
+    case "pick-set":
+      return SPLAT_SCREEN_PICK_FILTER_EDITABLE;
+    case "pick-add":
+      return SPLAT_SCREEN_PICK_FILTER_PICK_ADD;
+    case "pick-remove":
+      return SPLAT_SCREEN_PICK_FILTER_PICK_REMOVE;
+    default:
+      throw new Error(`Unsupported splat editor state filter mode: ${mode}`);
+  }
+}
+
+const SPLAT_SCREEN_PICK_FILTER_PICK_SET = SPLAT_SCREEN_PICK_FILTER_EDITABLE;
+
+export function normalizeSplatScreenPickShape(
+  shape: SplatScreenPickShape,
+  targetWidth: number,
+  targetHeight: number,
+): SplatScreenPickRect {
+  if (targetWidth <= 0 || targetHeight <= 0) {
+    throw new Error("Splat screen picking target size must be positive");
+  }
+
+  if (shape.kind === "point") {
+    const radius = Math.max(0, Math.floor(shape.radiusPixels ?? 0));
+    const centerX = Math.floor(shape.x * targetWidth);
+    const centerY = Math.floor(shape.y * targetHeight);
+    return clipPickRect(
+      {
+        x: centerX - radius,
+        y: centerY - radius,
+        width: radius * 2 + 1,
+        height: radius * 2 + 1,
+      },
+      targetWidth,
+      targetHeight,
+    );
+  }
+
+  const rawX = shape.width < 0 ? shape.x + shape.width : shape.x;
+  const rawY = shape.height < 0 ? shape.y + shape.height : shape.y;
+  const rawWidth = Math.abs(shape.width);
+  const rawHeight = Math.abs(shape.height);
+  const x = Math.floor(rawX * targetWidth);
+  const y = Math.floor(rawY * targetHeight);
+  const width = Math.max(1, Math.ceil((rawX + rawWidth) * targetWidth) - x);
+  const height = Math.max(1, Math.ceil((rawY + rawHeight) * targetHeight) - y);
+  const rect = clipPickRect({ x, y, width, height }, targetWidth, targetHeight);
+
+  if (shape.kind !== "mask") {
+    return rect;
+  }
+  return {
+    ...rect,
+    mask: {
+      data: shape.mask,
+      width: shape.maskWidth,
+      height: shape.maskHeight,
+      channel: shape.maskChannel ?? 3,
+      threshold: shape.maskThreshold ?? 0,
+    },
+  };
+}
+
+export function collectSplatScreenPickHitsFromRgba8(
+  pixels: ArrayLike<number>,
+  rect: SplatScreenPickRect,
+  options: {
+    maxCandidates?: number;
+    sort?: boolean;
+  } = {},
+): SplatScreenPickPixelHit[] {
+  const expectedLength = rect.width * rect.height * 4;
+  if (pixels.length < expectedLength) {
+    throw new Error(
+      `Splat screen pick pixel buffer too small: ${pixels.length} < ${expectedLength}`,
+    );
+  }
+
+  const seen = new Set<number>();
+  const hits: SplatScreenPickPixelHit[] = [];
+  const maxCandidates =
+    options.maxCandidates != null
+      ? Math.max(0, Math.floor(options.maxCandidates))
+      : Number.POSITIVE_INFINITY;
+
+  for (let readY = 0; readY < rect.height; readY++) {
+    const topY = rect.height - 1 - readY;
+    for (let x = 0; x < rect.width; x++) {
+      if (rect.mask && !isPickMaskPixelEnabled(rect.mask, x, topY, rect)) {
+        continue;
+      }
+
+      const offset = (readY * rect.width + x) * 4;
+      const encoded =
+        (pixels[offset] |
+          (pixels[offset + 1] << 8) |
+          (pixels[offset + 2] << 16) |
+          (pixels[offset + 3] << 24)) >>>
+        0;
+      if (encoded === 0) {
+        continue;
+      }
+
+      const accumulatorIndex = encoded - 1;
+      if (seen.has(accumulatorIndex)) {
+        continue;
+      }
+      seen.add(accumulatorIndex);
+      hits.push({
+        accumulatorIndex,
+        pixel: {
+          x: rect.x + x,
+          y: rect.y + topY,
+        },
+      });
+      if (hits.length >= maxCandidates) {
+        return maybeSortPixelHits(hits, options.sort);
+      }
+    }
+  }
+
+  return maybeSortPixelHits(hits, options.sort);
+}
+
+function clipPickRect(
+  rect: Omit<SplatScreenPickRect, "mask">,
+  targetWidth: number,
+  targetHeight: number,
+): SplatScreenPickRect {
+  const x0 = Math.max(0, Math.min(targetWidth, rect.x));
+  const y0 = Math.max(0, Math.min(targetHeight, rect.y));
+  const x1 = Math.max(0, Math.min(targetWidth, rect.x + rect.width));
+  const y1 = Math.max(0, Math.min(targetHeight, rect.y + rect.height));
+  return {
+    x: x0,
+    y: y0,
+    width: Math.max(1, x1 - x0),
+    height: Math.max(1, y1 - y0),
+  };
+}
+
+function isPickMaskPixelEnabled(
+  mask: SplatScreenPickMask,
+  x: number,
+  y: number,
+  rect: SplatScreenPickRect,
+): boolean {
+  if (mask.width <= 0 || mask.height <= 0) {
+    return false;
+  }
+  const maskX = Math.max(
+    0,
+    Math.min(mask.width - 1, Math.floor((x / rect.width) * mask.width)),
+  );
+  const maskY = Math.max(
+    0,
+    Math.min(mask.height - 1, Math.floor((y / rect.height) * mask.height)),
+  );
+  const value = mask.data[(maskY * mask.width + maskX) * 4 + mask.channel] ?? 0;
+  return value > mask.threshold;
+}
+
+function maybeSortPixelHits(
+  hits: SplatScreenPickPixelHit[],
+  sort = true,
+): SplatScreenPickPixelHit[] {
+  if (sort) {
+    hits.sort((a, b) => a.accumulatorIndex - b.accumulatorIndex);
+  }
+  return hits;
+}

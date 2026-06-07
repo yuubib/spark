@@ -1,5 +1,6 @@
 import { ExtSplats, PackedSplats, PagedSplats, SplatMesh, SplatPager } from '.';
 import { SplatAccumulator } from './SplatAccumulator';
+import { SplatScreenPickHit, SplatScreenPickOptions } from './SplatScreenPicker';
 import { SplatWorker } from './SplatWorker';
 import * as THREE from "three";
 export interface SparkRendererOptions {
@@ -410,6 +411,9 @@ export declare class SparkRenderer extends THREE.Mesh {
     superPixels?: Uint8Array;
     targetPixels?: Uint8Array;
     superXY: number;
+    private screenPickTarget?;
+    private screenPickPixels?;
+    private screenPickRenderSize?;
     flushAfterGenerate: boolean;
     flushAfterRead: boolean;
     readPause: number;
@@ -511,6 +515,12 @@ export declare class SparkRenderer extends THREE.Mesh {
         splatEditorLockedColor: {
             value: THREE.Vector4;
         };
+        splatEditorStateFilterMode: {
+            value: number;
+        };
+        splatPickOutputMode: {
+            value: number;
+        };
         time: {
             value: number;
         };
@@ -544,6 +554,10 @@ export declare class SparkRenderer extends THREE.Mesh {
     private resetRenderState;
     private static emptyOrdering;
     render(scene: THREE.Scene, camera: THREE.Camera): void;
+    pickSplatCandidates(options: SplatScreenPickOptions): Promise<SplatScreenPickHit[]>;
+    private ensureScreenPickTarget;
+    private renderSplatScreenPickPass;
+    private mapSplatScreenPickHits;
     renderTarget({ scene, camera, }: {
         scene: THREE.Scene;
         camera: THREE.Camera;

@@ -41,6 +41,7 @@ uniform bool splatEditorStateEnabled;
 uniform usampler2DArray splatEditorStateTexture;
 uniform vec4 splatEditorSelectedColor;
 uniform vec4 splatEditorLockedColor;
+uniform int splatEditorStateFilterMode;
 
 // Required by logdepthbuf_pars_vertex (normally defined in three.js #include <common>)
 bool isPerspectiveMatrix( mat4 m ) {
@@ -48,6 +49,25 @@ bool isPerspectiveMatrix( mat4 m ) {
 }
 
 #include <logdepthbuf_pars_vertex>
+
+bool matchesSplatEditorStateFilter(uint state, int mode) {
+    if (mode == 0) {
+        return true;
+    } else if (mode == 1) {
+        return true;
+    } else if (mode == 2) {
+        return (state & 4u) == 0u;
+    } else if (mode == 3) {
+        return state == 1u;
+    } else if (mode == 4) {
+        return (state & 6u) == 0u;
+    } else if (mode == 5) {
+        return state == 0u;
+    } else if (mode == 6) {
+        return state == 1u;
+    }
+    return true;
+}
 
 void main() {
     // Default to outside the frustum so it's discarded if we return early
@@ -107,8 +127,15 @@ void main() {
         }
     }
 
+    uint splatEditorState = 0u;
     if (splatEditorStateEnabled) {
-        uint splatEditorState = texelFetch(splatEditorStateTexture, texCoord, 0).r;
+        splatEditorState = texelFetch(splatEditorStateTexture, texCoord, 0).r;
+    }
+    if (splatEditorStateFilterMode != 0) {
+        if (!matchesSplatEditorStateFilter(splatEditorState, splatEditorStateFilterMode)) {
+            return;
+        }
+    } else if (splatEditorStateEnabled) {
         if ((splatEditorState & 4u) != 0u) {
             return;
         }

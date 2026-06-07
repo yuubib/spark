@@ -11,6 +11,18 @@ export {
   SparkRenderer,
   type SparkRendererOptions,
 } from "./SparkRenderer";
+export {
+  collectSplatScreenPickHitsFromRgba8,
+  editorSelectionOperationToPickFilterMode,
+  normalizeSplatScreenPickShape,
+  splatEditorStateFilterModeToPickUniform,
+  type SplatScreenPickHit,
+  type SplatScreenPickMask,
+  type SplatScreenPickOptions,
+  type SplatScreenPickPixelHit,
+  type SplatScreenPickRect,
+  type SplatScreenPickShape,
+} from "./SplatScreenPicker";
 export { SplatAccumulator, type GeneratorMapping } from "./SplatAccumulator";
 
 export * as dyno from "./dyno";

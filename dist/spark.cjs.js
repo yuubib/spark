@@ -8975,8 +8975,8 @@ var computeVec4_default = "precision highp float;\nprecision highp int;\nprecisi
 var oldSplatFragment_default = "precision highp float;\nprecision highp int;\n\n#include <splatDefines>\n\nuniform float near;\nuniform float far;\nuniform bool encodeLinear;\nuniform float time;\nuniform bool debugFlag;\nuniform float maxStdDev;\nuniform float minAlpha;\nuniform bool stochastic;\nuniform bool disableFalloff;\nuniform float falloff;\n\nuniform bool splatTexEnable;\nuniform sampler3D splatTexture;\nuniform mat2 splatTexMul;\nuniform vec2 splatTexAdd;\nuniform float splatTexNear;\nuniform float splatTexFar;\nuniform float splatTexMid;\n\nout vec4 fragColor;\n\nin vec4 vRgba;\nin vec2 vSplatUv;\nin vec3 vNdc;\nflat in uint vSplatIndex;\n\nvoid main() {\n    vec4 rgba = vRgba;\n\n    float z = dot(vSplatUv, vSplatUv);\n    if (!splatTexEnable) {\n        if (z > (maxStdDev * maxStdDev)) {\n            discard;\n        }\n    } else {\n        vec2 uv = splatTexMul * vSplatUv + splatTexAdd;\n        float ndcZ = vNdc.z;\n        float depth = (2.0 * near * far) / (far + near - ndcZ * (far - near));\n        float clampedFar = max(splatTexFar, splatTexNear);\n        float clampedDepth = clamp(depth, splatTexNear, clampedFar);\n        float logDepth = log2(clampedDepth + 1.0);\n        float logNear = log2(splatTexNear + 1.0);\n        float logFar = log2(clampedFar + 1.0);\n\n        float texZ;\n        if (splatTexMid > 0.0) {\n            float clampedMid = clamp(splatTexMid, splatTexNear, clampedFar);\n            float logMid = log2(clampedMid + 1.0);\n            texZ = (clampedDepth <= clampedMid) ?\n                (0.5 * ((logDepth - logNear) / (logMid - logNear))) :\n                (0.5 * ((logDepth - logMid) / (logFar - logMid)) + 0.5);\n        } else {\n            texZ = (logDepth - logNear) / (logFar - logNear);\n        }\n\n        vec4 modulate = texture(splatTexture, vec3(uv, 1.0 - texZ));\n        rgba *= modulate;\n    }\n\n    rgba.a *= mix(1.0, exp(-0.5 * z), falloff);\n\n    if (rgba.a < minAlpha) {\n        discard;\n    }\n    if (encodeLinear) {\n        rgba.rgb = srgbToLinear(rgba.rgb);\n    }\n\n    if (stochastic) {\n        const bool STEADY = false;\n        uint uTime = STEADY ? 0u : floatBitsToUint(time);\n        uvec2 coord = uvec2(gl_FragCoord.xy);\n        uint state = uTime + 0x9e3779b9u * coord.x + 0x85ebca6bu * coord.y + 0xc2b2ae35u * uint(vSplatIndex);\n        state = state * 747796405u + 2891336453u;\n        uint hash = ((state >> ((state >> 28u) + 4u)) ^ state) * 277803737u;\n        hash = (hash >> 22u) ^ hash;\n        float rand = float(hash) / 4294967296.0;\n        if (rand < rgba.a) {\n            fragColor = vec4(rgba.rgb, 1.0);\n        } else {\n            discard;\n        }\n    } else {\n        #ifdef PREMULTIPLIED_ALPHA\n            fragColor = vec4(rgba.rgb * rgba.a, rgba.a);\n        #else\n            fragColor = rgba;\n        #endif\n    }\n}";
 var oldSplatVertex_default = "precision highp float;\nprecision highp int;\nprecision highp usampler2DArray;\n\n#include <splatDefines>\n\nattribute uint splatIndex;\n\nout vec4 vRgba;\nout vec2 vSplatUv;\nout vec3 vNdc;\nflat out uint vSplatIndex;\n\nuniform vec2 renderSize;\nuniform uint numSplats;\nuniform vec4 renderToViewQuat;\nuniform vec3 renderToViewPos;\nuniform float maxStdDev;\nuniform float minPixelRadius;\nuniform float maxPixelRadius;\nuniform float time;\nuniform float deltaTime;\nuniform bool debugFlag;\nuniform float minAlpha;\nuniform bool stochastic;\nuniform bool enable2DGS;\nuniform float blurAmount;\nuniform float preBlurAmount;\nuniform float focalDistance;\nuniform float apertureAngle;\nuniform float clipXY;\nuniform float focalAdjustment;\n\nuniform usampler2DArray packedSplats;\nuniform vec4 rgbMinMaxLnScaleMinMax;\n\nvoid main() {\n    \n    gl_Position = vec4(0.0, 0.0, 2.0, 1.0);\n\n    if (uint(gl_InstanceID) >= numSplats) {\n        return;\n    }\n\n    ivec3 texCoord;\n    if (stochastic) {\n        texCoord = ivec3(\n            uint(gl_InstanceID) & SPLAT_TEX_WIDTH_MASK,\n            (uint(gl_InstanceID) >> SPLAT_TEX_WIDTH_BITS) & SPLAT_TEX_HEIGHT_MASK,\n            (uint(gl_InstanceID) >> SPLAT_TEX_LAYER_BITS)\n        );\n    } else {\n        if (splatIndex == 0xffffffffu) {\n            \n            return;\n        }\n        texCoord = ivec3(\n            splatIndex & SPLAT_TEX_WIDTH_MASK,\n            (splatIndex >> SPLAT_TEX_WIDTH_BITS) & SPLAT_TEX_HEIGHT_MASK,\n            splatIndex >> SPLAT_TEX_LAYER_BITS\n        );\n    }\n    uvec4 packedData = texelFetch(packedSplats, texCoord, 0);\n\n    vec3 center, scales;\n    vec4 quaternion, rgba;\n    unpackSplatEncoding(packedData, center, scales, quaternion, rgba, rgbMinMaxLnScaleMinMax);\n\n    if (rgba.a < minAlpha) {\n        return;\n    }\n    bvec3 zeroScales = equal(scales, vec3(0.0));\n    if (all(zeroScales)) {\n        return;\n    }\n\n    \n    vec3 viewCenter = quatVec(renderToViewQuat, center) + renderToViewPos;\n\n    \n    if (viewCenter.z >= 0.0) {\n        return;\n    }\n\n    \n    vec4 clipCenter = projectionMatrix * vec4(viewCenter, 1.0);\n\n    \n    if (abs(clipCenter.z) >= clipCenter.w) {\n        return;\n    }\n\n    \n    float clip = clipXY * clipCenter.w;\n    if (abs(clipCenter.x) > clip || abs(clipCenter.y) > clip) {\n        return;\n    }\n\n    \n    vSplatIndex = splatIndex;\n\n    \n    vec4 viewQuaternion = quatQuat(renderToViewQuat, quaternion);\n\n    if (enable2DGS && any(zeroScales)) {\n        vRgba = rgba;\n        vSplatUv = position.xy * maxStdDev;\n\n        vec3 offset;\n        if (zeroScales.z) {\n            offset = vec3(vSplatUv.xy * scales.xy, 0.0);\n        } else if (zeroScales.y) {\n            offset = vec3(vSplatUv.x * scales.x, 0.0, vSplatUv.y * scales.z);\n        } else {\n            offset = vec3(0.0, vSplatUv.xy * scales.yz);\n        }\n\n        vec3 viewPos = viewCenter + quatVec(viewQuaternion, offset);\n        gl_Position = projectionMatrix * vec4(viewPos, 1.0);\n        vNdc = gl_Position.xyz / gl_Position.w;\n        return;\n    }\n\n    \n    vec3 ndcCenter = clipCenter.xyz / clipCenter.w;\n\n    \n    mat3 RS = scaleQuaternionToMatrix(scales, viewQuaternion);\n    mat3 cov3D = RS * transpose(RS);\n\n    \n    vec2 scaledRenderSize = renderSize * focalAdjustment;\n    vec2 focal = 0.5 * scaledRenderSize * vec2(projectionMatrix[0][0], projectionMatrix[1][1]);\n\n    mat3 J;\n    if(isOrthographic) {\n        J = mat3(\n            focal.x, 0.0, 0.0,\n            0.0, focal.y, 0.0,\n            0.0, 0.0, 0.0\n        );\n    } else {\n        float invZ = 1.0 / viewCenter.z;\n        vec2 J1 = focal * invZ;\n        vec2 J2 = -(J1 * viewCenter.xy) * invZ;\n        J = mat3(\n            J1.x, 0.0, J2.x,\n            0.0, J1.y, J2.y,\n            0.0, 0.0, 0.0\n        );\n    }\n\n    \n    \n    \n    \n    \n    \n    \n    mat3 cov2D = transpose(J) * cov3D * J;\n    float a = cov2D[0][0];\n    float d = cov2D[1][1];\n    float b = cov2D[0][1];\n\n    \n    a += preBlurAmount;\n    d += preBlurAmount;\n\n    float fullBlurAmount = blurAmount;\n    if ((focalDistance > 0.0) && (apertureAngle > 0.0)) {\n        float focusRadius = maxPixelRadius;\n        if (viewCenter.z < 0.0) {\n            float focusBlur = abs((-viewCenter.z - focalDistance) / viewCenter.z);\n            float apertureRadius = focal.x * tan(0.5 * apertureAngle);\n            focusRadius = focusBlur * apertureRadius;\n        }\n        fullBlurAmount = clamp(sqr(focusRadius), blurAmount, sqr(maxPixelRadius));\n    }\n\n    \n    float detOrig = a * d - b * b;\n    a += fullBlurAmount;\n    d += fullBlurAmount;\n    float det = a * d - b * b;\n\n    \n    float blurAdjust = sqrt(max(0.0, detOrig / det));\n    rgba.a *= blurAdjust;\n    if (rgba.a < minAlpha) {\n        return;\n    }\n\n    \n    float eigenAvg = 0.5 * (a + d);\n    float eigenDelta = sqrt(max(0.0, eigenAvg * eigenAvg - det));\n    float eigen1 = eigenAvg + eigenDelta;\n    float eigen2 = eigenAvg - eigenDelta;\n\n    vec2 eigenVec1 = normalize(vec2((abs(b) < 0.001) ? 1.0 : b, eigen1 - a));\n    vec2 eigenVec2 = vec2(eigenVec1.y, -eigenVec1.x);\n\n    float scale1 = min(maxPixelRadius, maxStdDev * sqrt(eigen1));\n    float scale2 = min(maxPixelRadius, maxStdDev * sqrt(eigen2));\n    if (scale1 < minPixelRadius && scale2 < minPixelRadius) {\n        return;\n    }\n\n    \n    vec2 pixelOffset = position.x * eigenVec1 * scale1 + position.y * eigenVec2 * scale2;\n    vec2 ndcOffset = (2.0 / scaledRenderSize) * pixelOffset;\n    vec3 ndc = vec3(ndcCenter.xy + ndcOffset, ndcCenter.z);\n\n    vRgba = rgba;\n    vSplatUv = position.xy * maxStdDev;\n    vNdc = ndc;\n    gl_Position = vec4(ndc.xy * clipCenter.w, clipCenter.zw);\n}";
 var splatDefines_default = "const float LN_SCALE_MIN = -12.0;\nconst float LN_SCALE_MAX = 9.0;\n\nconst uint SPLAT_TEX_WIDTH_BITS = 11u;\nconst uint SPLAT_TEX_HEIGHT_BITS = 11u;\nconst uint SPLAT_TEX_DEPTH_BITS = 11u;\nconst uint SPLAT_TEX_LAYER_BITS = SPLAT_TEX_WIDTH_BITS + SPLAT_TEX_HEIGHT_BITS;\n\nconst uint SPLAT_TEX_WIDTH = 1u << SPLAT_TEX_WIDTH_BITS;\nconst uint SPLAT_TEX_HEIGHT = 1u << SPLAT_TEX_HEIGHT_BITS;\nconst uint SPLAT_TEX_DEPTH = 1u << SPLAT_TEX_DEPTH_BITS;\n\nconst uint SPLAT_TEX_WIDTH_MASK = SPLAT_TEX_WIDTH - 1u;\nconst uint SPLAT_TEX_HEIGHT_MASK = SPLAT_TEX_HEIGHT - 1u;\nconst uint SPLAT_TEX_DEPTH_MASK = SPLAT_TEX_DEPTH - 1u;\n\nconst uint F16_INF = 0x7c00u;\nconst float PI = 3.1415926535897932384626433832795;\n\nconst float INFINITY = 1.0 / 0.0;\nconst float NEG_INFINITY = -INFINITY;\n\nfloat sqr(float x) {\n    return x * x;\n}\n\nfloat pow4(float x) {\n    float x2 = x * x;\n    return x2 * x2;\n}\n\nfloat pow8(float x) {\n    float x4 = pow4(x);\n    return x4 * x4;\n}\n\nvec3 srgbToLinear(vec3 rgb) {\n    return pow(rgb, vec3(2.2));\n}\n\nvec3 linearToSrgb(vec3 rgb) {\n    return pow(rgb, vec3(1.0 / 2.2));\n}\n\nuint encodeQuatOctXy88R8(vec4 q) {\n    \n    if (q.w < 0.0) {\n        q = -q;\n    }\n    \n    float theta = 2.0 * acos(q.w);\n    float halfTheta = theta * 0.5;\n    float s = sin(halfTheta);\n    \n    vec3 axis = (abs(s) < 1e-6) ? vec3(1.0, 0.0, 0.0) : q.xyz / s;\n    \n    \n    \n    float sum = abs(axis.x) + abs(axis.y) + abs(axis.z);\n    vec2 p = vec2(axis.x, axis.y) / sum;\n    \n    if (axis.z < 0.0) {\n        float oldPx = p.x;\n        p.x = (1.0 - abs(p.y)) * (p.x >= 0.0 ? 1.0 : -1.0);\n        p.y = (1.0 - abs(oldPx)) * (p.y >= 0.0 ? 1.0 : -1.0);\n    }\n    \n    float u_f = p.x * 0.5 + 0.5;\n    float v_f = p.y * 0.5 + 0.5;\n    \n    uint quantU = uint(clamp(round(u_f * 255.0), 0.0, 255.0));\n    uint quantV = uint(clamp(round(v_f * 255.0), 0.0, 255.0));\n    \n    \n    \n    uint angleInt = uint(clamp(round((theta / 3.14159265359) * 255.0), 0.0, 255.0));\n    \n    \n    return (angleInt << 16u) | (quantV << 8u) | quantU;\n}\n\nvec4 decodeQuatOctXy88R8(uint encoded) {\n    \n    uint quantU = encoded & uint(0xFFu);               \n    uint quantV = (encoded >> 8u) & uint(0xFFu);         \n    uint angleInt = encoded >> 16u;                      \n\n    \n    float u_f = float(quantU) / 255.0;\n    float v_f = float(quantV) / 255.0;\n    vec2 f = vec2(u_f * 2.0 - 1.0, v_f * 2.0 - 1.0);\n\n    vec3 axis = vec3(f.xy, 1.0 - abs(f.x) - abs(f.y));\n    float t = max(-axis.z, 0.0);\n    axis.x += (axis.x >= 0.0) ? -t : t;\n    axis.y += (axis.y >= 0.0) ? -t : t;\n    axis = normalize(axis);\n    \n    \n    float theta = (float(angleInt) / 255.0) * 3.14159265359;\n    float halfTheta = theta * 0.5;\n    float s = sin(halfTheta);\n    float w = cos(halfTheta);\n    \n    return vec4(axis * s, w);\n}\n\nuint encodeQuatOctXy1010R12(vec4 q) {\n    \n    if (q.w < 0.0) {\n        q = -q;\n    }\n    \n    float halfTheta = acos(q.w);\n    float theta = 2.0 * halfTheta;\n    float s = sin(halfTheta);\n    \n    vec3 axis = (abs(s) < 1e-6) ? vec3(1.0, 0.0, 0.0) : q.xyz / s;\n    \n    \n    \n    float sum = abs(axis.x) + abs(axis.y) + abs(axis.z);\n    vec2 p = vec2(axis.x, axis.y) / sum;\n    \n    if (axis.z < 0.0) {\n        float oldPx = p.x;\n        p.x = (1.0 - abs(p.y)) * (p.x >= 0.0 ? 1.0 : -1.0);\n        p.y = (1.0 - abs(oldPx)) * (p.y >= 0.0 ? 1.0 : -1.0);\n    }\n    \n    float u_f = p.x * 0.5 + 0.5;\n    float v_f = p.y * 0.5 + 0.5;\n    \n    uint quantU = uint(clamp(round(u_f * 1023.0), 0.0, 1023.0));\n    uint quantV = uint(clamp(round(v_f * 1023.0), 0.0, 1023.0));\n    \n    \n    \n    uint angleInt = uint(clamp(round((theta / PI) * 4095.0), 0.0, 4095.0));\n    \n    \n    return (angleInt << 20u) | (quantV << 10u) | quantU;\n}\n\nvec4 decodeQuatOctXy1010R12(uint encoded) {\n    \n    uint quantU = encoded & uint(0x3FFu);               \n    uint quantV = (encoded >> 10u) & uint(0x3FFu);         \n    uint angleInt = encoded >> 20u;                      \n\n    \n    float u_f = float(quantU) / 1023.0;\n    float v_f = float(quantV) / 1023.0;\n    vec2 f = vec2(u_f * 2.0 - 1.0, v_f * 2.0 - 1.0);\n\n    vec3 axis = vec3(f.xy, 1.0 - abs(f.x) - abs(f.y));\n    float t = max(-axis.z, 0.0);\n    axis.x += (axis.x >= 0.0) ? -t : t;\n    axis.y += (axis.y >= 0.0) ? -t : t;\n    axis = normalize(axis);\n    \n    \n    float theta = (float(angleInt) / 4095.0) * PI;\n    float halfTheta = theta * 0.5;\n    float s = sin(halfTheta);\n    float w = cos(halfTheta);\n    \n    return vec4(axis * s, w);\n}\n\nuvec4 packSplatEncoding(\n    vec3 center, vec3 scales, vec4 quaternion, vec4 rgba, vec4 rgbMinMaxLnScaleMinMax\n) {\n    float rgbMin = rgbMinMaxLnScaleMinMax.x;\n    float rgbMax = rgbMinMaxLnScaleMinMax.y;\n    vec3 encRgb = (rgba.rgb - vec3(rgbMin)) / (rgbMax - rgbMin);\n    uvec4 uRgba = uvec4(round(clamp(vec4(encRgb, rgba.a) * 255.0, 0.0, 255.0)));\n\n    uint uQuat = encodeQuatOctXy88R8(quaternion);\n    \n    \n    uvec3 uQuat3 = uvec3(uQuat & 0xffu, (uQuat >> 8u) & 0xffu, (uQuat >> 16u) & 0xffu);\n\n    \n    float lnScaleMin = rgbMinMaxLnScaleMinMax.z;\n    float lnScaleMax = rgbMinMaxLnScaleMinMax.w;\n    float lnScaleScale = 254.0 / (lnScaleMax - lnScaleMin);\n    uvec3 uScales = uvec3(\n        (scales.x == 0.0) ? 0u : uint(round(clamp((log(scales.x) - lnScaleMin) * lnScaleScale, 0.0, 254.0))) + 1u,\n        (scales.y == 0.0) ? 0u : uint(round(clamp((log(scales.y) - lnScaleMin) * lnScaleScale, 0.0, 254.0))) + 1u,\n        (scales.z == 0.0) ? 0u : uint(round(clamp((log(scales.z) - lnScaleMin) * lnScaleScale, 0.0, 254.0))) + 1u\n    );\n\n    \n    uint word0 = uRgba.r | (uRgba.g << 8u) | (uRgba.b << 16u) | (uRgba.a << 24u);\n    uint word1 = packHalf2x16(center.xy);\n    uint word2 = packHalf2x16(vec2(center.z, 0.0)) | (uQuat3.x << 16u) | (uQuat3.y << 24u);\n    uint word3 = uScales.x | (uScales.y << 8u) | (uScales.z << 16u) | (uQuat3.z << 24u);\n    return uvec4(word0, word1, word2, word3);\n}\n\nuvec4 packSplat(vec3 center, vec3 scales, vec4 quaternion, vec4 rgba) {\n    return packSplatEncoding(center, scales, quaternion, rgba, vec4(0.0, 1.0, LN_SCALE_MIN, LN_SCALE_MAX));\n}\n\nvoid unpackSplatEncoding(uvec4 packedData, out vec3 center, out vec3 scales, out vec4 quaternion, out vec4 rgba, vec4 rgbMinMaxLnScaleMinMax) {\n    uint word0 = packedData.x, word1 = packedData.y, word2 = packedData.z, word3 = packedData.w;\n\n    uvec4 uRgba = uvec4(word0 & 0xffu, (word0 >> 8u) & 0xffu, (word0 >> 16u) & 0xffu, (word0 >> 24u) & 0xffu);\n    float rgbMin = rgbMinMaxLnScaleMinMax.x;\n    float rgbMax = rgbMinMaxLnScaleMinMax.y;\n    rgba = (vec4(uRgba) / 255.0);\n    rgba.rgb = rgba.rgb * (rgbMax - rgbMin) + rgbMin;\n\n    center = vec4(\n        unpackHalf2x16(word1),\n        unpackHalf2x16(word2 & 0xffffu)\n    ).xyz;\n\n    uvec3 uScales = uvec3(word3 & 0xffu, (word3 >> 8u) & 0xffu, (word3 >> 16u) & 0xffu);\n    float lnScaleMin = rgbMinMaxLnScaleMinMax.z;\n    float lnScaleMax = rgbMinMaxLnScaleMinMax.w;\n    float lnScaleScale = (lnScaleMax - lnScaleMin) / 254.0;\n    scales = vec3(\n        (uScales.x == 0u) ? 0.0 : exp(lnScaleMin + float(uScales.x - 1u) * lnScaleScale),\n        (uScales.y == 0u) ? 0.0 : exp(lnScaleMin + float(uScales.y - 1u) * lnScaleScale),\n        (uScales.z == 0u) ? 0.0 : exp(lnScaleMin + float(uScales.z - 1u) * lnScaleScale)\n    );\n\n    uint uQuat = ((word2 >> 16u) & 0xFFFFu) | ((word3 >> 8u) & 0xFF0000u);\n    quaternion = decodeQuatOctXy88R8(uQuat);\n    \n    \n}\n\nvoid unpackSplat(uvec4 packedData, out vec3 center, out vec3 scales, out vec4 quaternion, out vec4 rgba) {\n    unpackSplatEncoding(packedData, center, scales, quaternion, rgba, vec4(0.0, 1.0, LN_SCALE_MIN, LN_SCALE_MAX));\n}\n\nuvec4 packSplatCovEncoding(\n    vec3 center, vec4 rgba, vec3 xxyyzz, vec3 xyxzyz, vec4 rgbMinMaxLnScaleMinMax\n) {\n    float rgbMin = rgbMinMaxLnScaleMinMax.x;\n    float rgbMax = rgbMinMaxLnScaleMinMax.y;\n    vec3 encRgb = (rgba.rgb - vec3(rgbMin)) / (rgbMax - rgbMin);\n    uvec4 uRgba = uvec4(round(clamp(vec4(encRgb, rgba.a) * 255.0, 0.0, 255.0)));\n\n    float lnScaleMin = rgbMinMaxLnScaleMinMax.z;\n    float lnScaleMax = rgbMinMaxLnScaleMinMax.w;\n    float diagScale = 255.0 / (2.0 * (lnScaleMax - lnScaleMin));\n    uvec3 uXxyyzz = uvec3(round(clamp((log(xxyyzz) - 2.0 * lnScaleMin) * diagScale, 0.0, 255.0)));\n\n    vec3 xyxzyzCor = vec3(\n        clamp(xyxzyz.x / sqrt(xxyyzz.x * xxyyzz.y), -1.0, 1.0),\n        clamp(xyxzyz.y / sqrt(xxyyzz.x * xxyyzz.z), -1.0, 1.0),\n        clamp(xyxzyz.z / sqrt(xxyyzz.y * xxyyzz.z), -1.0, 1.0)\n    );\n    ivec3 iXyxzyzCor = ivec3(round(xyxzyzCor * 127.0));\n\n    \n    uint word0 = uRgba.r | (uRgba.g << 8u) | (uRgba.b << 16u) | (uRgba.a << 24u);\n    uint word1 = packHalf2x16(center.xy);\n    uint word2 = packHalf2x16(vec2(center.z, 0.0)) |\n        ((uint(iXyxzyzCor.y) & 0xffu) << 16u) |\n        ((uint(iXyxzyzCor.z) & 0xffu) << 24u);\n    uint word3 =\n        uXxyyzz.x | (uXxyyzz.y << 8u) | (uXxyyzz.z << 16u) |\n        ((uint(iXyxzyzCor.x) & 0xffu) << 24u);\n    return uvec4(word0, word1, word2, word3);\n}\n\nvoid unpackSplatCovEncoding(uvec4 packedData, out vec3 center, out vec4 rgba, out vec3 xxyyzz, out vec3 xyxzyz, vec4 rgbMinMaxLnScaleMinMax) {\n    uint word0 = packedData.x, word1 = packedData.y, word2 = packedData.z, word3 = packedData.w;\n\n    uvec4 uRgba = uvec4(word0 & 0xffu, (word0 >> 8u) & 0xffu, (word0 >> 16u) & 0xffu, (word0 >> 24u) & 0xffu);\n    float rgbMin = rgbMinMaxLnScaleMinMax.x;\n    float rgbMax = rgbMinMaxLnScaleMinMax.y;\n    rgba = (vec4(uRgba) / 255.0);\n    rgba.rgb = rgba.rgb * (rgbMax - rgbMin) + rgbMin;\n\n    center = vec3(\n        unpackHalf2x16(word1),\n        unpackHalf2x16(word2 & 0xffffu).x\n    );\n\n    uvec3 uXxyyzz = uvec3(word3 & 0xffu, (word3 >> 8u) & 0xffu, (word3 >> 16u) & 0xffu);\n    ivec3 iXyxzyzCor = ivec3(int(word3) >> 24, int(word2 << 8u) >> 24, int(word2) >> 24);\n\n    float lnScaleMin = rgbMinMaxLnScaleMinMax.z;\n    float lnScaleMax = rgbMinMaxLnScaleMinMax.w;\n    float diagScale = 2.0 * (lnScaleMax - lnScaleMin) / 255.0;\n    xxyyzz = exp(2.0 * lnScaleMin + vec3(uXxyyzz) * diagScale);\n\n    vec3 xyxzyzCor = vec3(iXyxzyzCor) / 127.0;\n    xyxzyz = xyxzyzCor * vec3(\n        sqrt(xxyyzz.x * xxyyzz.y),\n        sqrt(xxyyzz.x * xxyyzz.z),\n        sqrt(xxyyzz.y * xxyyzz.z)\n    );\n}\n\nvoid packSplatExtCov(\n    out uvec4 packedData, out uvec4 packedData2,\n    vec3 center, vec4 rgba, vec3 xxyyzz, vec3 xyxzyz\n) {\n    packedData.x = floatBitsToUint(center.x);\n    packedData.y = floatBitsToUint(center.y);\n    packedData.z = floatBitsToUint(center.z);\n    packedData.w = packHalf2x16(vec2(rgba.a, rgba.b));\n    packedData2.x = packHalf2x16(rgba.rg);\n\n    vec3 xyxzyzCor = vec3(\n        clamp(xyxzyz.x / sqrt(xxyyzz.x * xxyyzz.y), -1.0, 1.0),\n        clamp(xyxzyz.y / sqrt(xxyyzz.x * xxyyzz.z), -1.0, 1.0),\n        clamp(xyxzyz.z / sqrt(xxyyzz.y * xxyyzz.z), -1.0, 1.0)\n    );\n    xyxzyzCor = sign(xyxzyzCor) * clamp(log(abs(xyxzyzCor)), -100.0, -0.0000001);\n    xxyyzz = log(xxyyzz);\n\n    packedData2.y = packHalf2x16(vec2(xxyyzz.x, xxyyzz.y));\n    packedData2.z = packHalf2x16(vec2(xxyyzz.z, xyxzyzCor.x));\n    packedData2.w = packHalf2x16(vec2(xyxzyzCor.y, xyxzyzCor.z));\n}\n\nvoid unpackSplatExtCov(\n    uvec4 packedData, uvec4 packedData2,\n    out vec3 center, out vec4 rgba, out vec3 xxyyzz, out vec3 xyxzyz\n) {\n    center.x = uintBitsToFloat(packedData.x);\n    center.y = uintBitsToFloat(packedData.y);\n    center.z = uintBitsToFloat(packedData.z);\n\n    vec2 ab = unpackHalf2x16(packedData.w);\n    vec2 rg = unpackHalf2x16(packedData2.x);\n    rgba = vec4(rg, ab.y, ab.x);\n\n    vec2 xxyy = unpackHalf2x16(packedData2.y);\n    vec2 zzxy = unpackHalf2x16(packedData2.z);\n    vec2 xzyz = unpackHalf2x16(packedData2.w);\n    xxyyzz = exp(vec3(xxyy.x, xxyy.y, zzxy.x));\n    xyxzyz = vec3(zzxy.y, xzyz.x, xzyz.y);\n    xyxzyz = -sign(xyxzyz) * exp(-abs(xyxzyz));\n    xyxzyz *= vec3(\n        sqrt(xxyyzz.x * xxyyzz.y),\n        sqrt(xxyyzz.x * xxyyzz.z),\n        sqrt(xxyyzz.y * xxyyzz.z)\n    );\n}\n\nvoid packSplatExt(\n    out uvec4 packedData, out uvec4 packedData2,\n    vec3 center, vec3 scales, vec4 quaternion, vec4 rgba\n) {\n    packedData.x = floatBitsToUint(center.x);\n    packedData.y = floatBitsToUint(center.y);\n    packedData.z = floatBitsToUint(center.z);\n    packedData.w = packHalf2x16(vec2(rgba.a, 0.0));\n\n    packedData2.x = packHalf2x16(rgba.rg);\n    packedData2.y = packHalf2x16(vec2(rgba.b, log(scales.x)));\n    packedData2.z = packHalf2x16(log(scales.yz));\n    packedData2.w = encodeQuatOctXy1010R12(quaternion);\n}\n\nvec4 unpackSplatExtCenterAlpha(uvec4 packedData) {\n    return vec4(\n        uintBitsToFloat(packedData.x),\n        uintBitsToFloat(packedData.y),\n        uintBitsToFloat(packedData.z),\n        unpackHalf2x16(packedData.w).x\n    );\n}\n\nfloat unpackSplatExtAlpha(uvec4 packedData) {\n    return unpackHalf2x16(packedData.w).x;\n}\n\nvoid unpackSplatExt(\n    uvec4 packedData, uvec4 packedData2,\n    out vec3 center, out vec3 scales, out vec4 quaternion, out vec4 rgba\n) {\n    center.x = uintBitsToFloat(packedData.x);\n    center.y = uintBitsToFloat(packedData.y);\n    center.z = uintBitsToFloat(packedData.z);\n    rgba.a = unpackHalf2x16(packedData.w).x;\n\n    rgba.rg = unpackHalf2x16(packedData2.x);\n    vec2 split = unpackHalf2x16(packedData2.y);\n    rgba.b = split.x;\n    scales.x = exp(split.y);\n    scales.yz = exp(unpackHalf2x16(packedData2.z));\n    quaternion = decodeQuatOctXy1010R12(packedData2.w);\n}\n\nuint encodeExtRgb(vec3 rgb) {\n    vec3 absRgb = abs(rgb);\n    float maxAbs = max(absRgb.r, max(absRgb.g, absRgb.b));\n\n    int base = clamp(int(floor(log2(maxAbs))) + 15, 0, 31);\n    float divisor = exp2(float(base - 15)) / 255.0;\n\n    uvec3 uRgb = uvec3(round(clamp(absRgb / divisor, 0.0, 255.0)));\n    uint expSigns = (uint(base) << 3u) | ((rgb.r < 0.0 ? 0x1u : 0u) | (rgb.g < 0.0 ? 0x2u : 0u) | (rgb.b < 0.0 ? 0x4u : 0u));\n    return uRgb.r | (uRgb.g << 8u) | (uRgb.b << 16u) | (expSigns << 24u);\n}\n\nvec3 decodeExtRgb(uint encoded) {\n    uint biasedBase = (encoded >> 27u) & 0x1fu;\n    float divisor = exp2(float(int(biasedBase) - 15)) / 255.0;\n\n    vec3 rgb = vec3(uvec3(encoded & 0xffu, (encoded >> 8u) & 0xffu, (encoded >> 16u) & 0xffu));\n    rgb *= divisor;\n\n    return vec3(\n        ((encoded & 0x1000000u) != 0u) ? -rgb.r : rgb.r,\n        ((encoded & 0x2000000u) != 0u) ? -rgb.g : rgb.g,\n        ((encoded & 0x4000000u) != 0u) ? -rgb.b : rgb.b\n    );\n}\n\nvec3 quatVec(vec4 q, vec3 v) {\n    \n    vec3 t = 2.0 * cross(q.xyz, v);\n    return v + q.w * t + cross(q.xyz, t);\n}\n\nvec4 quatQuat(vec4 q1, vec4 q2) {\n    return vec4(\n        q1.w * q2.x + q1.x * q2.w + q1.y * q2.z - q1.z * q2.y,\n        q1.w * q2.y - q1.x * q2.z + q1.y * q2.w + q1.z * q2.x,\n        q1.w * q2.z + q1.x * q2.y - q1.y * q2.x + q1.z * q2.w,\n        q1.w * q2.w - q1.x * q2.x - q1.y * q2.y - q1.z * q2.z\n    );\n}\n\nmat3 quaternionToMatrix(vec4 q) {\n    return mat3(\n        (1.0 - 2.0 * (q.y * q.y + q.z * q.z)),\n        (2.0 * (q.x * q.y + q.w * q.z)),\n        (2.0 * (q.x * q.z - q.w * q.y)),\n        (2.0 * (q.x * q.y - q.w * q.z)),\n        (1.0 - 2.0 * (q.x * q.x + q.z * q.z)),\n        (2.0 * (q.y * q.z + q.w * q.x)),\n        (2.0 * (q.x * q.z + q.w * q.y)),\n        (2.0 * (q.y * q.z - q.w * q.x)),\n        (1.0 - 2.0 * (q.x * q.x + q.y * q.y))\n    );\n}\n\nmat3 scaleQuaternionToMatrix(vec3 s, vec4 q) {\n    \n    return mat3(\n        s.x * (1.0 - 2.0 * (q.y * q.y + q.z * q.z)),\n        s.x * (2.0 * (q.x * q.y + q.w * q.z)),\n        s.x * (2.0 * (q.x * q.z - q.w * q.y)),\n        s.y * (2.0 * (q.x * q.y - q.w * q.z)),\n        s.y * (1.0 - 2.0 * (q.x * q.x + q.z * q.z)),\n        s.y * (2.0 * (q.y * q.z + q.w * q.x)),\n        s.z * (2.0 * (q.x * q.z + q.w * q.y)),\n        s.z * (2.0 * (q.y * q.z - q.w * q.x)),\n        s.z * (1.0 - 2.0 * (q.x * q.x + q.y * q.y))\n    );\n}\n\nvec4 slerp(vec4 q1, vec4 q2, float t) {\n    \n    float cosHalfTheta = dot(q1, q2);\n\n    \n    if (abs(cosHalfTheta) >= 0.999) {\n        return q1;\n    }\n    \n    \n    \n    if (cosHalfTheta < 0.0) {\n        q2 = -q2;\n        cosHalfTheta = -cosHalfTheta;\n    }\n\n    \n    float halfTheta = acos(cosHalfTheta);\n    float sinHalfTheta = sqrt(1.0 - cosHalfTheta * cosHalfTheta);\n\n    \n    float ratioA = sin((1.0 - t) * halfTheta) / sinHalfTheta;\n    float ratioB = sin(t * halfTheta) / sinHalfTheta;\n\n    \n    return q1 * ratioA + q2 * ratioB;\n}\n\nivec3 splatTexCoord(int index) {\n    uint x = uint(index) & SPLAT_TEX_WIDTH_MASK;\n    uint y = (uint(index) >> SPLAT_TEX_WIDTH_BITS) & SPLAT_TEX_HEIGHT_MASK;\n    uint z = uint(index) >> SPLAT_TEX_LAYER_BITS;\n    return ivec3(x, y, z);\n}\n\nivec3 pagedSplatTexCoord(int index) {\n    return ivec3(index & 255, (index >> 8) & 255, index >> 16);\n}\n\nvec4 uintToVec4(uint u32) {\n    uvec4 bytes = uvec4(\n        u32 & 0xFFu,\n        (u32 >> 8u) & 0xFFu,\n        (u32 >> 16u) & 0xFFu,\n        (u32 >> 24u) & 0xFFu\n    );\n    return vec4(bytes) / 255.0;\n}\n\nvec4 floatToVec4(float f) {\n    uint u32 = floatBitsToUint(f);\n    return uintToVec4(u32);\n}\n\nvec3 debugColorHue(uint i) {\n    \n    float hue = fract(float(i) * 0.61803398875);\n    \n    vec3 rgb = clamp(abs(mod(hue*6.0 + vec3(0.0,4.0,2.0), 6.0) - 3.0) - 1.0, 0.0, 1.0);\n    return mix(vec3(1.0), rgb, 0.85); \n}";
-var splatFragment_default = "precision highp float;\nprecision highp int;\n\n#include <splatDefines>\n\nuniform float near;\nuniform float far;\nuniform bool encodeLinear;\nuniform float time;\nuniform bool debugFlag;\nuniform float maxStdDev;\nuniform float minAlpha;\nuniform bool disableFalloff;\nuniform float falloff;\n\nout vec4 fragColor;\n\nin vec4 vRgba;\nin vec2 vSplatUv;\nin vec3 vNdc;\nflat in uint vSplatIndex;\nflat in float adjustedStdDev;\n\n#include <logdepthbuf_pars_fragment>\n\nvoid main() {\n    vec4 rgba = vRgba;\n\n    float z2 = dot(vSplatUv, vSplatUv);\n    if (z2 > (adjustedStdDev * adjustedStdDev)) {\n        discard;\n    }\n\n    if (false) {\n    \n        float a = rgba.a;\n        float shifted = sqrt(z2) - max(0.0, a - 1.0);\n        float exponent = -0.5 * max(1.0, a) * sqr(max(0.0, shifted));\n        float min1a = min(1.0, a);\n        rgba.a = mix(min1a, min1a * exp(exponent), falloff);\n    } else {\n        \n        if (rgba.a <= 1.0) {\n            rgba.a = mix(rgba.a, rgba.a * exp(-0.5 * z2), falloff);\n        } else {\n            float a = exp((rgba.a*rgba.a - 1.0) / 2.718281828459045);\n            float alpha = 1.0 - pow(1.0 - exp(-0.5 * z2), a);\n            rgba.a = mix(1.0, alpha, falloff);\n        }\n    }\n\n    if (rgba.a < minAlpha) {\n        discard;\n    }\n    if (encodeLinear) {\n        rgba.rgb = srgbToLinear(rgba.rgb);\n    }\n\n    #ifdef PREMULTIPLIED_ALPHA\n        fragColor = vec4(rgba.rgb * rgba.a, rgba.a);\n    #else\n        fragColor = rgba;\n    #endif\n\n    #include <logdepthbuf_fragment>\n}";
-var splatVertex_default = "precision highp float;\nprecision highp int;\nprecision highp usampler2DArray;\n\n#include <splatDefines>\n\nout vec4 vRgba;\nout vec2 vSplatUv;\nout vec3 vNdc;\nflat out uint vSplatIndex;\nflat out float adjustedStdDev;\n\nuniform vec2 renderSize;\nuniform vec4 renderToViewQuat;\nuniform vec3 renderToViewPos;\nuniform mat3 renderToViewBasis;\nuniform float maxStdDev;\nuniform float minPixelRadius;\nuniform float maxPixelRadius;\nuniform bool enableExtSplats;\nuniform bool enableCovSplats;\nuniform float time;\nuniform float deltaTime;\nuniform bool debugFlag;\nuniform float minAlpha;\nuniform bool enable2DGS;\nuniform bool lodInflate;\nuniform float blurAmount;\nuniform float preBlurAmount;\nuniform float focalDistance;\nuniform float apertureAngle;\nuniform float clipXY;\nuniform float focalAdjustment;\n\nuniform usampler2D ordering;\nuniform usampler2DArray extSplats;\nuniform usampler2DArray extSplats2;\nuniform bool splatEditorStateEnabled;\nuniform usampler2DArray splatEditorStateTexture;\nuniform vec4 splatEditorSelectedColor;\nuniform vec4 splatEditorLockedColor;\n\nbool isPerspectiveMatrix( mat4 m ) {\n    return m[ 2 ][ 3 ] == -1.0;\n}\n\n#include <logdepthbuf_pars_vertex>\n\nvoid main() {\n    \n    gl_Position = vec4(0.0, 0.0, 2.0, 1.0);\n\n    ivec2 orderingCoord = ivec2((gl_InstanceID >> 2) & 4095, gl_InstanceID >> 14);\n    uint splatIndex = texelFetch(ordering, orderingCoord, 0)[gl_InstanceID & 3];\n    if (splatIndex == 0xffffffffu) {\n        \n        return;\n    }\n\n    ivec3 texCoord = splatTexCoord(int(splatIndex));\n    vec3 center, scales, xxyyzz, xyxzyz;\n    vec4 quaternion, rgba;\n    mat3 cov3D;\n    bvec3 zeroScales = bvec3(false);\n\n    if (enableExtSplats) {\n        uvec4 ext1 = texelFetch(extSplats, texCoord, 0);\n        float alpha = unpackSplatExtAlpha(ext1);\n        if ((alpha == 0.0) || (alpha < minAlpha)) {\n            return;\n        }\n        uvec4 ext2 = texelFetch(extSplats2, texCoord, 0);\n\n        if (!enableCovSplats) {\n            unpackSplatExt(ext1, ext2, center, scales, quaternion, rgba);\n            zeroScales = equal(scales, vec3(0.0));\n            if (all(zeroScales)) {\n                return;\n            }\n        } else {\n            unpackSplatExtCov(ext1, ext2, center, rgba, xxyyzz, xyxzyz);\n            if (all(equal(xxyyzz, vec3(0.0))) && all(equal(xyxzyz, vec3(0.0)))) {\n                return;\n            }\n        }\n    } else {\n        uvec4 packedData = texelFetch(extSplats, texCoord, 0);\n        if (!enableCovSplats) {\n            unpackSplatEncoding(packedData, center, scales, quaternion, rgba, vec4(0.0, 1.0, LN_SCALE_MIN, LN_SCALE_MAX));\n            zeroScales = equal(scales, vec3(0.0));\n            if (all(zeroScales)) {\n                return;\n            }\n        } else {\n            unpackSplatCovEncoding(packedData, center, rgba, xxyyzz, xyxzyz, vec4(0.0, 1.0, LN_SCALE_MIN, LN_SCALE_MAX));\n            if (all(equal(xxyyzz, vec3(0.0))) && all(equal(xyxzyz, vec3(0.0)))) {\n                return;\n            }\n        }\n\n        rgba.a *= 2.0;\n        if ((rgba.a == 0.0) || (rgba.a < minAlpha)) {\n            return;\n        }\n    }\n\n    if (splatEditorStateEnabled) {\n        uint splatEditorState = texelFetch(splatEditorStateTexture, texCoord, 0).r;\n        if ((splatEditorState & 4u) != 0u) {\n            return;\n        }\n        if ((splatEditorState & 2u) != 0u) {\n            rgba *= splatEditorLockedColor;\n        } else if ((splatEditorState & 1u) != 0u) {\n            rgba.rgb = mix(rgba.rgb, splatEditorSelectedColor.rgb, splatEditorSelectedColor.a);\n        }\n    }\n\n    adjustedStdDev = maxStdDev;\n    if (rgba.a > 1.0) {\n        \n        rgba.a = min(rgba.a * 4.0 - 3.0, 5.0);\n\n        if (lodInflate) {\n            \n            float opacity = exp((rgba.a * rgba.a - 1.0) / 2.718281828459045);\n            float rescale = pow(opacity, 1.0 / 3.0);\n            scales *= rescale;\n            rgba.a = 1.0;\n        }\n\n        \n        adjustedStdDev = maxStdDev + 0.7 * (rgba.a - 1.0);\n    }\n\n    \n    vec3 viewCenter = (!enableCovSplats ? quatVec(renderToViewQuat, center) : (renderToViewBasis * center)) + renderToViewPos;\n\n    \n    if (viewCenter.z >= 0.0) {\n        return;\n    }\n\n    \n    vec4 clipCenter = projectionMatrix * vec4(viewCenter, 1.0);\n\n    \n    if (abs(clipCenter.z) >= clipCenter.w) {\n        return;\n    }\n\n    \n    float clip = clipXY * clipCenter.w;\n    if (abs(clipCenter.x) > clip || abs(clipCenter.y) > clip) {\n        return;\n    }\n\n    vRgba = rgba;\n    vSplatUv = position.xy * adjustedStdDev;\n\n    \n    vSplatIndex = splatIndex;\n\n    if (!enableCovSplats) {\n        \n        vec4 viewQuaternion = quatQuat(renderToViewQuat, quaternion);\n\n        if (enable2DGS && any(zeroScales)) {\n            vec3 offset;\n            if (zeroScales.z) {\n                offset = vec3(vSplatUv.xy * scales.xy, 0.0);\n            } else if (zeroScales.y) {\n                offset = vec3(vSplatUv.x * scales.x, 0.0, vSplatUv.y * scales.z);\n            } else {\n                offset = vec3(0.0, vSplatUv.xy * scales.yz);\n            }\n\n            vec3 viewPos = viewCenter + quatVec(viewQuaternion, offset);\n            gl_Position = projectionMatrix * vec4(viewPos, 1.0);\n            vNdc = gl_Position.xyz / gl_Position.w;\n\n            #include <logdepthbuf_vertex>\n            return;\n        }\n\n        \n        mat3 RS = scaleQuaternionToMatrix(scales, viewQuaternion);\n        cov3D = RS * transpose(RS);\n    } else {\n        cov3D = mat3(\n            xxyyzz.x, xyxzyz.x, xyxzyz.y,\n            xyxzyz.x, xxyyzz.y, xyxzyz.z,\n            xyxzyz.y, xyxzyz.z, xxyyzz.z\n        );\n        cov3D = renderToViewBasis * cov3D * transpose(renderToViewBasis);\n    }\n\n    \n    vec2 scaledRenderSize = renderSize * focalAdjustment;\n    vec2 focal = 0.5 * scaledRenderSize * vec2(projectionMatrix[0][0], projectionMatrix[1][1]);\n\n    mat3 J;\n    if (isOrthographic) {\n        J = mat3(\n            focal.x, 0.0, 0.0,\n            0.0, focal.y, 0.0,\n            0.0, 0.0, 0.0\n        );\n    } else {\n        float invZ = 1.0 / viewCenter.z;\n        vec2 J1 = focal * invZ;\n        vec2 J2 = -(J1 * viewCenter.xy) * invZ;\n        J = mat3(\n            J1.x, 0.0, J2.x,\n            0.0, J1.y, J2.y,\n            0.0, 0.0, 0.0\n        );\n    }\n\n    \n    \n    mat3 cov2D = transpose(J) * cov3D * J;\n    float a = cov2D[0][0];\n    float d = cov2D[1][1];\n    float b = cov2D[0][1];\n\n    \n    a += preBlurAmount;\n    d += preBlurAmount;\n\n    float fullBlurAmount = blurAmount;\n    if ((focalDistance > 0.0) && (apertureAngle > 0.0)) {\n        float focusRadius = maxPixelRadius;\n        if (viewCenter.z < 0.0) {\n            float focusBlur = abs((-viewCenter.z - focalDistance) / viewCenter.z);\n            float apertureRadius = focal.x * tan(0.5 * apertureAngle);\n            focusRadius = focusBlur * apertureRadius;\n        }\n        fullBlurAmount = clamp(sqr(focusRadius), blurAmount, sqr(maxPixelRadius));\n    }\n\n    \n    float detOrig = a * d - b * b;\n    a += fullBlurAmount;\n    d += fullBlurAmount;\n    float det = a * d - b * b;\n\n    \n    float blurAdjust = sqrt(max(0.0, detOrig / det));\n    rgba.a *= blurAdjust;\n    if (rgba.a < minAlpha) {\n        return;\n    }\n    vRgba.a = rgba.a;\n\n    \n    float eigenAvg = 0.5 * (a + d);\n    float eigenDelta = sqrt(max(0.0, eigenAvg * eigenAvg - det));\n    float eigen1 = eigenAvg + eigenDelta;\n    float eigen2 = eigenAvg - eigenDelta;\n\n    vec2 eigenVec1 = (abs(b) > 0.001) ? normalize(vec2(b, eigen1 - a))\n        : ((a >= d) ? vec2(1.0, 0.0) : vec2(0.0, 1.0));\n    vec2 eigenVec2 = vec2(eigenVec1.y, -eigenVec1.x);\n\n    float scale1 = min(maxPixelRadius, adjustedStdDev * sqrt(eigen1));\n    float scale2 = min(maxPixelRadius, adjustedStdDev * sqrt(eigen2));\n    if (scale1 < minPixelRadius && scale2 < minPixelRadius) {\n        return;\n    }\n\n    \n    vec2 pixelOffset = position.x * eigenVec1 * scale1 + position.y * eigenVec2 * scale2;\n    vec2 ndcOffset = (2.0 / scaledRenderSize) * pixelOffset;\n\n    \n    vec3 ndcCenter = clipCenter.xyz / clipCenter.w;\n    vec3 ndc = vec3(ndcCenter.xy + ndcOffset, ndcCenter.z);\n\n    vNdc = ndc;\n    gl_Position = vec4(ndc.xy * clipCenter.w, clipCenter.zw);\n\n    #include <logdepthbuf_vertex>\n}";
+var splatFragment_default = "precision highp float;\nprecision highp int;\n\n#include <splatDefines>\n\nuniform float near;\nuniform float far;\nuniform bool encodeLinear;\nuniform float time;\nuniform bool debugFlag;\nuniform float maxStdDev;\nuniform float minAlpha;\nuniform bool disableFalloff;\nuniform float falloff;\nuniform int splatPickOutputMode;\n\nout vec4 fragColor;\n\nin vec4 vRgba;\nin vec2 vSplatUv;\nin vec3 vNdc;\nflat in uint vSplatIndex;\nflat in float adjustedStdDev;\n\n#include <logdepthbuf_pars_fragment>\n\nvoid main() {\n    vec4 rgba = vRgba;\n\n    float z2 = dot(vSplatUv, vSplatUv);\n    if (z2 > (adjustedStdDev * adjustedStdDev)) {\n        discard;\n    }\n\n    if (splatPickOutputMode == 1) {\n        uint encoded = vSplatIndex + 1u;\n        uvec4 bytes = (uvec4(encoded) >> uvec4(0u, 8u, 16u, 24u)) & uvec4(255u);\n        fragColor = vec4(bytes) / 255.0;\n        return;\n    }\n\n    if (false) {\n    \n        float a = rgba.a;\n        float shifted = sqrt(z2) - max(0.0, a - 1.0);\n        float exponent = -0.5 * max(1.0, a) * sqr(max(0.0, shifted));\n        float min1a = min(1.0, a);\n        rgba.a = mix(min1a, min1a * exp(exponent), falloff);\n    } else {\n        \n        if (rgba.a <= 1.0) {\n            rgba.a = mix(rgba.a, rgba.a * exp(-0.5 * z2), falloff);\n        } else {\n            float a = exp((rgba.a*rgba.a - 1.0) / 2.718281828459045);\n            float alpha = 1.0 - pow(1.0 - exp(-0.5 * z2), a);\n            rgba.a = mix(1.0, alpha, falloff);\n        }\n    }\n\n    if (rgba.a < minAlpha) {\n        discard;\n    }\n    if (encodeLinear) {\n        rgba.rgb = srgbToLinear(rgba.rgb);\n    }\n\n    #ifdef PREMULTIPLIED_ALPHA\n        fragColor = vec4(rgba.rgb * rgba.a, rgba.a);\n    #else\n        fragColor = rgba;\n    #endif\n\n    #include <logdepthbuf_fragment>\n}";
+var splatVertex_default = "precision highp float;\nprecision highp int;\nprecision highp usampler2DArray;\n\n#include <splatDefines>\n\nout vec4 vRgba;\nout vec2 vSplatUv;\nout vec3 vNdc;\nflat out uint vSplatIndex;\nflat out float adjustedStdDev;\n\nuniform vec2 renderSize;\nuniform vec4 renderToViewQuat;\nuniform vec3 renderToViewPos;\nuniform mat3 renderToViewBasis;\nuniform float maxStdDev;\nuniform float minPixelRadius;\nuniform float maxPixelRadius;\nuniform bool enableExtSplats;\nuniform bool enableCovSplats;\nuniform float time;\nuniform float deltaTime;\nuniform bool debugFlag;\nuniform float minAlpha;\nuniform bool enable2DGS;\nuniform bool lodInflate;\nuniform float blurAmount;\nuniform float preBlurAmount;\nuniform float focalDistance;\nuniform float apertureAngle;\nuniform float clipXY;\nuniform float focalAdjustment;\n\nuniform usampler2D ordering;\nuniform usampler2DArray extSplats;\nuniform usampler2DArray extSplats2;\nuniform bool splatEditorStateEnabled;\nuniform usampler2DArray splatEditorStateTexture;\nuniform vec4 splatEditorSelectedColor;\nuniform vec4 splatEditorLockedColor;\nuniform int splatEditorStateFilterMode;\n\nbool isPerspectiveMatrix( mat4 m ) {\n    return m[ 2 ][ 3 ] == -1.0;\n}\n\n#include <logdepthbuf_pars_vertex>\n\nbool matchesSplatEditorStateFilter(uint state, int mode) {\n    if (mode == 0) {\n        return true;\n    } else if (mode == 1) {\n        return true;\n    } else if (mode == 2) {\n        return (state & 4u) == 0u;\n    } else if (mode == 3) {\n        return state == 1u;\n    } else if (mode == 4) {\n        return (state & 6u) == 0u;\n    } else if (mode == 5) {\n        return state == 0u;\n    } else if (mode == 6) {\n        return state == 1u;\n    }\n    return true;\n}\n\nvoid main() {\n    \n    gl_Position = vec4(0.0, 0.0, 2.0, 1.0);\n\n    ivec2 orderingCoord = ivec2((gl_InstanceID >> 2) & 4095, gl_InstanceID >> 14);\n    uint splatIndex = texelFetch(ordering, orderingCoord, 0)[gl_InstanceID & 3];\n    if (splatIndex == 0xffffffffu) {\n        \n        return;\n    }\n\n    ivec3 texCoord = splatTexCoord(int(splatIndex));\n    vec3 center, scales, xxyyzz, xyxzyz;\n    vec4 quaternion, rgba;\n    mat3 cov3D;\n    bvec3 zeroScales = bvec3(false);\n\n    if (enableExtSplats) {\n        uvec4 ext1 = texelFetch(extSplats, texCoord, 0);\n        float alpha = unpackSplatExtAlpha(ext1);\n        if ((alpha == 0.0) || (alpha < minAlpha)) {\n            return;\n        }\n        uvec4 ext2 = texelFetch(extSplats2, texCoord, 0);\n\n        if (!enableCovSplats) {\n            unpackSplatExt(ext1, ext2, center, scales, quaternion, rgba);\n            zeroScales = equal(scales, vec3(0.0));\n            if (all(zeroScales)) {\n                return;\n            }\n        } else {\n            unpackSplatExtCov(ext1, ext2, center, rgba, xxyyzz, xyxzyz);\n            if (all(equal(xxyyzz, vec3(0.0))) && all(equal(xyxzyz, vec3(0.0)))) {\n                return;\n            }\n        }\n    } else {\n        uvec4 packedData = texelFetch(extSplats, texCoord, 0);\n        if (!enableCovSplats) {\n            unpackSplatEncoding(packedData, center, scales, quaternion, rgba, vec4(0.0, 1.0, LN_SCALE_MIN, LN_SCALE_MAX));\n            zeroScales = equal(scales, vec3(0.0));\n            if (all(zeroScales)) {\n                return;\n            }\n        } else {\n            unpackSplatCovEncoding(packedData, center, rgba, xxyyzz, xyxzyz, vec4(0.0, 1.0, LN_SCALE_MIN, LN_SCALE_MAX));\n            if (all(equal(xxyyzz, vec3(0.0))) && all(equal(xyxzyz, vec3(0.0)))) {\n                return;\n            }\n        }\n\n        rgba.a *= 2.0;\n        if ((rgba.a == 0.0) || (rgba.a < minAlpha)) {\n            return;\n        }\n    }\n\n    uint splatEditorState = 0u;\n    if (splatEditorStateEnabled) {\n        splatEditorState = texelFetch(splatEditorStateTexture, texCoord, 0).r;\n    }\n    if (splatEditorStateFilterMode != 0) {\n        if (!matchesSplatEditorStateFilter(splatEditorState, splatEditorStateFilterMode)) {\n            return;\n        }\n    } else if (splatEditorStateEnabled) {\n        if ((splatEditorState & 4u) != 0u) {\n            return;\n        }\n        if ((splatEditorState & 2u) != 0u) {\n            rgba *= splatEditorLockedColor;\n        } else if ((splatEditorState & 1u) != 0u) {\n            rgba.rgb = mix(rgba.rgb, splatEditorSelectedColor.rgb, splatEditorSelectedColor.a);\n        }\n    }\n\n    adjustedStdDev = maxStdDev;\n    if (rgba.a > 1.0) {\n        \n        rgba.a = min(rgba.a * 4.0 - 3.0, 5.0);\n\n        if (lodInflate) {\n            \n            float opacity = exp((rgba.a * rgba.a - 1.0) / 2.718281828459045);\n            float rescale = pow(opacity, 1.0 / 3.0);\n            scales *= rescale;\n            rgba.a = 1.0;\n        }\n\n        \n        adjustedStdDev = maxStdDev + 0.7 * (rgba.a - 1.0);\n    }\n\n    \n    vec3 viewCenter = (!enableCovSplats ? quatVec(renderToViewQuat, center) : (renderToViewBasis * center)) + renderToViewPos;\n\n    \n    if (viewCenter.z >= 0.0) {\n        return;\n    }\n\n    \n    vec4 clipCenter = projectionMatrix * vec4(viewCenter, 1.0);\n\n    \n    if (abs(clipCenter.z) >= clipCenter.w) {\n        return;\n    }\n\n    \n    float clip = clipXY * clipCenter.w;\n    if (abs(clipCenter.x) > clip || abs(clipCenter.y) > clip) {\n        return;\n    }\n\n    vRgba = rgba;\n    vSplatUv = position.xy * adjustedStdDev;\n\n    \n    vSplatIndex = splatIndex;\n\n    if (!enableCovSplats) {\n        \n        vec4 viewQuaternion = quatQuat(renderToViewQuat, quaternion);\n\n        if (enable2DGS && any(zeroScales)) {\n            vec3 offset;\n            if (zeroScales.z) {\n                offset = vec3(vSplatUv.xy * scales.xy, 0.0);\n            } else if (zeroScales.y) {\n                offset = vec3(vSplatUv.x * scales.x, 0.0, vSplatUv.y * scales.z);\n            } else {\n                offset = vec3(0.0, vSplatUv.xy * scales.yz);\n            }\n\n            vec3 viewPos = viewCenter + quatVec(viewQuaternion, offset);\n            gl_Position = projectionMatrix * vec4(viewPos, 1.0);\n            vNdc = gl_Position.xyz / gl_Position.w;\n\n            #include <logdepthbuf_vertex>\n            return;\n        }\n\n        \n        mat3 RS = scaleQuaternionToMatrix(scales, viewQuaternion);\n        cov3D = RS * transpose(RS);\n    } else {\n        cov3D = mat3(\n            xxyyzz.x, xyxzyz.x, xyxzyz.y,\n            xyxzyz.x, xxyyzz.y, xyxzyz.z,\n            xyxzyz.y, xyxzyz.z, xxyyzz.z\n        );\n        cov3D = renderToViewBasis * cov3D * transpose(renderToViewBasis);\n    }\n\n    \n    vec2 scaledRenderSize = renderSize * focalAdjustment;\n    vec2 focal = 0.5 * scaledRenderSize * vec2(projectionMatrix[0][0], projectionMatrix[1][1]);\n\n    mat3 J;\n    if (isOrthographic) {\n        J = mat3(\n            focal.x, 0.0, 0.0,\n            0.0, focal.y, 0.0,\n            0.0, 0.0, 0.0\n        );\n    } else {\n        float invZ = 1.0 / viewCenter.z;\n        vec2 J1 = focal * invZ;\n        vec2 J2 = -(J1 * viewCenter.xy) * invZ;\n        J = mat3(\n            J1.x, 0.0, J2.x,\n            0.0, J1.y, J2.y,\n            0.0, 0.0, 0.0\n        );\n    }\n\n    \n    \n    mat3 cov2D = transpose(J) * cov3D * J;\n    float a = cov2D[0][0];\n    float d = cov2D[1][1];\n    float b = cov2D[0][1];\n\n    \n    a += preBlurAmount;\n    d += preBlurAmount;\n\n    float fullBlurAmount = blurAmount;\n    if ((focalDistance > 0.0) && (apertureAngle > 0.0)) {\n        float focusRadius = maxPixelRadius;\n        if (viewCenter.z < 0.0) {\n            float focusBlur = abs((-viewCenter.z - focalDistance) / viewCenter.z);\n            float apertureRadius = focal.x * tan(0.5 * apertureAngle);\n            focusRadius = focusBlur * apertureRadius;\n        }\n        fullBlurAmount = clamp(sqr(focusRadius), blurAmount, sqr(maxPixelRadius));\n    }\n\n    \n    float detOrig = a * d - b * b;\n    a += fullBlurAmount;\n    d += fullBlurAmount;\n    float det = a * d - b * b;\n\n    \n    float blurAdjust = sqrt(max(0.0, detOrig / det));\n    rgba.a *= blurAdjust;\n    if (rgba.a < minAlpha) {\n        return;\n    }\n    vRgba.a = rgba.a;\n\n    \n    float eigenAvg = 0.5 * (a + d);\n    float eigenDelta = sqrt(max(0.0, eigenAvg * eigenAvg - det));\n    float eigen1 = eigenAvg + eigenDelta;\n    float eigen2 = eigenAvg - eigenDelta;\n\n    vec2 eigenVec1 = (abs(b) > 0.001) ? normalize(vec2(b, eigen1 - a))\n        : ((a >= d) ? vec2(1.0, 0.0) : vec2(0.0, 1.0));\n    vec2 eigenVec2 = vec2(eigenVec1.y, -eigenVec1.x);\n\n    float scale1 = min(maxPixelRadius, adjustedStdDev * sqrt(eigen1));\n    float scale2 = min(maxPixelRadius, adjustedStdDev * sqrt(eigen2));\n    if (scale1 < minPixelRadius && scale2 < minPixelRadius) {\n        return;\n    }\n\n    \n    vec2 pixelOffset = position.x * eigenVec1 * scale1 + position.y * eigenVec2 * scale2;\n    vec2 ndcOffset = (2.0 / scaledRenderSize) * pixelOffset;\n\n    \n    vec3 ndcCenter = clipCenter.xyz / clipCenter.w;\n    vec3 ndc = vec3(ndcCenter.xy + ndcOffset, ndcCenter.z);\n\n    vNdc = ndc;\n    gl_Position = vec4(ndc.xy * clipCenter.w, clipCenter.zw);\n\n    #include <logdepthbuf_vertex>\n}";
 let shaders = null;
 function getShaders() {
   if (!shaders) {
@@ -11112,6 +11112,161 @@ const QUAD_VERTICES = new Float32Array([
   0
 ]);
 const QUAD_INDICES = new Uint16Array([0, 1, 2, 0, 2, 3]);
+const SPLAT_SCREEN_PICK_FILTER_ALL = 1;
+const SPLAT_SCREEN_PICK_FILTER_VISIBLE = 2;
+const SPLAT_SCREEN_PICK_FILTER_SELECTED = 3;
+const SPLAT_SCREEN_PICK_FILTER_EDITABLE = 4;
+const SPLAT_SCREEN_PICK_FILTER_PICK_ADD = 5;
+const SPLAT_SCREEN_PICK_FILTER_PICK_REMOVE = 6;
+function editorSelectionOperationToPickFilterMode(operation) {
+  switch (operation) {
+    case "add":
+      return "pick-add";
+    case "remove":
+      return "pick-remove";
+    case "set":
+      return "pick-set";
+    default:
+      throw new Error(`Unsupported editor selection operation: ${operation}`);
+  }
+}
+function splatEditorStateFilterModeToPickUniform(mode) {
+  switch (mode) {
+    case void 0:
+      return SPLAT_SCREEN_PICK_FILTER_PICK_SET;
+    case "all":
+      return SPLAT_SCREEN_PICK_FILTER_ALL;
+    case "visible":
+      return SPLAT_SCREEN_PICK_FILTER_VISIBLE;
+    case "selected":
+      return SPLAT_SCREEN_PICK_FILTER_SELECTED;
+    case "editable":
+    case "pick-set":
+      return SPLAT_SCREEN_PICK_FILTER_EDITABLE;
+    case "pick-add":
+      return SPLAT_SCREEN_PICK_FILTER_PICK_ADD;
+    case "pick-remove":
+      return SPLAT_SCREEN_PICK_FILTER_PICK_REMOVE;
+    default:
+      throw new Error(`Unsupported splat editor state filter mode: ${mode}`);
+  }
+}
+const SPLAT_SCREEN_PICK_FILTER_PICK_SET = SPLAT_SCREEN_PICK_FILTER_EDITABLE;
+function normalizeSplatScreenPickShape(shape, targetWidth, targetHeight) {
+  if (targetWidth <= 0 || targetHeight <= 0) {
+    throw new Error("Splat screen picking target size must be positive");
+  }
+  if (shape.kind === "point") {
+    const radius = Math.max(0, Math.floor(shape.radiusPixels ?? 0));
+    const centerX = Math.floor(shape.x * targetWidth);
+    const centerY = Math.floor(shape.y * targetHeight);
+    return clipPickRect(
+      {
+        x: centerX - radius,
+        y: centerY - radius,
+        width: radius * 2 + 1,
+        height: radius * 2 + 1
+      },
+      targetWidth,
+      targetHeight
+    );
+  }
+  const rawX = shape.width < 0 ? shape.x + shape.width : shape.x;
+  const rawY = shape.height < 0 ? shape.y + shape.height : shape.y;
+  const rawWidth = Math.abs(shape.width);
+  const rawHeight = Math.abs(shape.height);
+  const x = Math.floor(rawX * targetWidth);
+  const y = Math.floor(rawY * targetHeight);
+  const width = Math.max(1, Math.ceil((rawX + rawWidth) * targetWidth) - x);
+  const height = Math.max(1, Math.ceil((rawY + rawHeight) * targetHeight) - y);
+  const rect = clipPickRect({ x, y, width, height }, targetWidth, targetHeight);
+  if (shape.kind !== "mask") {
+    return rect;
+  }
+  return {
+    ...rect,
+    mask: {
+      data: shape.mask,
+      width: shape.maskWidth,
+      height: shape.maskHeight,
+      channel: shape.maskChannel ?? 3,
+      threshold: shape.maskThreshold ?? 0
+    }
+  };
+}
+function collectSplatScreenPickHitsFromRgba8(pixels, rect, options = {}) {
+  const expectedLength = rect.width * rect.height * 4;
+  if (pixels.length < expectedLength) {
+    throw new Error(
+      `Splat screen pick pixel buffer too small: ${pixels.length} < ${expectedLength}`
+    );
+  }
+  const seen = /* @__PURE__ */ new Set();
+  const hits = [];
+  const maxCandidates = options.maxCandidates != null ? Math.max(0, Math.floor(options.maxCandidates)) : Number.POSITIVE_INFINITY;
+  for (let readY = 0; readY < rect.height; readY++) {
+    const topY = rect.height - 1 - readY;
+    for (let x = 0; x < rect.width; x++) {
+      if (rect.mask && !isPickMaskPixelEnabled(rect.mask, x, topY, rect)) {
+        continue;
+      }
+      const offset = (readY * rect.width + x) * 4;
+      const encoded = (pixels[offset] | pixels[offset + 1] << 8 | pixels[offset + 2] << 16 | pixels[offset + 3] << 24) >>> 0;
+      if (encoded === 0) {
+        continue;
+      }
+      const accumulatorIndex = encoded - 1;
+      if (seen.has(accumulatorIndex)) {
+        continue;
+      }
+      seen.add(accumulatorIndex);
+      hits.push({
+        accumulatorIndex,
+        pixel: {
+          x: rect.x + x,
+          y: rect.y + topY
+        }
+      });
+      if (hits.length >= maxCandidates) {
+        return maybeSortPixelHits(hits, options.sort);
+      }
+    }
+  }
+  return maybeSortPixelHits(hits, options.sort);
+}
+function clipPickRect(rect, targetWidth, targetHeight) {
+  const x0 = Math.max(0, Math.min(targetWidth, rect.x));
+  const y0 = Math.max(0, Math.min(targetHeight, rect.y));
+  const x1 = Math.max(0, Math.min(targetWidth, rect.x + rect.width));
+  const y1 = Math.max(0, Math.min(targetHeight, rect.y + rect.height));
+  return {
+    x: x0,
+    y: y0,
+    width: Math.max(1, x1 - x0),
+    height: Math.max(1, y1 - y0)
+  };
+}
+function isPickMaskPixelEnabled(mask, x, y, rect) {
+  if (mask.width <= 0 || mask.height <= 0) {
+    return false;
+  }
+  const maskX = Math.max(
+    0,
+    Math.min(mask.width - 1, Math.floor(x / rect.width * mask.width))
+  );
+  const maskY = Math.max(
+    0,
+    Math.min(mask.height - 1, Math.floor(y / rect.height * mask.height))
+  );
+  const value = mask.data[(maskY * mask.width + maskX) * 4 + mask.channel] ?? 0;
+  return value > mask.threshold;
+}
+function maybeSortPixelHits(hits, sort = true) {
+  if (sort) {
+    hits.sort((a, b) => a.accumulatorIndex - b.accumulatorIndex);
+  }
+  return hits;
+}
 const _SparkRenderer = class _SparkRenderer extends THREE__namespace.Mesh {
   constructor(options) {
     if (!options) {
@@ -11322,6 +11477,8 @@ const _SparkRenderer = class _SparkRenderer extends THREE__namespace.Mesh {
       splatEditorLockedColor: {
         value: new THREE__namespace.Vector4(0.58, 0.64, 0.72, 1)
       },
+      splatEditorStateFilterMode: { value: 0 },
+      splatPickOutputMode: { value: 0 },
       // Time in seconds for time-based effects
       time: { value: 0 },
       // Delta time in seconds since last frame
@@ -11339,6 +11496,10 @@ const _SparkRenderer = class _SparkRenderer extends THREE__namespace.Mesh {
     if (this.backTarget) {
       this.backTarget.dispose();
       this.backTarget = void 0;
+    }
+    if (this.screenPickTarget) {
+      this.screenPickTarget.dispose();
+      this.screenPickTarget = void 0;
     }
     if (this.orderingTexture) {
       this.orderingTexture.dispose();
@@ -11384,7 +11545,9 @@ const _SparkRenderer = class _SparkRenderer extends THREE__namespace.Mesh {
     const frame = renderer.info.render.frame;
     const isNewFrame = frame !== spark.lastFrame;
     spark.lastFrame = frame;
-    if (spark.target) {
+    if (spark.screenPickRenderSize) {
+      spark.renderSize.copy(spark.screenPickRenderSize);
+    } else if (spark.target) {
       spark.renderSize.set(spark.target.width, spark.target.height);
     } else {
       const renderSize = renderer.getDrawingBufferSize(spark.renderSize);
@@ -12159,6 +12322,144 @@ const _SparkRenderer = class _SparkRenderer extends THREE__namespace.Mesh {
     } finally {
       _SparkRenderer.sparkOverride = void 0;
     }
+  }
+  async pickSplatCandidates(options) {
+    const { scene, camera } = options;
+    const size = this.renderer.getDrawingBufferSize(new THREE__namespace.Vector2());
+    const width = Math.max(1, Math.floor(options.width ?? size.x));
+    const height = Math.max(1, Math.floor(options.height ?? size.y));
+    const rect = normalizeSplatScreenPickShape(options.shape, width, height);
+    if (options.update !== false) {
+      await this.update({ scene, camera });
+    }
+    const target = this.ensureScreenPickTarget(width, height);
+    const pixels = await this.renderSplatScreenPickPass({
+      target,
+      scene,
+      camera,
+      rect,
+      editorStateMode: options.editorStateMode ?? editorSelectionOperationToPickFilterMode(options.operation ?? "set")
+    });
+    const pixelHits = collectSplatScreenPickHitsFromRgba8(pixels, rect, {
+      maxCandidates: options.maxCandidates,
+      sort: options.sort
+    });
+    return this.mapSplatScreenPickHits(pixelHits);
+  }
+  ensureScreenPickTarget(width, height) {
+    const current = this.screenPickTarget;
+    if (current && current.width === width && current.height === height) {
+      return current;
+    }
+    current == null ? void 0 : current.dispose();
+    const target = new THREE__namespace.WebGLRenderTarget(width, height, {
+      format: THREE__namespace.RGBAFormat,
+      type: THREE__namespace.UnsignedByteType,
+      minFilter: THREE__namespace.NearestFilter,
+      magFilter: THREE__namespace.NearestFilter,
+      depthBuffer: true,
+      stencilBuffer: false,
+      colorSpace: THREE__namespace.NoColorSpace
+    });
+    target.texture.generateMipmaps = false;
+    target.texture.name = "Spark screen pick ids";
+    this.screenPickTarget = target;
+    return target;
+  }
+  async renderSplatScreenPickPass({
+    target,
+    scene,
+    camera,
+    rect,
+    editorStateMode
+  }) {
+    const renderer = this.renderer;
+    const byteLength = rect.width * rect.height * 4;
+    if (!this.screenPickPixels || this.screenPickPixels.length < byteLength) {
+      this.screenPickPixels = new Uint8Array(byteLength);
+    }
+    const pixels = this.screenPickPixels.subarray(0, byteLength);
+    const renderState = this.saveRenderState(renderer);
+    const viewport = renderer.getViewport(new THREE__namespace.Vector4());
+    const scissor = renderer.getScissor(new THREE__namespace.Vector4());
+    const scissorTest = renderer.getScissorTest();
+    const clearColor = renderer.getClearColor(new THREE__namespace.Color());
+    const clearAlpha = renderer.getClearAlpha();
+    const material = this.material;
+    const materialState = {
+      blending: material.blending,
+      depthWrite: material.depthWrite,
+      transparent: material.transparent
+    };
+    const previousPickOutputMode = this.uniforms.splatPickOutputMode.value;
+    const previousFilterMode = this.uniforms.splatEditorStateFilterMode.value;
+    const previousRenderSize = this.screenPickRenderSize;
+    const previousAutoUpdate = this.autoUpdate;
+    try {
+      this.autoUpdate = false;
+      this.screenPickRenderSize = new THREE__namespace.Vector2(
+        target.width,
+        target.height
+      );
+      this.uniforms.splatPickOutputMode.value = 1;
+      this.uniforms.splatEditorStateFilterMode.value = splatEditorStateFilterModeToPickUniform(editorStateMode);
+      material.blending = THREE__namespace.NoBlending;
+      material.depthWrite = true;
+      material.transparent = false;
+      renderer.xr.enabled = false;
+      renderer.autoClear = false;
+      renderer.setRenderTarget(target);
+      renderer.setViewport(0, 0, target.width, target.height);
+      renderer.setScissorTest(false);
+      renderer.setClearColor(0, 0);
+      renderer.clear(true, true, true);
+      _SparkRenderer.sparkOverride = this;
+      renderer.render(this, camera);
+      await renderer.readRenderTargetPixelsAsync(
+        target,
+        rect.x,
+        target.height - rect.y - rect.height,
+        rect.width,
+        rect.height,
+        pixels
+      );
+      return pixels;
+    } finally {
+      _SparkRenderer.sparkOverride = void 0;
+      this.autoUpdate = previousAutoUpdate;
+      this.screenPickRenderSize = previousRenderSize;
+      this.uniforms.splatPickOutputMode.value = previousPickOutputMode;
+      this.uniforms.splatEditorStateFilterMode.value = previousFilterMode;
+      material.blending = materialState.blending;
+      material.depthWrite = materialState.depthWrite;
+      material.transparent = materialState.transparent;
+      renderer.setViewport(viewport);
+      renderer.setScissor(scissor);
+      renderer.setScissorTest(scissorTest);
+      renderer.setClearColor(clearColor, clearAlpha);
+      this.resetRenderState(renderer, renderState);
+    }
+  }
+  mapSplatScreenPickHits(pixelHits) {
+    const hits = [];
+    for (const hit of pixelHits) {
+      const mapping = this.display.mapping.find(
+        ({ base, count }) => hit.accumulatorIndex >= base && hit.accumulatorIndex < base + count
+      );
+      if (!mapping) {
+        continue;
+      }
+      const localIndex = hit.accumulatorIndex - mapping.base;
+      const sourceIndexStable = mapping.node instanceof SplatMesh && mapping.node.context.enableLod.value === false && !mapping.node.paged;
+      hits.push({
+        object: mapping.node,
+        index: localIndex,
+        accumulatorIndex: hit.accumulatorIndex,
+        sourceIndexStable,
+        pixel: hit.pixel
+      });
+    }
+    return hits;
   }
   renderTarget({
     scene,
@@ -22486,11 +22787,13 @@ exports.SpzWriter = SpzWriter;
 exports.Uint8ToFloat = Uint8ToFloat;
 exports.XrHand = XrHand;
 exports.XrHands = XrHands;
+exports.collectSplatScreenPickHitsFromRgba8 = collectSplatScreenPickHitsFromRgba8;
 exports.constructAxes = constructAxes;
 exports.constructGrid = constructGrid;
 exports.constructSpherePoints = constructSpherePoints;
 exports.defines = defines;
 exports.dyno = dyno;
+exports.editorSelectionOperationToPickFilterMode = editorSelectionOperationToPickFilterMode;
 exports.flipPixels = flipPixels;
 exports.floatToSint8 = floatToSint8;
 exports.floatToUint8 = floatToUint8;
@@ -22509,9 +22812,11 @@ exports.lerpHandsSnapshots = lerpHandsSnapshots;
 exports.matchesSplatEditorStateBits = matchesSplatEditorStateBits;
 exports.matchesSplatEditorStateIndexMode = matchesSplatEditorStateIndexMode;
 exports.modifiers = modifiers;
+exports.normalizeSplatScreenPickShape = normalizeSplatScreenPickShape;
 exports.pixelsToPngUrl = pixelsToPngUrl;
 exports.readRgbaArray = readRgbaArray;
 exports.setPackedSplat = setPackedSplat;
+exports.splatEditorStateFilterModeToPickUniform = splatEditorStateFilterModeToPickUniform;
 exports.textSplats = textSplats;
 exports.toHalf = toHalf;
 exports.transcodeSpz = transcodeSpz;

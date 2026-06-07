@@ -1,0 +1,83 @@
+import { SplatEditorSelectionOperation, SplatEditorStateFilterMode } from './SplatEditorState';
+import { SplatGenerator } from './SplatGenerator';
+import type * as THREE from "three";
+export type SplatScreenPickShape = {
+    kind: "point";
+    x: number;
+    y: number;
+    radiusPixels?: number;
+} | {
+    kind: "rect";
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+} | {
+    kind: "mask";
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    mask: ArrayLike<number>;
+    maskWidth: number;
+    maskHeight: number;
+    maskChannel?: 0 | 1 | 2 | 3;
+    maskThreshold?: number;
+};
+export type SplatScreenPickOptions = {
+    scene: THREE.Object3D;
+    camera: THREE.Camera;
+    shape: SplatScreenPickShape;
+    width?: number;
+    height?: number;
+    editorStateMode?: SplatEditorStateFilterMode;
+    operation?: SplatEditorSelectionOperation;
+    update?: boolean;
+    maxCandidates?: number;
+    sort?: boolean;
+};
+export type SplatScreenPickHit = {
+    object: SplatGenerator;
+    index: number;
+    accumulatorIndex: number;
+    sourceIndexStable: boolean;
+    pixel?: {
+        x: number;
+        y: number;
+    };
+};
+export type SplatScreenPickRect = {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    mask?: SplatScreenPickMask;
+};
+export type SplatScreenPickMask = {
+    data: ArrayLike<number>;
+    width: number;
+    height: number;
+    channel: 0 | 1 | 2 | 3;
+    threshold: number;
+};
+export type SplatScreenPickPixelHit = {
+    accumulatorIndex: number;
+    pixel: {
+        x: number;
+        y: number;
+    };
+};
+export declare const SPLAT_SCREEN_PICK_FILTER_OFF = 0;
+export declare const SPLAT_SCREEN_PICK_FILTER_ALL = 1;
+export declare const SPLAT_SCREEN_PICK_FILTER_VISIBLE = 2;
+export declare const SPLAT_SCREEN_PICK_FILTER_SELECTED = 3;
+export declare const SPLAT_SCREEN_PICK_FILTER_EDITABLE = 4;
+export declare const SPLAT_SCREEN_PICK_FILTER_PICK_ADD = 5;
+export declare const SPLAT_SCREEN_PICK_FILTER_PICK_REMOVE = 6;
+export declare function editorSelectionOperationToPickFilterMode(operation: SplatEditorSelectionOperation): SplatEditorStateFilterMode;
+export declare function splatEditorStateFilterModeToPickUniform(mode?: SplatEditorStateFilterMode): number;
+export declare function normalizeSplatScreenPickShape(shape: SplatScreenPickShape, targetWidth: number, targetHeight: number): SplatScreenPickRect;
+export declare function collectSplatScreenPickHitsFromRgba8(pixels: ArrayLike<number>, rect: SplatScreenPickRect, options?: {
+    maxCandidates?: number;
+    sort?: boolean;
+}): SplatScreenPickPixelHit[];

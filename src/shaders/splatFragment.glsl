@@ -13,6 +13,7 @@ uniform float maxStdDev;
 uniform float minAlpha;
 uniform bool disableFalloff;
 uniform float falloff;
+uniform int splatPickOutputMode;
 
 out vec4 fragColor;
 
@@ -30,6 +31,13 @@ void main() {
     float z2 = dot(vSplatUv, vSplatUv);
     if (z2 > (adjustedStdDev * adjustedStdDev)) {
         discard;
+    }
+
+    if (splatPickOutputMode == 1) {
+        uint encoded = vSplatIndex + 1u;
+        uvec4 bytes = (uvec4(encoded) >> uvec4(0u, 8u, 16u, 24u)) & uvec4(255u);
+        fragColor = vec4(bytes) / 255.0;
+        return;
     }
 
     if (false) {
