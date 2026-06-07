@@ -253,6 +253,7 @@ export declare const SPLAT_SCREEN_PICK_FILTER_PICK_REMOVE = 6;
 export declare function editorSelectionOperationToPickFilterMode(operation: SplatEditorSelectionOperation): SplatEditorStateFilterMode;
 export declare function splatEditorStateFilterModeToPickUniform(mode?: SplatEditorStateFilterMode): number;
 export declare function normalizeSplatScreenPickShape(shape: SplatScreenPickShape, targetWidth: number, targetHeight: number): SplatScreenPickRect;
+export declare function normalizeSplatScreenPickCenterShape(shape: SplatScreenPickShape, targetWidth: number, targetHeight: number): SplatScreenPickRect;
 export declare function resolveSplatScreenPickRenderLayout(rect: SplatScreenPickRect, viewportWidth: number, viewportHeight: number, renderMode?: SplatScreenPickRenderMode): SplatScreenPickRenderLayout;
 export declare function createSplatScreenFloodMaskFromRgba8(pixels: ArrayLike<number>, options: SplatScreenFloodMaskOptions): SplatScreenFloodMaskResult;
 export declare function collectSplatScreenPickHitsFromRgba8(pixels: ArrayLike<number>, rect: SplatScreenPickRect, options?: {

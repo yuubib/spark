@@ -12037,6 +12037,26 @@ function normalizeSplatScreenPickShape(shape, targetWidth, targetHeight) {
     }
   };
 }
+function normalizeSplatScreenPickCenterShape(shape, targetWidth, targetHeight) {
+  if (shape.kind !== "rect") {
+    return normalizeSplatScreenPickShape(shape, targetWidth, targetHeight);
+  }
+  if (targetWidth <= 0 || targetHeight <= 0) {
+    throw new Error("Splat screen picking target size must be positive");
+  }
+  const rawX = shape.width < 0 ? shape.x + shape.width : shape.x;
+  const rawY = shape.height < 0 ? shape.y + shape.height : shape.y;
+  return clipPickRect(
+    {
+      x: rawX * targetWidth,
+      y: rawY * targetHeight,
+      width: Math.abs(shape.width) * targetWidth,
+      height: Math.abs(shape.height) * targetHeight
+    },
+    targetWidth,
+    targetHeight
+  );
+}
 function resolveSplatScreenPickRenderLayout(rect, viewportWidth, viewportHeight, renderMode = "viewport") {
   const fullWidth = Math.max(1, Math.floor(viewportWidth));
   const fullHeight = Math.max(1, Math.floor(viewportHeight));
@@ -13771,14 +13791,19 @@ const _SparkRenderer = class _SparkRenderer extends THREE.Mesh {
     const width = Math.max(1, Math.floor(options.width ?? size.x));
     const height = Math.max(1, Math.floor(options.height ?? size.y));
     const renderMode = options.renderMode ?? "viewport";
-    const rect = normalizeSplatScreenPickShape(options.shape, width, height);
+    const renderRect = normalizeSplatScreenPickShape(
+      options.shape,
+      width,
+      height
+    );
     const layout = resolveSplatScreenPickRenderLayout(
-      rect,
+      renderRect,
       width,
       height,
       renderMode
     );
     const candidateMode = options.candidateMode ?? "rendered-id";
+    const rect = candidateMode === "centers" ? normalizeSplatScreenPickCenterShape(options.shape, width, height) : renderRect;
     const editorStateMode = options.editorStateMode ?? editorSelectionOperationToPickFilterMode(options.operation ?? "set");
     let updateMs = 0;
     if (candidateMode === "centers") {
@@ -13926,12 +13951,21 @@ const _SparkRenderer = class _SparkRenderer extends THREE.Mesh {
     const width = Math.max(1, Math.floor(options.width ?? size.x));
     const height = Math.max(1, Math.floor(options.height ?? size.y));
     const renderMode = options.renderMode ?? "viewport";
-    const rect = normalizeSplatScreenPickShape(options.shape, width, height);
+    const renderRect = normalizeSplatScreenPickShape(
+      options.shape,
+      width,
+      height
+    );
     const layout = resolveSplatScreenPickRenderLayout(
-      rect,
+      renderRect,
       width,
       height,
       renderMode
+    );
+    const rect = normalizeSplatScreenPickCenterShape(
+      options.shape,
+      width,
+      height
     );
     const candidateMode = options.candidateMode ?? "centers";
     const editorStateMode = options.editorStateMode ?? editorSelectionOperationToPickFilterMode(options.operation ?? "set");
@@ -14039,12 +14073,21 @@ const _SparkRenderer = class _SparkRenderer extends THREE.Mesh {
     const width = Math.max(1, Math.floor(options.width ?? size.x));
     const height = Math.max(1, Math.floor(options.height ?? size.y));
     const renderMode = options.renderMode ?? "viewport";
-    const rect = normalizeSplatScreenPickShape(options.shape, width, height);
+    const renderRect = normalizeSplatScreenPickShape(
+      options.shape,
+      width,
+      height
+    );
     const layout = resolveSplatScreenPickRenderLayout(
-      rect,
+      renderRect,
       width,
       height,
       renderMode
+    );
+    const rect = normalizeSplatScreenPickCenterShape(
+      options.shape,
+      width,
+      height
     );
     const editorStateMode = options.editorStateMode ?? editorSelectionOperationToPickFilterMode(options.operation ?? "set");
     if (options.candidateMode && options.candidateMode !== "centers") {
@@ -25771,6 +25814,7 @@ export {
   matchesSplatEditorStateBits,
   matchesSplatEditorStateIndexMode,
   modifiers,
+  normalizeSplatScreenPickCenterShape,
   normalizeSplatScreenPickShape,
   pixelsToPngUrl,
   projectSplatScreenPickCenter,

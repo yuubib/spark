@@ -15,6 +15,7 @@ export {
   collectSplatScreenPickHitsFromRgba8,
   createSplatScreenFloodMaskFromRgba8,
   editorSelectionOperationToPickFilterMode,
+  normalizeSplatScreenPickCenterShape,
   normalizeSplatScreenPickShape,
   projectSplatScreenPickCenter,
   resolveSplatScreenPickRenderLayout,

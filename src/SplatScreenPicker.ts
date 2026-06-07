@@ -388,6 +388,32 @@ export function normalizeSplatScreenPickShape(
   };
 }
 
+export function normalizeSplatScreenPickCenterShape(
+  shape: SplatScreenPickShape,
+  targetWidth: number,
+  targetHeight: number,
+): SplatScreenPickRect {
+  if (shape.kind !== "rect") {
+    return normalizeSplatScreenPickShape(shape, targetWidth, targetHeight);
+  }
+  if (targetWidth <= 0 || targetHeight <= 0) {
+    throw new Error("Splat screen picking target size must be positive");
+  }
+
+  const rawX = shape.width < 0 ? shape.x + shape.width : shape.x;
+  const rawY = shape.height < 0 ? shape.y + shape.height : shape.y;
+  return clipPickRect(
+    {
+      x: rawX * targetWidth,
+      y: rawY * targetHeight,
+      width: Math.abs(shape.width) * targetWidth,
+      height: Math.abs(shape.height) * targetHeight,
+    },
+    targetWidth,
+    targetHeight,
+  );
+}
+
 export function resolveSplatScreenPickRenderLayout(
   rect: SplatScreenPickRect,
   viewportWidth: number,

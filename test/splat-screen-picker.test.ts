@@ -5,6 +5,7 @@ import {
   collectSplatScreenPickHitsFromRgba8,
   createSplatScreenPickCenterCollectStats,
   editorSelectionOperationToPickFilterMode,
+  normalizeSplatScreenPickCenterShape,
   normalizeSplatScreenPickShape,
   projectSplatScreenPickCenter,
   recordSplatScreenPickCandidateCenter,
@@ -86,6 +87,30 @@ assert.deepStrictEqual(
     100,
   ),
   { x: 110, y: 30, width: 50, height: 30 },
+);
+
+const supersplatRectX = 0.083;
+const supersplatRectY = 0.138;
+const supersplatRectWidth = 0.834;
+const supersplatRectHeight = 0.831 - supersplatRectY;
+assert.deepStrictEqual(
+  normalizeSplatScreenPickCenterShape(
+    {
+      kind: "rect",
+      x: supersplatRectX,
+      y: supersplatRectY,
+      width: supersplatRectWidth,
+      height: supersplatRectHeight,
+    },
+    1280,
+    687,
+  ),
+  {
+    x: 106.24000000000001,
+    y: 94.80600000000001,
+    width: 1067.52,
+    height: 476.0909999999999,
+  },
 );
 
 const pickRect = normalizeSplatScreenPickShape(

@@ -37,6 +37,7 @@ import {
   createSplatScreenFloodMaskFromRgba8,
   createSplatScreenPickCenterCollectStats,
   editorSelectionOperationToPickFilterMode,
+  normalizeSplatScreenPickCenterShape,
   normalizeSplatScreenPickShape,
   projectSplatScreenPickCenter,
   recordSplatScreenPickCandidateCenter,
@@ -2126,14 +2127,22 @@ export class SparkRenderer extends THREE.Mesh {
     const width = Math.max(1, Math.floor(options.width ?? size.x));
     const height = Math.max(1, Math.floor(options.height ?? size.y));
     const renderMode = options.renderMode ?? "viewport";
-    const rect = normalizeSplatScreenPickShape(options.shape, width, height);
+    const renderRect = normalizeSplatScreenPickShape(
+      options.shape,
+      width,
+      height,
+    );
     const layout = resolveSplatScreenPickRenderLayout(
-      rect,
+      renderRect,
       width,
       height,
       renderMode,
     );
     const candidateMode = options.candidateMode ?? "rendered-id";
+    const rect =
+      candidateMode === "centers"
+        ? normalizeSplatScreenPickCenterShape(options.shape, width, height)
+        : renderRect;
     const editorStateMode =
       options.editorStateMode ??
       editorSelectionOperationToPickFilterMode(options.operation ?? "set");
@@ -2295,12 +2304,21 @@ export class SparkRenderer extends THREE.Mesh {
     const width = Math.max(1, Math.floor(options.width ?? size.x));
     const height = Math.max(1, Math.floor(options.height ?? size.y));
     const renderMode = options.renderMode ?? "viewport";
-    const rect = normalizeSplatScreenPickShape(options.shape, width, height);
+    const renderRect = normalizeSplatScreenPickShape(
+      options.shape,
+      width,
+      height,
+    );
     const layout = resolveSplatScreenPickRenderLayout(
-      rect,
+      renderRect,
       width,
       height,
       renderMode,
+    );
+    const rect = normalizeSplatScreenPickCenterShape(
+      options.shape,
+      width,
+      height,
     );
     const candidateMode = options.candidateMode ?? "centers";
     const editorStateMode =
@@ -2428,12 +2446,21 @@ export class SparkRenderer extends THREE.Mesh {
     const width = Math.max(1, Math.floor(options.width ?? size.x));
     const height = Math.max(1, Math.floor(options.height ?? size.y));
     const renderMode = options.renderMode ?? "viewport";
-    const rect = normalizeSplatScreenPickShape(options.shape, width, height);
+    const renderRect = normalizeSplatScreenPickShape(
+      options.shape,
+      width,
+      height,
+    );
     const layout = resolveSplatScreenPickRenderLayout(
-      rect,
+      renderRect,
       width,
       height,
       renderMode,
+    );
+    const rect = normalizeSplatScreenPickCenterShape(
+      options.shape,
+      width,
+      height,
     );
     const editorStateMode =
       options.editorStateMode ??

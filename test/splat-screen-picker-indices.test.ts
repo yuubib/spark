@@ -187,6 +187,29 @@ const strictRectBoundary = await sparkRenderer.pickSplatCandidateIndices({
 
 assert.deepStrictEqual([...(strictRectBoundary ?? [])], []);
 
+let fractionalRectStats: SplatScreenPickStats | null = null;
+const fractionalRectBoundary = await sparkRenderer.pickSplatCandidateIndices({
+  target: mesh,
+  scene,
+  camera,
+  candidateMode: "centers",
+  shape: { kind: "rect", x: 0.2499, y: 0, width: 0.5, height: 1 },
+  width: 100,
+  height: 100,
+  operation: "set",
+  onStats: (nextStats) => {
+    fractionalRectStats = nextStats;
+  },
+});
+
+assert.deepStrictEqual([...(fractionalRectBoundary ?? [])], [0]);
+assert.deepStrictEqual(fractionalRectStats?.normalizedRect, {
+  x: 24.990000000000002,
+  y: 0,
+  width: 50.00000000000001,
+  height: 100,
+});
+
 const fullMaskBoundary = await sparkRenderer.pickSplatCandidateIndices({
   target: mesh,
   scene,
