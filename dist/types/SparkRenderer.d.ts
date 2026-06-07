@@ -419,6 +419,13 @@ export declare class SparkRenderer extends THREE.Mesh {
     private screenFloodPixels?;
     private screenFloodWorkspace?;
     private screenPickRenderSize?;
+    private centerIntersectionTarget?;
+    private centerIntersectionPixels?;
+    private centerIntersectionMaterial?;
+    private centerIntersectionQuad?;
+    private centerIntersectionMaskTexture?;
+    private centerIntersectionMaskData?;
+    private centerIntersectionEmptyMaskTexture?;
     flushAfterGenerate: boolean;
     flushAfterRead: boolean;
     readPause: number;
@@ -587,6 +594,11 @@ export declare class SparkRenderer extends THREE.Mesh {
     private collectSplatScreenPickCenterHits;
     private forEachSplatScreenPickTargetCenterRaw;
     private collectSplatScreenPickCenterIndices;
+    private tryCollectSplatScreenPickCenterIndicesGpu;
+    private ensureSplatCenterIntersectionTarget;
+    private ensureSplatCenterIntersectionMaskTexture;
+    private ensureSplatCenterIntersectionMaterial;
+    private renderSplatCenterIntersectionPass;
     private collectNearestSplatScreenPickCenterIndex;
     private ensureScreenPickTarget;
     private ensureScreenFloodTarget;

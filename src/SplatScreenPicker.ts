@@ -115,7 +115,16 @@ export type SplatScreenPickCenterProcessor = "auto" | "cpu" | "gpu";
 export type SplatScreenPickCenterProcessorMode = "cpu" | "gpu";
 export type SplatScreenPickCenterProcessorFallbackReason =
   | "requested-cpu"
-  | "gpu-unavailable";
+  | "gpu-unavailable"
+  | "webgl2-unavailable"
+  | "unsupported-source"
+  | "lod-or-paged"
+  | "missing-center-texture"
+  | "selected-index-mode"
+  | "scene-wide-unsupported"
+  | "nearest-unsupported"
+  | "target-not-visible"
+  | "gpu-readback-failed";
 
 export type SplatScreenPickOptions = {
   scene: THREE.Object3D;

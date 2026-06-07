@@ -12728,6 +12728,28 @@ function nearlyEqual(a, b) {
 function canUseSelectedSplatCenterIndexMode(editorStateMode) {
   return editorStateMode === "selected" || editorStateMode === "pick-remove";
 }
+const SPLAT_CENTER_INTERSECTION_OUTPUT_WIDTH = 4096;
+function getSplatCenterIntersectionOutputSize(numSplats) {
+  const byteCount = Math.max(0, Math.floor(numSplats));
+  if (byteCount <= 0) {
+    return { width: 1, height: 1 };
+  }
+  const pixelCount = Math.ceil(byteCount / 4);
+  const width = Math.min(SPLAT_CENTER_INTERSECTION_OUTPUT_WIDTH, pixelCount);
+  return {
+    width,
+    height: Math.max(1, Math.ceil(pixelCount / width))
+  };
+}
+function isSplatScreenPickTargetVisible(scene, target) {
+  let visible = false;
+  scene.traverseVisible((object) => {
+    if (object === target) {
+      visible = true;
+    }
+  });
+  return visible;
+}
 const _SparkRenderer = class _SparkRenderer extends THREE.Mesh {
   constructor(options) {
     if (!options) {
@@ -12958,6 +12980,7 @@ const _SparkRenderer = class _SparkRenderer extends THREE.Mesh {
     return uniforms;
   }
   dispose() {
+    var _a2, _b2;
     if (this.target) {
       this.target.dispose();
       this.target = void 0;
@@ -12974,6 +12997,23 @@ const _SparkRenderer = class _SparkRenderer extends THREE.Mesh {
       this.screenFloodTarget.dispose();
       this.screenFloodTarget = void 0;
     }
+    if (this.centerIntersectionTarget) {
+      this.centerIntersectionTarget.dispose();
+      this.centerIntersectionTarget = void 0;
+    }
+    if (this.centerIntersectionMaskTexture) {
+      this.centerIntersectionMaskTexture.dispose();
+      this.centerIntersectionMaskTexture = void 0;
+      this.centerIntersectionMaskData = void 0;
+    }
+    if (this.centerIntersectionEmptyMaskTexture) {
+      this.centerIntersectionEmptyMaskTexture.dispose();
+      this.centerIntersectionEmptyMaskTexture = void 0;
+    }
+    (_a2 = this.centerIntersectionMaterial) == null ? void 0 : _a2.dispose();
+    this.centerIntersectionMaterial = void 0;
+    (_b2 = this.centerIntersectionQuad) == null ? void 0 : _b2.dispose();
+    this.centerIntersectionQuad = void 0;
     if (this.orderingTexture) {
       this.orderingTexture.dispose();
       this.orderingTexture = null;
@@ -13919,7 +13959,7 @@ const _SparkRenderer = class _SparkRenderer extends THREE.Mesh {
         collectStats2,
         options.centerProcessor ?? "auto",
         "cpu",
-        options.centerProcessor === "cpu" ? "requested-cpu" : "gpu-unavailable"
+        options.centerProcessor === "cpu" ? "requested-cpu" : "scene-wide-unsupported"
       );
       const collectStartedAt = readNowMs();
       const hits2 = this.collectSplatScreenPickCenterHits({
@@ -14051,7 +14091,7 @@ const _SparkRenderer = class _SparkRenderer extends THREE.Mesh {
     return hits;
   }
   async pickSplatCandidateIndices(options) {
-    var _a2;
+    var _a2, _b2;
     const totalStartedAt = readNowMs();
     const { scene, camera, target } = options;
     const size = this.renderer.getDrawingBufferSize(new THREE.Vector2());
@@ -14099,12 +14139,81 @@ const _SparkRenderer = class _SparkRenderer extends THREE.Mesh {
       updateMs = readNowMs() - updateStartedAt;
     }
     const collectStats = createSplatScreenPickCenterCollectStats();
-    setSplatScreenPickCenterProcessorStats(
-      collectStats,
-      options.centerProcessor ?? "auto",
-      "cpu",
-      options.centerProcessor === "cpu" ? "requested-cpu" : "gpu-unavailable"
-    );
+    const requestedProcessor = options.centerProcessor ?? "auto";
+    if (requestedProcessor !== "cpu") {
+      setSplatScreenPickCenterProcessorStats(
+        collectStats,
+        requestedProcessor,
+        "gpu"
+      );
+      const gpuResult = this.tryCollectSplatScreenPickCenterIndicesGpu({
+        scene,
+        camera,
+        target,
+        rect,
+        boundsMode: resolveSplatScreenPickCenterBoundsMode(options.shape),
+        viewportWidth: width,
+        viewportHeight: height,
+        editorStateMode,
+        maxCandidates: options.maxCandidates,
+        stats: collectStats,
+        indexBuffer: options.indexBuffer
+      });
+      if ("indices" in gpuResult) {
+        (_a2 = options.onStats) == null ? void 0 : _a2.call(options, {
+          shapeKind: options.shape.kind,
+          candidateMode,
+          renderMode,
+          viewportWidth: width,
+          viewportHeight: height,
+          targetWidth: layout.targetWidth,
+          targetHeight: layout.targetHeight,
+          normalizedRect: {
+            x: rect.x,
+            y: rect.y,
+            width: rect.width,
+            height: rect.height
+          },
+          readRect: layout.readRect,
+          pixelHitCount: 0,
+          mappedHitCount: gpuResult.indices.length,
+          sourceStableHitCount: gpuResult.indices.length,
+          collect: {
+            pixelCount: 0,
+            candidatePixelCount: 0,
+            maskTestedPixelCount: 0,
+            encodedPixelCount: 0,
+            duplicatePixelHitCount: 0,
+            uniqueHitCount: 0,
+            earlyExit: collectStats.earlyExit
+          },
+          centerCollect: collectStats,
+          timingsMs: {
+            update: updateMs,
+            render: gpuResult.renderMs,
+            readback: gpuResult.readbackMs,
+            renderReadback: gpuResult.renderMs + gpuResult.readbackMs,
+            decode: 0,
+            map: gpuResult.compactMs,
+            total: readNowMs() - totalStartedAt
+          }
+        });
+        return gpuResult.indices;
+      }
+      setSplatScreenPickCenterProcessorStats(
+        collectStats,
+        requestedProcessor,
+        "cpu",
+        gpuResult.fallbackReason
+      );
+    } else {
+      setSplatScreenPickCenterProcessorStats(
+        collectStats,
+        requestedProcessor,
+        "cpu",
+        "requested-cpu"
+      );
+    }
     const collectStartedAt = readNowMs();
     const indices = this.collectSplatScreenPickCenterIndices({
       scene,
@@ -14121,7 +14230,7 @@ const _SparkRenderer = class _SparkRenderer extends THREE.Mesh {
       indexBuffer: options.indexBuffer
     });
     const collectMs = readNowMs() - collectStartedAt;
-    (_a2 = options.onStats) == null ? void 0 : _a2.call(options, {
+    (_b2 = options.onStats) == null ? void 0 : _b2.call(options, {
       shapeKind: options.shape.kind,
       candidateMode,
       renderMode,
@@ -14226,7 +14335,7 @@ const _SparkRenderer = class _SparkRenderer extends THREE.Mesh {
       collectStats,
       options.centerProcessor ?? "auto",
       "cpu",
-      options.centerProcessor === "cpu" ? "requested-cpu" : "gpu-unavailable"
+      options.centerProcessor === "cpu" ? "requested-cpu" : "nearest-unsupported"
     );
     const collectStartedAt = readNowMs();
     const hit = this.collectNearestSplatScreenPickCenterIndex({
@@ -14587,6 +14696,459 @@ const _SparkRenderer = class _SparkRenderer extends THREE.Mesh {
       result.sort();
     }
     return result;
+  }
+  tryCollectSplatScreenPickCenterIndicesGpu({
+    scene,
+    camera,
+    target,
+    rect,
+    boundsMode,
+    viewportWidth,
+    viewportHeight,
+    editorStateMode,
+    maxCandidates,
+    stats,
+    indexBuffer
+  }) {
+    var _a2;
+    if (!((_a2 = this.renderer.capabilities) == null ? void 0 : _a2.isWebGL2)) {
+      return { fallbackReason: "webgl2-unavailable" };
+    }
+    if (target.context.enableLod.value !== false || target.paged) {
+      return { fallbackReason: "lod-or-paged" };
+    }
+    if (canUseSelectedSplatCenterIndexMode(editorStateMode)) {
+      return { fallbackReason: "selected-index-mode" };
+    }
+    if (!isSplatScreenPickTargetVisible(scene, target)) {
+      return { fallbackReason: "target-not-visible" };
+    }
+    if (!target.packedSplats || target.splats !== target.packedSplats) {
+      return { fallbackReason: "unsupported-source" };
+    }
+    const centerTexture = target.packedSplats.getCenterMatchTexture();
+    if (!centerTexture) {
+      return { fallbackReason: "missing-center-texture" };
+    }
+    const numSplats = Math.max(0, Math.floor(target.numSplats));
+    stats.centerCount = numSplats;
+    if (numSplats <= 0) {
+      stats.uniqueHitCount = 0;
+      return {
+        indices: new Uint32Array(),
+        renderMs: 0,
+        readbackMs: 0,
+        compactMs: 0
+      };
+    }
+    const max2 = maxCandidates != null ? Math.max(0, Math.floor(maxCandidates)) : Number.POSITIVE_INFINITY;
+    if (max2 <= 0) {
+      stats.earlyExit = true;
+      return {
+        indices: new Uint32Array(),
+        renderMs: 0,
+        readbackMs: 0,
+        compactMs: 0
+      };
+    }
+    const editorState = target.getEditorState();
+    const editorStateTexture = editorState ? editorState.uploadDirtyWithResult(this.renderer).texture : SplatEditorState.emptyTexture;
+    const editorStateMaxSplats = (editorState == null ? void 0 : editorState.maxSplats) ?? 0;
+    target.updateMatrixWorld(true);
+    const objectToClip = new THREE.Matrix4().multiplyMatrices(
+      camera.projectionMatrix,
+      camera.matrixWorldInverse
+    );
+    objectToClip.multiply(target.matrixWorld);
+    const { width, height } = getSplatCenterIntersectionOutputSize(numSplats);
+    const outputTarget = this.ensureSplatCenterIntersectionTarget(
+      width,
+      height
+    );
+    const material = this.ensureSplatCenterIntersectionMaterial();
+    const uniforms = material.uniforms;
+    const centerImage = centerTexture.image;
+    const stateImage = editorStateTexture.image;
+    uniforms.centerTexture.value = centerTexture;
+    uniforms.centerTextureSize.value.set(
+      centerImage.width,
+      centerImage.height,
+      centerImage.depth,
+      centerImage.width * centerImage.height * centerImage.depth
+    );
+    uniforms.editorStateTexture.value = editorStateTexture;
+    uniforms.editorStateTextureSize.value.set(
+      stateImage.width,
+      stateImage.height,
+      stateImage.depth,
+      editorStateMaxSplats
+    );
+    uniforms.editorStateEnabled.value = editorState != null;
+    uniforms.editorStateFilterMode.value = splatEditorStateFilterModeToPickUniform(editorStateMode);
+    uniforms.numSplats.value = numSplats;
+    uniforms.outputWidth.value = width;
+    uniforms.objectToClip.value.copy(objectToClip);
+    uniforms.viewportSize.value.set(viewportWidth, viewportHeight);
+    uniforms.pickRect.value.set(rect.x, rect.y, rect.width, rect.height);
+    uniforms.boundsMode.value = boundsMode === "strict" ? 1 : 0;
+    const mask = rect.mask;
+    if (mask) {
+      const maskTexture = this.ensureSplatCenterIntersectionMaskTexture(mask);
+      const sourceRect = mask.sourceRect ?? rect;
+      uniforms.maskEnabled.value = true;
+      uniforms.maskTexture.value = maskTexture;
+      uniforms.maskSize.value.set(mask.width, mask.height);
+      uniforms.maskSourceRect.value.set(
+        sourceRect.x,
+        sourceRect.y,
+        sourceRect.width,
+        sourceRect.height
+      );
+      uniforms.maskChannel.value = mask.channel;
+      uniforms.maskThreshold.value = mask.threshold / 255;
+    } else {
+      uniforms.maskEnabled.value = false;
+    }
+    try {
+      const pass = this.renderSplatCenterIntersectionPass(outputTarget);
+      const compactStartedAt = readNowMs();
+      const compactStats = {
+        byteCount: 0,
+        candidateByteCount: 0,
+        uniqueHitCount: 0,
+        earlyExit: false
+      };
+      const indices = compactSplatCenterIntersectionBytes(
+        pass.pixels.subarray(0, numSplats),
+        {
+          maxCandidates,
+          indexBuffer,
+          stats: compactStats
+        }
+      );
+      stats.candidateCenterCount = compactStats.candidateByteCount;
+      stats.uniqueHitCount = compactStats.uniqueHitCount;
+      stats.earlyExit = compactStats.earlyExit;
+      return {
+        indices,
+        renderMs: pass.renderMs,
+        readbackMs: pass.readbackMs,
+        compactMs: readNowMs() - compactStartedAt
+      };
+    } catch {
+      return { fallbackReason: "gpu-readback-failed" };
+    }
+  }
+  ensureSplatCenterIntersectionTarget(width, height) {
+    const current = this.centerIntersectionTarget;
+    if (current && current.width === width && current.height === height) {
+      return current;
+    }
+    current == null ? void 0 : current.dispose();
+    const target = new THREE.WebGLRenderTarget(width, height, {
+      format: THREE.RGBAFormat,
+      type: THREE.UnsignedByteType,
+      minFilter: THREE.NearestFilter,
+      magFilter: THREE.NearestFilter,
+      depthBuffer: false,
+      stencilBuffer: false,
+      colorSpace: THREE.NoColorSpace
+    });
+    target.texture.generateMipmaps = false;
+    target.texture.name = "Spark center intersection bytes";
+    this.centerIntersectionTarget = target;
+    return target;
+  }
+  ensureSplatCenterIntersectionMaskTexture(mask) {
+    const width = Math.max(1, Math.floor(mask.width));
+    const height = Math.max(1, Math.floor(mask.height));
+    const byteLength = width * height * 4;
+    let data;
+    if (mask.data instanceof Uint8Array && mask.data.length >= byteLength) {
+      data = mask.data;
+    } else {
+      if (!this.centerIntersectionMaskData || this.centerIntersectionMaskData.length < byteLength) {
+        this.centerIntersectionMaskData = new Uint8Array(byteLength);
+      }
+      data = this.centerIntersectionMaskData.subarray(0, byteLength);
+      for (let i = 0; i < byteLength; i += 1) {
+        data[i] = mask.data[i] ?? 0;
+      }
+    }
+    const current = this.centerIntersectionMaskTexture;
+    if (current && current.image.width === width && current.image.height === height) {
+      current.image.data = data;
+      current.needsUpdate = true;
+      return current;
+    }
+    current == null ? void 0 : current.dispose();
+    const texture2 = new THREE.DataTexture(
+      data,
+      width,
+      height,
+      THREE.RGBAFormat,
+      THREE.UnsignedByteType
+    );
+    texture2.internalFormat = "RGBA8";
+    texture2.magFilter = THREE.NearestFilter;
+    texture2.minFilter = THREE.NearestFilter;
+    texture2.generateMipmaps = false;
+    texture2.needsUpdate = true;
+    this.centerIntersectionMaskTexture = texture2;
+    return texture2;
+  }
+  ensureSplatCenterIntersectionMaterial() {
+    if (this.centerIntersectionMaterial) {
+      return this.centerIntersectionMaterial;
+    }
+    const emptyMask = new THREE.DataTexture(
+      new Uint8Array(4),
+      1,
+      1,
+      THREE.RGBAFormat,
+      THREE.UnsignedByteType
+    );
+    emptyMask.internalFormat = "RGBA8";
+    emptyMask.needsUpdate = true;
+    this.centerIntersectionEmptyMaskTexture = emptyMask;
+    this.centerIntersectionMaterial = new THREE.RawShaderMaterial({
+      glslVersion: THREE.GLSL3,
+      depthTest: false,
+      depthWrite: false,
+      blending: THREE.NoBlending,
+      uniforms: {
+        centerTexture: { value: PackedSplats.emptyUint32x4 },
+        centerTextureSize: { value: new THREE.Vector4(1, 1, 1, 1) },
+        editorStateTexture: { value: SplatEditorState.emptyTexture },
+        editorStateTextureSize: { value: new THREE.Vector4(1, 1, 1, 0) },
+        editorStateEnabled: { value: false },
+        editorStateFilterMode: { value: 0 },
+        maskTexture: { value: emptyMask },
+        maskEnabled: { value: false },
+        maskSize: { value: new THREE.Vector2(1, 1) },
+        maskSourceRect: { value: new THREE.Vector4(0, 0, 1, 1) },
+        maskChannel: { value: 3 },
+        maskThreshold: { value: 0 },
+        numSplats: { value: 0 },
+        outputWidth: { value: 1 },
+        objectToClip: { value: new THREE.Matrix4() },
+        viewportSize: { value: new THREE.Vector2(1, 1) },
+        pickRect: { value: new THREE.Vector4(0, 0, 1, 1) },
+        boundsMode: { value: 0 }
+      },
+      vertexShader: `
+        precision highp float;
+        in vec3 position;
+
+        void main() {
+          gl_Position = vec4(position.xy, 0.0, 1.0);
+        }
+      `,
+      fragmentShader: `
+        precision highp float;
+        precision highp int;
+        precision highp sampler2DArray;
+        precision highp usampler2DArray;
+
+        uniform sampler2DArray centerTexture;
+        uniform vec4 centerTextureSize;
+        uniform usampler2DArray editorStateTexture;
+        uniform vec4 editorStateTextureSize;
+        uniform bool editorStateEnabled;
+        uniform int editorStateFilterMode;
+        uniform sampler2D maskTexture;
+        uniform bool maskEnabled;
+        uniform vec2 maskSize;
+        uniform vec4 maskSourceRect;
+        uniform int maskChannel;
+        uniform float maskThreshold;
+        uniform int numSplats;
+        uniform int outputWidth;
+        uniform mat4 objectToClip;
+        uniform vec2 viewportSize;
+        uniform vec4 pickRect;
+        uniform int boundsMode;
+
+        out vec4 outColor;
+
+        ivec3 texelForIndex(int index, vec4 textureSize) {
+          int width = int(textureSize.x);
+          int height = int(textureSize.y);
+          int layerSize = width * height;
+          int layer = index / layerSize;
+          int local = index - layer * layerSize;
+          return ivec3(local % width, local / width, layer);
+        }
+
+        bool matchesState(uint bits) {
+          uint state = bits & 255u;
+          if (editorStateFilterMode == 1) {
+            return true;
+          }
+          if (editorStateFilterMode == 2) {
+            return (state & 4u) == 0u;
+          }
+          if (editorStateFilterMode == 3) {
+            return state == 1u;
+          }
+          if (editorStateFilterMode == 4) {
+            return (state & 6u) == 0u;
+          }
+          if (editorStateFilterMode == 5) {
+            return state == 0u;
+          }
+          if (editorStateFilterMode == 6) {
+            return state == 1u;
+          }
+          return (state & 6u) == 0u;
+        }
+
+        bool isMaskEnabledAt(vec2 screen) {
+          if (!maskEnabled) {
+            return true;
+          }
+          if (maskSize.x <= 0.0 || maskSize.y <= 0.0 ||
+              maskSourceRect.z <= 0.0 || maskSourceRect.w <= 0.0) {
+            return false;
+          }
+          vec2 local = screen - maskSourceRect.xy;
+          int maskX = int(clamp(
+            floor((local.x / maskSourceRect.z) * maskSize.x),
+            0.0,
+            maskSize.x - 1.0
+          ));
+          int maskY = int(clamp(
+            floor((local.y / maskSourceRect.w) * maskSize.y),
+            0.0,
+            maskSize.y - 1.0
+          ));
+          vec4 texel = texelFetch(maskTexture, ivec2(maskX, maskY), 0);
+          float value = maskChannel == 0 ? texel.r :
+            maskChannel == 1 ? texel.g :
+            maskChannel == 2 ? texel.b : texel.a;
+          return value > maskThreshold;
+        }
+
+        bool intersectsCenter(int splatIndex) {
+          if (splatIndex < 0 || splatIndex >= numSplats) {
+            return false;
+          }
+          vec4 center = texelFetch(
+            centerTexture,
+            texelForIndex(splatIndex, centerTextureSize),
+            0
+          );
+          if (center.a <= 0.0) {
+            return false;
+          }
+          if (editorStateEnabled && splatIndex < int(editorStateTextureSize.w)) {
+            uint bits = texelFetch(
+              editorStateTexture,
+              texelForIndex(splatIndex, editorStateTextureSize),
+              0
+            ).r;
+            if (!matchesState(bits)) {
+              return false;
+            }
+          } else if (!matchesState(0u)) {
+            return false;
+          }
+
+          vec4 clip = objectToClip * vec4(center.xyz, 1.0);
+          if (clip.w == 0.0) {
+            return false;
+          }
+          vec3 ndc = clip.xyz / clip.w;
+          if (!all(lessThanEqual(abs(ndc), vec3(1.0)))) {
+            return false;
+          }
+          vec2 screen = vec2(
+            (ndc.x * 0.5 + 0.5) * viewportSize.x,
+            (-ndc.y * 0.5 + 0.5) * viewportSize.y
+          );
+
+          bool outside = boundsMode == 1
+            ? (screen.x <= pickRect.x ||
+               screen.y <= pickRect.y ||
+               screen.x >= pickRect.x + pickRect.z ||
+               screen.y >= pickRect.y + pickRect.w)
+            : (screen.x < pickRect.x ||
+               screen.y < pickRect.y ||
+               screen.x >= pickRect.x + pickRect.z ||
+               screen.y >= pickRect.y + pickRect.w);
+          if (outside) {
+            return false;
+          }
+          return isMaskEnabledAt(screen);
+        }
+
+        void main() {
+          int pixelIndex = int(gl_FragCoord.y) * outputWidth +
+            int(gl_FragCoord.x);
+          int baseIndex = pixelIndex * 4;
+          outColor = vec4(
+            intersectsCenter(baseIndex) ? 1.0 : 0.0,
+            intersectsCenter(baseIndex + 1) ? 1.0 : 0.0,
+            intersectsCenter(baseIndex + 2) ? 1.0 : 0.0,
+            intersectsCenter(baseIndex + 3) ? 1.0 : 0.0
+          );
+        }
+      `
+    });
+    this.centerIntersectionQuad = new FullScreenQuad(
+      this.centerIntersectionMaterial
+    );
+    return this.centerIntersectionMaterial;
+  }
+  renderSplatCenterIntersectionPass(target) {
+    const renderer = this.renderer;
+    const byteLength = target.width * target.height * 4;
+    if (!this.centerIntersectionPixels || this.centerIntersectionPixels.length < byteLength) {
+      this.centerIntersectionPixels = new Uint8Array(byteLength);
+    }
+    const pixels = this.centerIntersectionPixels.subarray(0, byteLength);
+    const quad = this.centerIntersectionQuad;
+    if (!quad) {
+      throw new Error("Center intersection quad is not initialized");
+    }
+    const renderState = this.saveRenderState(renderer);
+    const viewport = renderer.getViewport(new THREE.Vector4());
+    const scissor = renderer.getScissor(new THREE.Vector4());
+    const scissorTest = renderer.getScissorTest();
+    const clearColor = renderer.getClearColor(new THREE.Color());
+    const clearAlpha = renderer.getClearAlpha();
+    try {
+      renderer.xr.enabled = false;
+      renderer.autoClear = false;
+      renderer.setRenderTarget(target);
+      renderer.setViewport(0, 0, target.width, target.height);
+      renderer.setScissorTest(false);
+      renderer.setClearColor(0, 0);
+      renderer.clear(true, false, false);
+      const renderStartedAt = readNowMs();
+      quad.render(renderer);
+      const renderMs = readNowMs() - renderStartedAt;
+      const readbackStartedAt = readNowMs();
+      renderer.readRenderTargetPixels(
+        target,
+        0,
+        0,
+        target.width,
+        target.height,
+        pixels
+      );
+      return {
+        pixels,
+        renderMs,
+        readbackMs: readNowMs() - readbackStartedAt
+      };
+    } finally {
+      renderer.setViewport(viewport);
+      renderer.setScissor(scissor);
+      renderer.setScissorTest(scissorTest);
+      renderer.setClearColor(clearColor, clearAlpha);
+      this.resetRenderState(renderer, renderState);
+    }
   }
   collectNearestSplatScreenPickCenterIndex({
     scene,

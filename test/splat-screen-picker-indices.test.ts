@@ -90,6 +90,9 @@ assert.strictEqual(stats?.sourceStableHitCount, 2);
 assert.strictEqual(stats?.centerCollect?.centerCount, 3);
 assert.strictEqual(stats?.centerCollect?.candidateCenterCount, 2);
 assert.strictEqual(stats?.centerCollect?.viewRejectedCenterCount, 1);
+assert.strictEqual(stats?.centerCollect?.requestedProcessor, "auto");
+assert.strictEqual(stats?.centerCollect?.processor, "cpu");
+assert.strictEqual(stats?.centerCollect?.fallbackReason, "webgl2-unavailable");
 assert.deepStrictEqual(stats?.centerCollect?.projectedBounds, {
   minX: 25,
   minY: 50,
@@ -129,6 +132,30 @@ assert.strictEqual(cpuProcessorStats?.centerCollect?.processor, "cpu");
 assert.strictEqual(
   cpuProcessorStats?.centerCollect?.fallbackReason,
   "requested-cpu",
+);
+
+let requestedGpuStats: SplatScreenPickStats | null = null;
+const requestedGpuIndices = await sparkRenderer.pickSplatCandidateIndices({
+  target: mesh,
+  scene,
+  camera,
+  candidateMode: "centers",
+  centerProcessor: "gpu",
+  shape: { kind: "rect", x: 0, y: 0, width: 1, height: 1 },
+  width: 100,
+  height: 100,
+  operation: "set",
+  onStats: (nextStats) => {
+    requestedGpuStats = nextStats;
+  },
+});
+
+assert.deepStrictEqual([...(requestedGpuIndices ?? [])], [0, 1]);
+assert.strictEqual(requestedGpuStats?.centerCollect?.requestedProcessor, "gpu");
+assert.strictEqual(requestedGpuStats?.centerCollect?.processor, "cpu");
+assert.strictEqual(
+  requestedGpuStats?.centerCollect?.fallbackReason,
+  "webgl2-unavailable",
 );
 
 const capped = await sparkRenderer.pickSplatCandidateIndices({
