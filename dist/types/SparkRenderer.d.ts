@@ -1,6 +1,6 @@
 import { ExtSplats, PackedSplats, PagedSplats, SplatMesh, SplatPager } from '.';
 import { SplatAccumulator } from './SplatAccumulator';
-import { SplatScreenFloodMaskRenderOptions, SplatScreenFloodMaskResult, SplatScreenPickHit, SplatScreenPickIndexOptions, SplatScreenPickNearestCenterOptions, SplatScreenPickNearestCenterResult, SplatScreenPickOptions } from './SplatScreenPicker';
+import { SplatScreenFloodMaskRenderOptions, SplatScreenFloodMaskResult, SplatScreenPickHit, SplatScreenPickIndexOptions, SplatScreenPickNearestCenterOptions, SplatScreenPickNearestCenterResult, SplatScreenPickOptions, SplatScreenPickRenderedIndexOptions, SplatScreenPickRenderedIndexResult } from './SplatScreenPicker';
 import { SplatWorker } from './SplatWorker';
 import * as THREE from "three";
 export interface SparkRendererOptions {
@@ -580,6 +580,7 @@ export declare class SparkRenderer extends THREE.Mesh {
     render(scene: THREE.Scene, camera: THREE.Camera): void;
     pickSplatCandidates(options: SplatScreenPickOptions): Promise<SplatScreenPickHit[]>;
     pickSplatCandidateIndices(options: SplatScreenPickIndexOptions): Promise<Uint32Array | null>;
+    pickRenderedSplatIndex(options: SplatScreenPickRenderedIndexOptions): Promise<SplatScreenPickRenderedIndexResult | null>;
     pickNearestSplatCenterIndex(options: SplatScreenPickNearestCenterOptions): Promise<SplatScreenPickNearestCenterResult | null>;
     createSplatScreenFloodMask(options: SplatScreenFloodMaskRenderOptions): Promise<SplatScreenFloodMaskResult>;
     private collectSplatScreenPickCenterHits;

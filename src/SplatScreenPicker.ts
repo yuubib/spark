@@ -142,6 +142,20 @@ export type SplatScreenPickNearestCenterResult = {
   ndcZ: number;
 };
 
+export type SplatScreenPickRenderedIndexOptions = Omit<
+  SplatScreenPickIndexOptions,
+  "candidateMode" | "maxCandidates" | "sort"
+>;
+
+export type SplatScreenPickRenderedIndexResult = {
+  index: number;
+  accumulatorIndex: number;
+  pixel: {
+    x: number;
+    y: number;
+  };
+};
+
 export type SplatScreenPickHit = {
   object: SplatGenerator;
   index: number;

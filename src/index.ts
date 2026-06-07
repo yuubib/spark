@@ -39,6 +39,8 @@ export {
   type SplatScreenPickPixelHit,
   type SplatScreenPickProjectedCenter,
   type SplatScreenPickRect,
+  type SplatScreenPickRenderedIndexOptions,
+  type SplatScreenPickRenderedIndexResult,
   type SplatScreenPickRenderLayout,
   type SplatScreenPickRenderMode,
   type SplatScreenPickShape,

@@ -13922,6 +13922,25 @@ const _SparkRenderer = class _SparkRenderer extends THREE__namespace.Mesh {
     });
     return indices;
   }
+  async pickRenderedSplatIndex(options) {
+    const { target, renderMode, ...pickOptions } = options;
+    const hits = await this.pickSplatCandidates({
+      ...pickOptions,
+      renderMode: renderMode ?? "shape",
+      candidateMode: "rendered-id",
+      maxCandidates: 1,
+      sort: false
+    });
+    const hit = hits[0];
+    if (!hit || hit.object !== target || !hit.sourceIndexStable || !Number.isInteger(hit.index) || hit.index < 0 || !hit.pixel) {
+      return null;
+    }
+    return {
+      index: hit.index,
+      accumulatorIndex: hit.accumulatorIndex,
+      pixel: hit.pixel
+    };
+  }
   async pickNearestSplatCenterIndex(options) {
     var _a2;
     const totalStartedAt = readNowMs();

@@ -121,6 +121,90 @@ const capped = await sparkRenderer.pickSplatCandidateIndices({
 
 assert.deepStrictEqual([...(capped ?? [])], [0]);
 
+const originalPickSplatCandidates =
+  sparkRenderer.pickSplatCandidates.bind(sparkRenderer);
+let renderedSeedOptions: unknown = null;
+sparkRenderer.pickSplatCandidates = async (options) => {
+  renderedSeedOptions = options;
+  return [
+    {
+      object: mesh,
+      index: 1,
+      accumulatorIndex: 7,
+      sourceIndexStable: true,
+      pixel: { x: 75, y: 50 },
+    },
+  ];
+};
+
+const renderedSeed = await sparkRenderer.pickRenderedSplatIndex({
+  target: mesh,
+  scene,
+  camera,
+  shape: { kind: "point", x: 0.75, y: 0.5, radiusPixels: 0 },
+  width: 100,
+  height: 100,
+  operation: "set",
+});
+
+assert.deepStrictEqual(renderedSeed, {
+  index: 1,
+  accumulatorIndex: 7,
+  pixel: { x: 75, y: 50 },
+});
+assert.strictEqual(
+  (renderedSeedOptions as { candidateMode?: string }).candidateMode,
+  "rendered-id",
+);
+assert.strictEqual(
+  (renderedSeedOptions as { renderMode?: string }).renderMode,
+  "shape",
+);
+assert.strictEqual(
+  (renderedSeedOptions as { maxCandidates?: number }).maxCandidates,
+  1,
+);
+assert.strictEqual((renderedSeedOptions as { sort?: boolean }).sort, false);
+
+sparkRenderer.pickSplatCandidates = async () => [
+  {
+    object: {} as never,
+    index: 1,
+    accumulatorIndex: 7,
+    sourceIndexStable: true,
+    pixel: { x: 75, y: 50 },
+  },
+];
+assert.strictEqual(
+  await sparkRenderer.pickRenderedSplatIndex({
+    target: mesh,
+    scene,
+    camera,
+    shape: { kind: "point", x: 0.75, y: 0.5 },
+  }),
+  null,
+);
+
+sparkRenderer.pickSplatCandidates = async () => [
+  {
+    object: mesh,
+    index: 1,
+    accumulatorIndex: 7,
+    sourceIndexStable: false,
+    pixel: { x: 75, y: 50 },
+  },
+];
+assert.strictEqual(
+  await sparkRenderer.pickRenderedSplatIndex({
+    target: mesh,
+    scene,
+    camera,
+    shape: { kind: "point", x: 0.75, y: 0.5 },
+  }),
+  null,
+);
+sparkRenderer.pickSplatCandidates = originalPickSplatCandidates;
+
 rawCenterIteratorUsed = false;
 let nearestStats: SplatScreenPickStats | null = null;
 const nearest = await sparkRenderer.pickNearestSplatCenterIndex({

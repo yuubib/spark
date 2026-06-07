@@ -27,6 +27,8 @@ import {
   type SplatScreenPickOptions,
   type SplatScreenPickProjectedCenter,
   type SplatScreenPickRect,
+  type SplatScreenPickRenderedIndexOptions,
+  type SplatScreenPickRenderedIndexResult,
   type SplatScreenPickViewOffset,
   collectSplatScreenPickHitsFromRgba8,
   createSplatScreenFloodMaskFromRgba8,
@@ -2344,6 +2346,35 @@ export class SparkRenderer extends THREE.Mesh {
     });
 
     return indices;
+  }
+
+  async pickRenderedSplatIndex(
+    options: SplatScreenPickRenderedIndexOptions,
+  ): Promise<SplatScreenPickRenderedIndexResult | null> {
+    const { target, renderMode, ...pickOptions } = options;
+    const hits = await this.pickSplatCandidates({
+      ...pickOptions,
+      renderMode: renderMode ?? "shape",
+      candidateMode: "rendered-id",
+      maxCandidates: 1,
+      sort: false,
+    });
+    const hit = hits[0];
+    if (
+      !hit ||
+      hit.object !== target ||
+      !hit.sourceIndexStable ||
+      !Number.isInteger(hit.index) ||
+      hit.index < 0 ||
+      !hit.pixel
+    ) {
+      return null;
+    }
+    return {
+      index: hit.index,
+      accumulatorIndex: hit.accumulatorIndex,
+      pixel: hit.pixel,
+    };
   }
 
   async pickNearestSplatCenterIndex(
