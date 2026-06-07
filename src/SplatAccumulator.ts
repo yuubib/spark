@@ -14,7 +14,10 @@ import {
   type GsplatGenerator,
   SplatGenerator,
 } from "./SplatGenerator";
-import { SplatMesh } from "./SplatMesh";
+import {
+  SplatMesh,
+  type SplatMeshSelectedTransformSnapshot,
+} from "./SplatMesh";
 import {
   LN_SCALE_MAX,
   LN_SCALE_MIN,
@@ -115,6 +118,11 @@ export class SplatAccumulator {
   editorStateUniformValue: number | null = null;
   editorStateSelectedColor = new THREE.Vector4(0.38, 0.62, 1.0, 0.42);
   editorStateLockedColor = new THREE.Vector4(0.58, 0.64, 0.72, 1.0);
+  editorSelectedTransformEnabled = false;
+  editorSelectedTransformPivot = new THREE.Vector3();
+  editorSelectedTransformTranslate = new THREE.Vector3();
+  editorSelectedTransformRotate = new THREE.Quaternion();
+  editorSelectedTransformScale = 1;
   private editorStateMappingKey = "";
 
   constructor({
@@ -142,6 +150,11 @@ export class SplatAccumulator {
     this.editorStateEnabled = false;
     this.editorStateVisibleCount = null;
     this.editorStateUniformValue = null;
+    this.editorSelectedTransformEnabled = false;
+    this.editorSelectedTransformPivot.set(0, 0, 0);
+    this.editorSelectedTransformTranslate.set(0, 0, 0);
+    this.editorSelectedTransformRotate.identity();
+    this.editorSelectedTransformScale = 1;
     this.editorStateMappingKey = "";
   }
 
@@ -167,6 +180,7 @@ export class SplatAccumulator {
   } = {}): boolean {
     const stateMappings: {
       item: GeneratorMapping;
+      node: SplatMesh;
       state: SplatEditorState;
     }[] = [];
     let requiredSplats = 0;
@@ -198,7 +212,7 @@ export class SplatAccumulator {
         continue;
       }
 
-      stateMappings.push({ item, state });
+      stateMappings.push({ item, node, state });
       requiredSplats = Math.max(requiredSplats, item.base + item.count);
       uniformValue = mergeEditorStateUniformValue(
         uniformValue,
@@ -211,6 +225,11 @@ export class SplatAccumulator {
       this.editorStateEnabled = false;
       this.editorStateVisibleCount = null;
       this.editorStateUniformValue = null;
+      this.editorSelectedTransformEnabled = false;
+      this.editorSelectedTransformPivot.set(0, 0, 0);
+      this.editorSelectedTransformTranslate.set(0, 0, 0);
+      this.editorSelectedTransformRotate.identity();
+      this.editorSelectedTransformScale = 1;
       this.editorStateMappingKey = "";
       return wasEnabled;
     }
@@ -234,9 +253,28 @@ export class SplatAccumulator {
     let enabled = false;
     let colorsCopied = false;
     let deletedSplats = 0;
-    for (const { item, state } of stateMappings) {
+    let selectedTransform:
+      | SplatMeshSelectedTransformSnapshot
+      | null
+      | undefined = undefined;
+    let selectedTransformConflict = false;
+    for (const { item, node, state } of stateMappings) {
       enabled = true;
       deletedSplats += countDeletedSplatsForMapping(state, item.count);
+      const selectedCount = countSelectedSplatsForMapping(state, item.count);
+      if (selectedCount > 0) {
+        const transform = node.getAccumulatorSelectedSplatTransform();
+        if (!transform) {
+          selectedTransformConflict = true;
+        } else if (selectedTransform === undefined) {
+          selectedTransform = transform;
+        } else if (
+          selectedTransform === null ||
+          !selectedTransformSnapshotsEqual(selectedTransform, transform)
+        ) {
+          selectedTransformConflict = true;
+        }
+      }
       if (!colorsCopied) {
         this.editorStateSelectedColor.copy(state.selectedColor);
         this.editorStateLockedColor.copy(state.lockedColor);
@@ -281,6 +319,24 @@ export class SplatAccumulator {
       ? Math.max(0, Math.max(this.numSplats, totalSplats) - deletedSplats)
       : null;
     this.editorStateUniformValue = enabled ? editorStateUniformValue : null;
+    if (
+      enabled &&
+      !selectedTransformConflict &&
+      selectedTransform &&
+      selectedTransform !== null
+    ) {
+      this.editorSelectedTransformEnabled = true;
+      this.editorSelectedTransformPivot.copy(selectedTransform.pivot);
+      this.editorSelectedTransformTranslate.copy(selectedTransform.translate);
+      this.editorSelectedTransformRotate.copy(selectedTransform.rotate);
+      this.editorSelectedTransformScale = selectedTransform.scale;
+    } else {
+      this.editorSelectedTransformEnabled = false;
+      this.editorSelectedTransformPivot.set(0, 0, 0);
+      this.editorSelectedTransformTranslate.set(0, 0, 0);
+      this.editorSelectedTransformRotate.identity();
+      this.editorSelectedTransformScale = 1;
+    }
     this.editorStateMappingKey = mappingKey;
     if (
       this.editorStateTexture &&
@@ -1086,6 +1142,41 @@ function countDeletedSplatsForMapping(
     }
   }
   return deleted;
+}
+
+function countSelectedSplatsForMapping(
+  state: SplatEditorState,
+  count: number,
+): number {
+  const safeCount = Math.max(0, Math.floor(count));
+  if (safeCount === 0) {
+    return 0;
+  }
+
+  if (safeCount >= state.numSplats) {
+    return state.getSummary().selected;
+  }
+
+  let selected = 0;
+  const limit = Math.min(safeCount, state.states.length);
+  for (let index = 0; index < limit; index += 1) {
+    if (state.states[index] === SPLAT_EDITOR_STATE_SELECTED) {
+      selected += 1;
+    }
+  }
+  return selected;
+}
+
+function selectedTransformSnapshotsEqual(
+  a: SplatMeshSelectedTransformSnapshot,
+  b: SplatMeshSelectedTransformSnapshot,
+): boolean {
+  return (
+    a.scale === b.scale &&
+    a.pivot.equals(b.pivot) &&
+    a.translate.equals(b.translate) &&
+    a.rotate.equals(b.rotate)
+  );
 }
 
 function mergeEditorStateUniformValue(

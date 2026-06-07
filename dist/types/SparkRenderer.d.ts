@@ -523,6 +523,21 @@ export declare class SparkRenderer extends THREE.Mesh {
         splatEditorStateFilterMode: {
             value: number;
         };
+        splatEditorSelectedTransformEnabled: {
+            value: boolean;
+        };
+        splatEditorSelectedTransformPivot: {
+            value: THREE.Vector3;
+        };
+        splatEditorSelectedTransformTranslate: {
+            value: THREE.Vector3;
+        };
+        splatEditorSelectedTransformRotate: {
+            value: THREE.Quaternion;
+        };
+        splatEditorSelectedTransformScale: {
+            value: number;
+        };
         splatPickOutputMode: {
             value: number;
         };

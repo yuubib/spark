@@ -10,6 +10,7 @@ import { SplatEncoding, SplatFileType } from './defines';
 import { DynoBool, DynoFloat, DynoInt, DynoUsampler2D, DynoUsampler2DArray, DynoVal, DynoVec3, DynoVec4, Gsplat } from './dyno';
 import * as THREE from "three";
 export type SplatEditorStateRenderMode = "generator" | "accumulator";
+export type SplatEditorSelectedTransformRenderMode = "generator" | "accumulator";
 export type SplatMeshRayPickHit = {
     index: number;
     distance: number;
@@ -51,6 +52,7 @@ export type SplatMeshOptions = {
     minRaycastOpacity?: number;
     raycastEditorStateMode?: SplatEditorStateFilterMode;
     editorStateRenderMode?: SplatEditorStateRenderMode;
+    editorSelectedTransformRenderMode?: SplatEditorSelectedTransformRenderMode;
     onFrame?: ({ mesh, time, deltaTime, }: {
         mesh: SplatMesh;
         time: number;
@@ -177,6 +179,7 @@ export declare class SplatMesh extends SplatGenerator {
     minRaycastOpacity: number;
     raycastEditorStateMode: SplatEditorStateFilterMode;
     editorStateRenderMode: SplatEditorStateRenderMode;
+    editorSelectedTransformRenderMode: SplatEditorSelectedTransformRenderMode;
     raycastIndices?: {
         numSplats: number;
         indices: Uint32Array;
@@ -229,6 +232,7 @@ export declare class SplatMesh extends SplatGenerator {
     setSelectedSplatTransform({ pivot, translate, rotate, scale, }?: SplatMeshSelectedTransformOptions): boolean;
     clearSelectedSplatTransform(): boolean;
     getSelectedSplatTransform(): SplatMeshSelectedTransformSnapshot | null;
+    getAccumulatorSelectedSplatTransform(): SplatMeshSelectedTransformSnapshot | null;
     getSplatStateCounts(): SplatEditorStateCounts;
     getSplatStateSummary(): SplatEditorStateSummary;
     listSplatStateIndices(mode: SplatEditorStateIndexMode): number[];
@@ -244,6 +248,9 @@ export declare class SplatMesh extends SplatGenerator {
     private mutateEditorState;
     private updateEditorStateVisibilityVersion;
     private updateEditorStateStyleVersion;
+    private updateVersionForSelectedSplatTransform;
+    private usesAccumulatorSelectedSplatTransform;
+    private usesGeneratorSelectedSplatTransform;
     private updateEditorStateContext;
     set objectModifier(modifier: GsplatModifier | undefined);
     set worldModifier(modifier: GsplatModifier | undefined);

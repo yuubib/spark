@@ -76,6 +76,9 @@ import {
 } from "./dyno";
 
 export type SplatEditorStateRenderMode = "generator" | "accumulator";
+export type SplatEditorSelectedTransformRenderMode =
+  | "generator"
+  | "accumulator";
 
 export type SplatMeshRayPickHit = {
   index: number;
@@ -154,6 +157,14 @@ export type SplatMeshOptions = {
   // Generator mode keeps deleted visibility baked into generated output.
   // (default: "generator")
   editorStateRenderMode?: SplatEditorStateRenderMode;
+  // Controls where selected-splat transform previews are applied.
+  // "generator" preserves Spark's default generated-output path.
+  // "accumulator" applies the preview in the final accumulator draw shader,
+  // avoiding generated splat output updates for single-editor-mesh previews.
+  // Accumulator selected-transform rendering currently supports non-covariance
+  // splats only; covariance splats stay on the generator path.
+  // (default: "generator")
+  editorSelectedTransformRenderMode?: SplatEditorSelectedTransformRenderMode;
   // Callback function that is called every frame to update the mesh.
   // Call mesh.updateVersion() if splats need to be regenerated due to some change.
   // Calling updateVersion() is not necessary for object transformations, recoloring,
@@ -398,6 +409,7 @@ export class SplatMesh extends SplatGenerator {
   minRaycastOpacity: number;
   raycastEditorStateMode: SplatEditorStateFilterMode;
   editorStateRenderMode: SplatEditorStateRenderMode;
+  editorSelectedTransformRenderMode: SplatEditorSelectedTransformRenderMode;
   raycastIndices?: { numSplats: number; indices: Uint32Array };
   // Compiled SplatEdits for applying SDF edits to splat RGBA + centers
   rgbaDisplaceEdits: SplatEdits | null = null;
@@ -467,6 +479,8 @@ export class SplatMesh extends SplatGenerator {
     this.minRaycastOpacity = options.minRaycastOpacity ?? 0.2;
     this.raycastEditorStateMode = options.raycastEditorStateMode ?? "visible";
     this.editorStateRenderMode = options.editorStateRenderMode ?? "generator";
+    this.editorSelectedTransformRenderMode =
+      options.editorSelectedTransformRenderMode ?? "generator";
     this.onFrame = options.onFrame;
 
     this.context = {
@@ -1040,7 +1054,7 @@ export class SplatMesh extends SplatGenerator {
     this.context.editorSelectedTransformRotate.value.copy(nextRotate);
     this.context.editorSelectedTransformScale.value = scale;
     this.updateEditorStateContext(this.getEditorState());
-    this.updateVersion();
+    this.updateVersionForSelectedSplatTransform();
     return true;
   }
 
@@ -1055,7 +1069,7 @@ export class SplatMesh extends SplatGenerator {
     this.context.editorSelectedTransformRotate.value.identity();
     this.context.editorSelectedTransformScale.value = 1;
     this.updateEditorStateContext(this.getEditorState());
-    this.updateVersion();
+    this.updateVersionForSelectedSplatTransform();
     return true;
   }
 
@@ -1070,6 +1084,13 @@ export class SplatMesh extends SplatGenerator {
       rotate: this.context.editorSelectedTransformRotate.value.clone(),
       scale: this.context.editorSelectedTransformScale.value,
     };
+  }
+
+  getAccumulatorSelectedSplatTransform(): SplatMeshSelectedTransformSnapshot | null {
+    if (!this.usesAccumulatorSelectedSplatTransform()) {
+      return null;
+    }
+    return this.getSelectedSplatTransform();
   }
 
   getSplatStateCounts(): SplatEditorStateCounts {
@@ -1333,13 +1354,34 @@ export class SplatMesh extends SplatGenerator {
     this.updateRenderVersion();
   }
 
+  private updateVersionForSelectedSplatTransform(): void {
+    if (this.usesAccumulatorSelectedSplatTransform()) {
+      this.updateStyleVersion();
+      return;
+    }
+    this.updateVersion();
+  }
+
+  private usesAccumulatorSelectedSplatTransform(): boolean {
+    return (
+      this.editorStateRenderMode === "accumulator" &&
+      this.editorSelectedTransformRenderMode === "accumulator" &&
+      !this.covSplats
+    );
+  }
+
+  private usesGeneratorSelectedSplatTransform(): boolean {
+    return !this.usesAccumulatorSelectedSplatTransform();
+  }
+
   private updateEditorStateContext(
     state: SplatEditorState | null,
     renderer?: THREE.WebGLRenderer,
   ): void {
     const needsSourceTexture =
       this.editorStateRenderMode === "generator" ||
-      this.context.editorSelectedTransformEnabled.value;
+      (this.context.editorSelectedTransformEnabled.value &&
+        this.usesGeneratorSelectedSplatTransform());
 
     this.context.editorStateEnabled.value = state != null;
     if (state && needsSourceTexture) {
@@ -1408,16 +1450,18 @@ export class SplatMesh extends SplatGenerator {
             context.editorStateEnabled,
           );
         }
-        gsplat = applySplatEditorStateTransform(
-          gsplat,
-          context.editorStateTexture,
-          context.editorStateEnabled,
-          context.editorSelectedTransformEnabled,
-          context.editorSelectedTransformPivot,
-          context.editorSelectedTransformTranslate,
-          context.editorSelectedTransformRotate,
-          context.editorSelectedTransformScale,
-        );
+        if (this.usesGeneratorSelectedSplatTransform()) {
+          gsplat = applySplatEditorStateTransform(
+            gsplat,
+            context.editorStateTexture,
+            context.editorStateEnabled,
+            context.editorSelectedTransformEnabled,
+            context.editorSelectedTransformPivot,
+            context.editorSelectedTransformTranslate,
+            context.editorSelectedTransformRotate,
+            context.editorSelectedTransformScale,
+          );
+        }
 
         if (this.splatRgba) {
           // Overwrite RGBA with baked RGBA values
@@ -1510,16 +1554,18 @@ export class SplatMesh extends SplatGenerator {
             context.editorStateEnabled,
           );
         }
-        gsplat = applySplatEditorStateTransform(
-          gsplat,
-          context.editorStateTexture,
-          context.editorStateEnabled,
-          context.editorSelectedTransformEnabled,
-          context.editorSelectedTransformPivot,
-          context.editorSelectedTransformTranslate,
-          context.editorSelectedTransformRotate,
-          context.editorSelectedTransformScale,
-        );
+        if (this.usesGeneratorSelectedSplatTransform()) {
+          gsplat = applySplatEditorStateTransform(
+            gsplat,
+            context.editorStateTexture,
+            context.editorStateEnabled,
+            context.editorSelectedTransformEnabled,
+            context.editorSelectedTransformPivot,
+            context.editorSelectedTransformTranslate,
+            context.editorSelectedTransformRotate,
+            context.editorSelectedTransformScale,
+          );
+        }
 
         if (this.splatRgba) {
           // Overwrite RGBA with baked RGBA values

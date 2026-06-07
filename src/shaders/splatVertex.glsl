@@ -43,6 +43,11 @@ uniform int splatEditorStateUniform;
 uniform vec4 splatEditorSelectedColor;
 uniform vec4 splatEditorLockedColor;
 uniform int splatEditorStateFilterMode;
+uniform bool splatEditorSelectedTransformEnabled;
+uniform vec3 splatEditorSelectedTransformPivot;
+uniform vec3 splatEditorSelectedTransformTranslate;
+uniform vec4 splatEditorSelectedTransformRotate;
+uniform float splatEditorSelectedTransformScale;
 
 // Required by logdepthbuf_pars_vertex (normally defined in three.js #include <common>)
 bool isPerspectiveMatrix( mat4 m ) {
@@ -149,6 +154,12 @@ void main() {
         } else if ((splatEditorState & 1u) != 0u) {
             rgba.rgb = mix(rgba.rgb, splatEditorSelectedColor.rgb, splatEditorSelectedColor.a);
         }
+    }
+    if (!enableCovSplats && splatEditorSelectedTransformEnabled && splatEditorState == 1u) {
+        vec3 selectedTransformOffset = (center - splatEditorSelectedTransformPivot) * splatEditorSelectedTransformScale;
+        center = splatEditorSelectedTransformPivot + quatVec(splatEditorSelectedTransformRotate, selectedTransformOffset) + splatEditorSelectedTransformTranslate;
+        scales *= splatEditorSelectedTransformScale;
+        quaternion = quatQuat(splatEditorSelectedTransformRotate, quaternion);
     }
 
     adjustedStdDev = maxStdDev;

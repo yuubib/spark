@@ -731,6 +731,11 @@ export class SparkRenderer extends THREE.Mesh {
         value: new THREE.Vector4(0.58, 0.64, 0.72, 1.0),
       },
       splatEditorStateFilterMode: { value: 0 },
+      splatEditorSelectedTransformEnabled: { value: false },
+      splatEditorSelectedTransformPivot: { value: new THREE.Vector3() },
+      splatEditorSelectedTransformTranslate: { value: new THREE.Vector3() },
+      splatEditorSelectedTransformRotate: { value: new THREE.Quaternion() },
+      splatEditorSelectedTransformScale: { value: 1 },
       splatPickOutputMode: { value: 0 },
       // Time in seconds for time-based effects
       time: { value: 0 },
@@ -893,6 +898,19 @@ export class SparkRenderer extends THREE.Mesh {
     this.uniforms.splatEditorLockedColor.value.copy(
       spark.display.editorStateLockedColor,
     );
+    this.uniforms.splatEditorSelectedTransformEnabled.value =
+      spark.display.editorSelectedTransformEnabled;
+    this.uniforms.splatEditorSelectedTransformPivot.value.copy(
+      spark.display.editorSelectedTransformPivot,
+    );
+    this.uniforms.splatEditorSelectedTransformTranslate.value.copy(
+      spark.display.editorSelectedTransformTranslate,
+    );
+    this.uniforms.splatEditorSelectedTransformRotate.value.copy(
+      spark.display.editorSelectedTransformRotate,
+    );
+    this.uniforms.splatEditorSelectedTransformScale.value =
+      spark.display.editorSelectedTransformScale;
 
     this.uniforms.time.value = spark.display.time;
     this.uniforms.deltaTime.value = spark.display.deltaTime;

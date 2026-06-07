@@ -1,4 +1,5 @@
 import assert from "node:assert";
+import * as THREE from "three";
 
 import {
   SplatAccumulator,
@@ -91,6 +92,20 @@ assertGeneratorVisibilityBaking({
 });
 
 {
+  const mesh = new SplatMesh({
+    editorStateRenderMode: "accumulator",
+    editorSelectedTransformRenderMode: "accumulator",
+  });
+  const shader = compileGeneratedShader(mesh);
+  assert.strictEqual(
+    shader.includes("selectedTransformOffset"),
+    false,
+    "accumulator selected transform preview should not be baked into generated splats",
+  );
+  mesh.dispose();
+}
+
+{
   const mesh = new SplatMesh({ editorStateRenderMode: "accumulator" });
   const state = mesh.ensureEditorState(10000);
 
@@ -124,6 +139,137 @@ assertGeneratorVisibilityBaking({
   );
 
   mesh.dispose();
+}
+
+{
+  const mesh = new SplatMesh({
+    editorStateRenderMode: "accumulator",
+    editorSelectedTransformRenderMode: "accumulator",
+  });
+  const state = mesh.ensureEditorState(10000);
+
+  mesh.selectAllSplatState({
+    recordChanges: true,
+    changeFormat: "compact",
+  });
+  const beforeTransform = readVersions(mesh);
+  assert.strictEqual(state.texture, null);
+  assert.strictEqual(
+    readEditorStateTexture(mesh),
+    SplatEditorState.emptyTexture,
+  );
+
+  assert.strictEqual(
+    mesh.setSelectedSplatTransform({
+      pivot: new THREE.Vector3(1, 2, 3),
+      translate: new THREE.Vector3(4, 5, 6),
+      rotate: new THREE.Quaternion().setFromAxisAngle(
+        new THREE.Vector3(0, 1, 0),
+        Math.PI / 4,
+      ),
+      scale: 1.5,
+    }),
+    true,
+  );
+  assert.deepStrictEqual(readVersions(mesh), {
+    version: beforeTransform.version,
+    sortVersion: beforeTransform.sortVersion,
+    styleVersion: beforeTransform.styleVersion + 1,
+  });
+  assert.strictEqual(state.texture, null);
+  assert.strictEqual(
+    readEditorStateTexture(mesh),
+    SplatEditorState.emptyTexture,
+  );
+
+  const accumulator = new SplatAccumulator();
+  accumulator.numSplats = 10000;
+  assert.strictEqual(
+    accumulator.updateEditorStateTexture({
+      mapping: [
+        {
+          node: mesh,
+          version: mesh.version,
+          sortVersion: mesh.sortVersion,
+          styleVersion: mesh.styleVersion,
+          mappingVersion: mesh.mappingVersion,
+          editorStateVisibilityVersion: state.visibilityVersion,
+          base: 0,
+          count: 10000,
+        },
+      ],
+    }),
+    true,
+  );
+  assert.strictEqual(accumulator.editorSelectedTransformEnabled, true);
+  assert.deepStrictEqual(
+    accumulator.editorSelectedTransformPivot.toArray(),
+    [1, 2, 3],
+  );
+  assert.deepStrictEqual(
+    accumulator.editorSelectedTransformTranslate.toArray(),
+    [4, 5, 6],
+  );
+  assert.strictEqual(accumulator.editorSelectedTransformScale, 1.5);
+  assert.strictEqual(accumulator.editorStateUniformValue, 1);
+  assert.strictEqual(accumulator.editorStateTexture, null);
+
+  accumulator.dispose();
+  mesh.dispose();
+}
+
+{
+  const transformed = new SplatMesh({
+    editorStateRenderMode: "accumulator",
+    editorSelectedTransformRenderMode: "accumulator",
+  });
+  const untransformed = new SplatMesh({
+    editorStateRenderMode: "accumulator",
+    editorSelectedTransformRenderMode: "accumulator",
+  });
+  const transformedState = transformed.ensureEditorState(2);
+  const untransformedState = untransformed.ensureEditorState(2);
+  transformed.selectAllSplatState();
+  untransformed.selectAllSplatState();
+  transformed.setSelectedSplatTransform({
+    translate: new THREE.Vector3(1, 0, 0),
+  });
+
+  const accumulator = new SplatAccumulator();
+  accumulator.numSplats = 4;
+  accumulator.updateEditorStateTexture({
+    mapping: [
+      {
+        node: transformed,
+        version: transformed.version,
+        sortVersion: transformed.sortVersion,
+        styleVersion: transformed.styleVersion,
+        mappingVersion: transformed.mappingVersion,
+        editorStateVisibilityVersion: transformedState.visibilityVersion,
+        base: 0,
+        count: 2,
+      },
+      {
+        node: untransformed,
+        version: untransformed.version,
+        sortVersion: untransformed.sortVersion,
+        styleVersion: untransformed.styleVersion,
+        mappingVersion: untransformed.mappingVersion,
+        editorStateVisibilityVersion: untransformedState.visibilityVersion,
+        base: 2,
+        count: 2,
+      },
+    ],
+  });
+  assert.strictEqual(
+    accumulator.editorSelectedTransformEnabled,
+    false,
+    "global accumulator selected transform must disable on mixed selected mappings",
+  );
+
+  accumulator.dispose();
+  transformed.dispose();
+  untransformed.dispose();
 }
 
 {

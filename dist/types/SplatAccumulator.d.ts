@@ -44,6 +44,11 @@ export declare class SplatAccumulator {
     editorStateUniformValue: number | null;
     editorStateSelectedColor: THREE.Vector4;
     editorStateLockedColor: THREE.Vector4;
+    editorSelectedTransformEnabled: boolean;
+    editorSelectedTransformPivot: THREE.Vector3;
+    editorSelectedTransformTranslate: THREE.Vector3;
+    editorSelectedTransformRotate: THREE.Quaternion;
+    editorSelectedTransformScale: number;
     private editorStateMappingKey;
     constructor({ extSplats, covSplats, }?: {
         extSplats?: boolean;
