@@ -52,6 +52,38 @@ export type SplatScreenFloodMaskResult = {
     bounds: Omit<SplatScreenPickRect, "mask"> | null;
     shape: SplatScreenFloodMaskShape | null;
 };
+export type SplatScreenFloodMaskRenderOptions = {
+    scene: THREE.Object3D;
+    camera: THREE.Camera;
+    seedX: number;
+    seedY: number;
+    width?: number;
+    height?: number;
+    threshold?: number;
+    channel?: 0 | 1 | 2 | 3;
+    update?: boolean;
+    onStats?: (stats: SplatScreenFloodMaskRenderStats) => void;
+};
+export type SplatScreenFloodMaskRenderStats = {
+    viewportWidth: number;
+    viewportHeight: number;
+    targetWidth: number;
+    targetHeight: number;
+    seed: {
+        x: number;
+        y: number;
+        value: number;
+    };
+    matchedPixelCount: number;
+    bounds: Omit<SplatScreenPickRect, "mask"> | null;
+    timingsMs: {
+        update: number;
+        render: number;
+        readback: number;
+        flood: number;
+        total: number;
+    };
+};
 export type SplatScreenPickRenderMode = "viewport" | "shape";
 export type SplatScreenPickCandidateMode = "rendered-id" | "centers";
 export type SplatScreenPickOptions = {

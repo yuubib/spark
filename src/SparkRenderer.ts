@@ -15,6 +15,8 @@ import {
 } from "./SplatEditorState";
 import { SplatGeometry } from "./SplatGeometry";
 import {
+  type SplatScreenFloodMaskRenderOptions,
+  type SplatScreenFloodMaskResult,
   type SplatScreenPickCenterCollectStats,
   type SplatScreenPickCollectStats,
   type SplatScreenPickHit,
@@ -27,6 +29,7 @@ import {
   type SplatScreenPickRect,
   type SplatScreenPickViewOffset,
   collectSplatScreenPickHitsFromRgba8,
+  createSplatScreenFloodMaskFromRgba8,
   createSplatScreenPickCenterCollectStats,
   editorSelectionOperationToPickFilterMode,
   normalizeSplatScreenPickShape,
@@ -600,6 +603,8 @@ export class SparkRenderer extends THREE.Mesh {
   superXY = 1;
   private screenPickTarget?: THREE.WebGLRenderTarget;
   private screenPickPixels?: Uint8Array;
+  private screenFloodTarget?: THREE.WebGLRenderTarget;
+  private screenFloodPixels?: Uint8Array;
   private screenPickRenderSize?: THREE.Vector2;
 
   flushAfterGenerate = false;
@@ -841,6 +846,10 @@ export class SparkRenderer extends THREE.Mesh {
     if (this.screenPickTarget) {
       this.screenPickTarget.dispose();
       this.screenPickTarget = undefined;
+    }
+    if (this.screenFloodTarget) {
+      this.screenFloodTarget.dispose();
+      this.screenFloodTarget = undefined;
     }
     if (this.orderingTexture) {
       this.orderingTexture.dispose();
@@ -2434,6 +2443,61 @@ export class SparkRenderer extends THREE.Mesh {
     return hit;
   }
 
+  async createSplatScreenFloodMask(
+    options: SplatScreenFloodMaskRenderOptions,
+  ): Promise<SplatScreenFloodMaskResult> {
+    const totalStartedAt = readNowMs();
+    const { scene, camera } = options;
+    const size = this.renderer.getDrawingBufferSize(new THREE.Vector2());
+    const width = Math.max(1, Math.floor(options.width ?? size.x));
+    const height = Math.max(1, Math.floor(options.height ?? size.y));
+
+    let updateMs = 0;
+    if (options.update !== false) {
+      const updateStartedAt = readNowMs();
+      if (this.accumulators.length > 0) {
+        await this.update({ scene: scene as THREE.Scene, camera });
+      }
+      updateMs = readNowMs() - updateStartedAt;
+    }
+
+    const target = this.ensureScreenFloodTarget(width, height);
+    const renderPass = await this.renderSplatScreenFloodPass({
+      target,
+      camera,
+    });
+    const floodStartedAt = readNowMs();
+    const floodMask = createSplatScreenFloodMaskFromRgba8(renderPass.pixels, {
+      width,
+      height,
+      seedX: options.seedX,
+      seedY: options.seedY,
+      threshold: options.threshold,
+      channel: options.channel,
+      rowOrder: "bottom-left",
+    });
+    const floodMs = readNowMs() - floodStartedAt;
+
+    options.onStats?.({
+      viewportWidth: width,
+      viewportHeight: height,
+      targetWidth: target.width,
+      targetHeight: target.height,
+      seed: floodMask.seed,
+      matchedPixelCount: floodMask.matchedPixelCount,
+      bounds: floodMask.bounds,
+      timingsMs: {
+        update: updateMs,
+        render: renderPass.renderMs,
+        readback: renderPass.readbackMs,
+        flood: floodMs,
+        total: readNowMs() - totalStartedAt,
+      },
+    });
+
+    return floodMask;
+  }
+
   private collectSplatScreenPickCenterHits({
     scene,
     camera,
@@ -2920,6 +2984,100 @@ export class SparkRenderer extends THREE.Mesh {
     target.texture.name = "Spark screen pick ids";
     this.screenPickTarget = target;
     return target;
+  }
+
+  private ensureScreenFloodTarget(width: number, height: number) {
+    const current = this.screenFloodTarget;
+    if (current && current.width === width && current.height === height) {
+      return current;
+    }
+    current?.dispose();
+    const target = new THREE.WebGLRenderTarget(width, height, {
+      format: THREE.RGBAFormat,
+      type: THREE.UnsignedByteType,
+      minFilter: THREE.NearestFilter,
+      magFilter: THREE.NearestFilter,
+      depthBuffer: true,
+      stencilBuffer: false,
+      colorSpace: THREE.NoColorSpace,
+    });
+    target.texture.generateMipmaps = false;
+    target.texture.name = "Spark screen flood rgba";
+    this.screenFloodTarget = target;
+    return target;
+  }
+
+  private async renderSplatScreenFloodPass({
+    target,
+    camera,
+  }: {
+    target: THREE.WebGLRenderTarget;
+    camera: THREE.Camera;
+  }) {
+    const renderer = this.renderer;
+    const byteLength = target.width * target.height * 4;
+    if (!this.screenFloodPixels || this.screenFloodPixels.length < byteLength) {
+      this.screenFloodPixels = new Uint8Array(byteLength);
+    }
+    const pixels = this.screenFloodPixels.subarray(0, byteLength);
+
+    const renderState = this.saveRenderState(renderer);
+    const viewport = renderer.getViewport(new THREE.Vector4());
+    const scissor = renderer.getScissor(new THREE.Vector4());
+    const scissorTest = renderer.getScissorTest();
+    const clearColor = renderer.getClearColor(new THREE.Color());
+    const clearAlpha = renderer.getClearAlpha();
+    const previousPickOutputMode = this.uniforms.splatPickOutputMode.value;
+    const previousFilterMode = this.uniforms.splatEditorStateFilterMode.value;
+    const previousRenderSize = this.screenPickRenderSize;
+    const previousAutoUpdate = this.autoUpdate;
+
+    try {
+      this.autoUpdate = false;
+      this.screenPickRenderSize = new THREE.Vector2(
+        target.width,
+        target.height,
+      );
+      this.uniforms.splatPickOutputMode.value = 0;
+      this.uniforms.splatEditorStateFilterMode.value = 0;
+      renderer.xr.enabled = false;
+      renderer.autoClear = false;
+      renderer.setRenderTarget(target);
+      renderer.setViewport(0, 0, target.width, target.height);
+      renderer.setScissorTest(false);
+      renderer.setClearColor(0, 0);
+      renderer.clear(true, true, true);
+      SparkRenderer.sparkOverride = this;
+      const renderStartedAt = readNowMs();
+      renderer.render(this, camera);
+      const renderMs = readNowMs() - renderStartedAt;
+      const readbackStartedAt = readNowMs();
+      renderer.readRenderTargetPixels(
+        target,
+        0,
+        0,
+        target.width,
+        target.height,
+        pixels,
+      );
+      return {
+        pixels,
+        renderMs,
+        readbackMs: readNowMs() - readbackStartedAt,
+      };
+    } finally {
+      SparkRenderer.sparkOverride = undefined;
+      this.autoUpdate = previousAutoUpdate;
+      this.screenPickRenderSize = previousRenderSize;
+      this.uniforms.splatPickOutputMode.value = previousPickOutputMode;
+      this.uniforms.splatEditorStateFilterMode.value = previousFilterMode;
+      renderer.setViewport(viewport);
+      renderer.setScissor(scissor);
+      renderer.setScissorTest(scissorTest);
+      renderer.setClearColor(clearColor, clearAlpha);
+      this.resetRenderState(renderer, renderState);
+      this.setDirty();
+    }
   }
 
   private async renderSplatScreenPickPass({

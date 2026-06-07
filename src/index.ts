@@ -22,6 +22,8 @@ export {
   testSplatScreenPickCenter,
   createSplatScreenPickCenterCollectStats,
   type SplatScreenFloodMaskOptions,
+  type SplatScreenFloodMaskRenderOptions,
+  type SplatScreenFloodMaskRenderStats,
   type SplatScreenFloodMaskResult,
   type SplatScreenFloodMaskShape,
   type SplatScreenPickCandidateMode,

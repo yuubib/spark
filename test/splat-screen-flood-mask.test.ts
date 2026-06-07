@@ -1,6 +1,10 @@
 import assert from "node:assert";
 
+import * as THREE from "three";
+
+import { SparkRenderer } from "../dist/spark.module.js";
 import {
+  type SplatScreenFloodMaskRenderStats,
   type SplatScreenRgba8RowOrder,
   collectSplatScreenPickHitsFromRgba8,
   createSplatScreenFloodMaskFromRgba8,
@@ -196,5 +200,158 @@ assert.throws(() =>
     seedY: 0,
   }),
 );
+
+const renderReadbackPixels = rgbaFromAlphaRows(
+  [
+    [90, 90],
+    [0, 90],
+  ],
+  "bottom-left",
+);
+const previousTarget = { name: "previous-target" };
+let currentTarget: unknown = previousTarget;
+let xrEnabled = true;
+let autoClear = true;
+let dirtyCalls = 0;
+let renderObject: unknown = null;
+let readRect: { x: number; y: number; width: number; height: number } | null =
+  null;
+let clearArgs: unknown[] | null = null;
+let clearColorArgs: unknown[] | null = null;
+const restoredViewport = new THREE.Vector4(4, 3, 2, 1);
+const restoredScissor = new THREE.Vector4(8, 7, 6, 5);
+const rendererLog: string[] = [];
+const fakeRenderer = {
+  xr: {
+    get enabled() {
+      return xrEnabled;
+    },
+    set enabled(value: boolean) {
+      xrEnabled = value;
+      rendererLog.push(`xr:${value}`);
+    },
+  },
+  get autoClear() {
+    return autoClear;
+  },
+  set autoClear(value: boolean) {
+    autoClear = value;
+    rendererLog.push(`autoClear:${value}`);
+  },
+  getDrawingBufferSize: (target: THREE.Vector2) => target.set(2, 2),
+  getRenderTarget: () => currentTarget,
+  setRenderTarget: (target: unknown) => {
+    currentTarget = target;
+    rendererLog.push(
+      target === previousTarget ? "target:restore" : "target:set",
+    );
+  },
+  getViewport: (target: THREE.Vector4) => target.copy(restoredViewport),
+  setViewport: (...args: unknown[]) => {
+    rendererLog.push(args.length === 1 ? "viewport:restore" : "viewport:set");
+  },
+  getScissor: (target: THREE.Vector4) => target.copy(restoredScissor),
+  setScissor: () => {
+    rendererLog.push("scissor:restore");
+  },
+  getScissorTest: () => true,
+  setScissorTest: (value: boolean) => {
+    rendererLog.push(`scissorTest:${value}`);
+  },
+  getClearColor: (target: THREE.Color) => target.setRGB(0.1, 0.2, 0.3),
+  getClearAlpha: () => 0.4,
+  setClearColor: (...args: unknown[]) => {
+    clearColorArgs = args;
+    rendererLog.push(
+      args[0] instanceof THREE.Color ? "clearColor:restore" : "clearColor:set",
+    );
+  },
+  clear: (...args: unknown[]) => {
+    clearArgs = args;
+    rendererLog.push("clear");
+  },
+  render: (object: unknown) => {
+    renderObject = object;
+    rendererLog.push("render");
+  },
+  readRenderTargetPixels: (
+    _target: unknown,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    pixels: Uint8Array,
+  ) => {
+    readRect = { x, y, width, height };
+    pixels.set(renderReadbackPixels);
+    rendererLog.push("read");
+  },
+};
+
+const sparkRenderer = Object.create(
+  SparkRenderer.prototype,
+) as SparkRenderer & {
+  renderer: typeof fakeRenderer;
+  uniforms: {
+    splatPickOutputMode: { value: number };
+    splatEditorStateFilterMode: { value: number };
+  };
+  accumulators: unknown[];
+  autoUpdate: boolean;
+  dirty: boolean;
+  onDirty: () => void;
+};
+sparkRenderer.renderer = fakeRenderer;
+sparkRenderer.uniforms = {
+  splatPickOutputMode: { value: 3 },
+  splatEditorStateFilterMode: { value: 5 },
+};
+sparkRenderer.accumulators = [];
+sparkRenderer.autoUpdate = true;
+sparkRenderer.dirty = false;
+sparkRenderer.onDirty = () => {
+  dirtyCalls += 1;
+};
+
+let floodStats: SplatScreenFloodMaskRenderStats | null = null;
+const renderedFlood = await sparkRenderer.createSplatScreenFloodMask({
+  scene: new THREE.Scene(),
+  camera: new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 10),
+  seedX: 1,
+  seedY: 0,
+  threshold: 0.1,
+  update: false,
+  onStats: (stats) => {
+    floodStats = stats;
+  },
+});
+
+assert.strictEqual(renderedFlood.matchedPixelCount, 3);
+assert.deepStrictEqual(renderedFlood.bounds, {
+  x: 0,
+  y: 0,
+  width: 2,
+  height: 2,
+});
+assert.strictEqual(alphaAt(renderedFlood.data, 2, 0, 0), 255);
+assert.strictEqual(alphaAt(renderedFlood.data, 2, 1, 1), 255);
+assert.strictEqual(alphaAt(renderedFlood.data, 2, 0, 1), 0);
+assert.strictEqual(renderObject, sparkRenderer);
+assert.deepStrictEqual(readRect, { x: 0, y: 0, width: 2, height: 2 });
+assert.deepStrictEqual(clearArgs, [true, true, true]);
+assert.deepStrictEqual(clearColorArgs, [new THREE.Color(0.1, 0.2, 0.3), 0.4]);
+assert.strictEqual(currentTarget, previousTarget);
+assert.strictEqual(xrEnabled, true);
+assert.strictEqual(autoClear, true);
+assert.strictEqual(sparkRenderer.autoUpdate, true);
+assert.strictEqual(sparkRenderer.uniforms.splatPickOutputMode.value, 3);
+assert.strictEqual(sparkRenderer.uniforms.splatEditorStateFilterMode.value, 5);
+assert.strictEqual(dirtyCalls, 1);
+assert.strictEqual(floodStats?.matchedPixelCount, 3);
+assert.deepStrictEqual(floodStats?.bounds, { x: 0, y: 0, width: 2, height: 2 });
+assert.strictEqual(floodStats?.targetWidth, 2);
+assert.strictEqual(floodStats?.targetHeight, 2);
+assert.ok(rendererLog.includes("render"));
+assert.ok(rendererLog.includes("read"));
 
 console.log("Splat screen flood mask tests passed");
