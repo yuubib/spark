@@ -8963,6 +8963,17 @@ const _ExtSplats = class _ExtSplats {
     target.z = uintBitsToFloat$1(extA[i4 + 2]);
     return true;
   }
+  getSplatColorRaw(index, target) {
+    if (!Number.isInteger(index) || index < 0 || index >= this.numSplats) {
+      return false;
+    }
+    const extB = this.extArrays[1];
+    const i4 = index * 4;
+    target.r = fromHalf(extB[i4] & 65535);
+    target.g = fromHalf(extB[i4] >>> 16);
+    target.b = fromHalf(extB[i4 + 1] & 65535);
+    return true;
+  }
   // Check if source texture needs to be created/updated
   updateTextures() {
     if (this.textures[0] !== _ExtSplats.emptyTexture) {
@@ -15685,6 +15696,19 @@ async function fetchRange({
   }
   return new Uint8Array(await response.arrayBuffer());
 }
+function normalizeColorMatchThreshold(threshold = 0) {
+  return Math.min(1, Math.max(0, Number.isFinite(threshold) ? threshold : 0));
+}
+function splatColorMatchesThreshold(color, seed, threshold) {
+  return Math.abs(color.r - seed.r) <= threshold && Math.abs(color.g - seed.g) <= threshold && Math.abs(color.b - seed.b) <= threshold;
+}
+function copySplatColorRaw(color) {
+  return {
+    r: color.r,
+    g: color.g,
+    b: color.b
+  };
+}
 class EmptySplatSource {
   constructor() {
     this.fetchDyno = new Dyno({
@@ -15722,6 +15746,9 @@ class EmptySplatSource {
   forEachSplatCenterRaw() {
   }
   getSplatCenterRaw() {
+    return false;
+  }
+  getSplatColorRaw() {
     return false;
   }
 }
@@ -16059,6 +16086,135 @@ const _SplatMesh = class _SplatMesh extends SplatGenerator {
       found = true;
     });
     return found;
+  }
+  hasIndexedSplatColors() {
+    var _a2;
+    return ((_a2 = this.splats) == null ? void 0 : _a2.getSplatColorRaw) != null;
+  }
+  getSplatColorRaw(index, target) {
+    const source = this.splats;
+    if (!source || index < 0 || index >= source.getNumSplats()) {
+      return false;
+    }
+    if (source.getSplatColorRaw) {
+      return source.getSplatColorRaw(index, target);
+    }
+    let found = false;
+    source.forEachSplat(
+      (_index, _center, _scales, _quaternion, _opacity, color) => {
+        if (found || _index !== index) {
+          return;
+        }
+        target.r = color.r;
+        target.g = color.g;
+        target.b = color.b;
+        found = true;
+      }
+    );
+    return found;
+  }
+  findSplatColorMatches({
+    seedIndex,
+    threshold = 0,
+    mode = "all",
+    maxMatches
+  }) {
+    const source = this.splats;
+    const seed = { r: 0, g: 0, b: 0 };
+    if (!source || !this.getSplatColorRaw(seedIndex, seed)) {
+      return null;
+    }
+    const safeThreshold = normalizeColorMatchThreshold(threshold);
+    const max2 = maxMatches != null ? Math.max(0, Math.floor(maxMatches)) : Number.POSITIVE_INFINITY;
+    let indices = new Uint32Array(
+      Math.min(Number.isFinite(max2) ? max2 : 1024, 1024)
+    );
+    let matched = 0;
+    let tested = 0;
+    let stateRejected = 0;
+    let earlyExit = false;
+    const editorState = this.getEditorState();
+    const color = { r: 0, g: 0, b: 0 };
+    const pushIndex = (index) => {
+      if (matched >= max2) {
+        earlyExit = true;
+        return false;
+      }
+      if (matched >= indices.length) {
+        const next = new Uint32Array(
+          indices.length ? indices.length * 2 : 1024
+        );
+        next.set(indices);
+        indices = next;
+      }
+      indices[matched] = index;
+      matched += 1;
+      return true;
+    };
+    const testColor = (index, r, g, b) => {
+      if (matched >= max2) {
+        earlyExit = true;
+        return false;
+      }
+      const bits2 = this.getEditorStateBits(editorState, index);
+      if (!matchesSplatEditorStateBits(bits2, mode)) {
+        stateRejected += 1;
+        return true;
+      }
+      tested += 1;
+      color.r = r;
+      color.g = g;
+      color.b = b;
+      if (splatColorMatchesThreshold(color, seed, safeThreshold)) {
+        return pushIndex(index);
+      }
+      return true;
+    };
+    if (this.hasIndexedSplatColors()) {
+      const count = source.getNumSplats();
+      for (let index = 0; index < count; index++) {
+        if (!this.getSplatColorRaw(index, color)) {
+          continue;
+        }
+        if (testColor(index, color.r, color.g, color.b) === false) {
+          break;
+        }
+      }
+    } else {
+      source.forEachSplat(
+        (index, _center, _scales, _quaternion, _opacity, splatColor) => {
+          if (earlyExit) {
+            return;
+          }
+          testColor(index, splatColor.r, splatColor.g, splatColor.b);
+        }
+      );
+    }
+    return {
+      indices: indices.subarray(0, matched),
+      seedColor: copySplatColorRaw(seed),
+      threshold: safeThreshold,
+      tested,
+      matched,
+      stateRejected,
+      earlyExit
+    };
+  }
+  selectSplatStateColorMatches({
+    operation = "set",
+    mutationOptions = {},
+    ...matchOptions
+  }) {
+    const match = this.findSplatColorMatches(matchOptions);
+    if (!match) {
+      return null;
+    }
+    const mutation = this.selectSplatStateCandidates(
+      match.indices,
+      operation,
+      mutationOptions
+    );
+    return { match, mutation };
   }
   getEditorState() {
     var _a2;
@@ -19018,6 +19174,20 @@ const _PackedSplats = class _PackedSplats {
     target.x = fromHalf(word1 & 65535);
     target.y = fromHalf(word1 >>> 16 & 65535);
     target.z = fromHalf(word2 & 65535);
+    return true;
+  }
+  getSplatColorRaw(index, target) {
+    var _a2, _b2;
+    if (!this.packedArray || !Number.isInteger(index) || index < 0 || index >= this.numSplats) {
+      return false;
+    }
+    const word0 = this.packedArray[index * 4];
+    const rgbMin = ((_a2 = this.splatEncoding) == null ? void 0 : _a2.rgbMin) ?? 0;
+    const rgbMax = ((_b2 = this.splatEncoding) == null ? void 0 : _b2.rgbMax) ?? 1;
+    const rgbRange = rgbMax - rgbMin;
+    target.r = rgbMin + (word0 & 255) / 255 * rgbRange;
+    target.g = rgbMin + (word0 >>> 8 & 255) / 255 * rgbRange;
+    target.b = rgbMin + (word0 >>> 16 & 255) / 255 * rgbRange;
     return true;
   }
   // Ensures our PackedSplats.target render target has enough space to generate

@@ -2,7 +2,7 @@ import * as THREE from "three";
 import type { RgbaArray } from "./RgbaArray";
 import { SplatEditorState } from "./SplatEditorState";
 import { SplatLoader } from "./SplatLoader";
-import type { SplatCenterRaw, SplatSource } from "./SplatMesh";
+import type { SplatCenterRaw, SplatColorRaw, SplatSource } from "./SplatMesh";
 import { workerPool } from "./SplatWorker";
 import { SPLAT_TEX_WIDTH, type SplatFileType } from "./defines";
 import {
@@ -29,6 +29,7 @@ import {
   decodeExtSplat,
   decodeExtSplatCenter,
   encodeExtSplat,
+  fromHalf,
   getTextureSize,
   uintBitsToFloat,
 } from "./utils";
@@ -647,6 +648,18 @@ export class ExtSplats implements SplatSource {
     target.x = uintBitsToFloat(extA[i4]);
     target.y = uintBitsToFloat(extA[i4 + 1]);
     target.z = uintBitsToFloat(extA[i4 + 2]);
+    return true;
+  }
+
+  getSplatColorRaw(index: number, target: SplatColorRaw): boolean {
+    if (!Number.isInteger(index) || index < 0 || index >= this.numSplats) {
+      return false;
+    }
+    const extB = this.extArrays[1];
+    const i4 = index * 4;
+    target.r = fromHalf(extB[i4] & 0xffff);
+    target.g = fromHalf(extB[i4] >>> 16);
+    target.b = fromHalf(extB[i4 + 1] & 0xffff);
     return true;
   }
 

@@ -124,6 +124,34 @@ export interface SplatCenterRaw {
     y: number;
     z: number;
 }
+export interface SplatColorRaw {
+    r: number;
+    g: number;
+    b: number;
+}
+export interface SplatMeshColorMatchOptions {
+    seedIndex: number;
+    threshold?: number;
+    mode?: SplatEditorStateFilterMode;
+    maxMatches?: number;
+}
+export interface SplatMeshColorMatchResult {
+    indices: Uint32Array;
+    seedColor: SplatColorRaw;
+    threshold: number;
+    tested: number;
+    matched: number;
+    stateRejected: number;
+    earlyExit: boolean;
+}
+export interface SplatMeshColorMatchSelectionOptions extends SplatMeshColorMatchOptions {
+    operation?: SplatEditorSelectionOperation;
+    mutationOptions?: SplatEditorStateMutationOptions;
+}
+export interface SplatMeshColorMatchSelectionResult {
+    match: SplatMeshColorMatchResult;
+    mutation: SplatEditorStateMutationResult;
+}
 export interface SplatSource {
     prepareFetchSplat(): void;
     dispose(): void;
@@ -142,6 +170,7 @@ export interface SplatSource {
     forEachSplatCenter?(callback: (index: number, center: THREE.Vector3) => void): void;
     forEachSplatCenterRaw?(callback: (index: number, x: number, y: number, z: number) => void): void;
     getSplatCenterRaw?(index: number, target: SplatCenterRaw): boolean;
+    getSplatColorRaw?(index: number, target: SplatColorRaw): boolean;
 }
 export type SplatStateBoundingBoxOptions = {
     centersOnly?: boolean;
@@ -166,6 +195,7 @@ export declare class EmptySplatSource implements SplatSource {
     forEachSplatCenter(): void;
     forEachSplatCenterRaw(): void;
     getSplatCenterRaw(): boolean;
+    getSplatColorRaw(): boolean;
 }
 export declare class SplatMesh extends SplatGenerator {
     initialized: Promise<SplatMesh>;
@@ -231,6 +261,10 @@ export declare class SplatMesh extends SplatGenerator {
     forEachSplatCenterRaw(callback: (index: number, x: number, y: number, z: number) => void): void;
     hasIndexedSplatCenters(): boolean;
     getSplatCenterRaw(index: number, target: SplatCenterRaw): boolean;
+    hasIndexedSplatColors(): boolean;
+    getSplatColorRaw(index: number, target: SplatColorRaw): boolean;
+    findSplatColorMatches({ seedIndex, threshold, mode, maxMatches, }: SplatMeshColorMatchOptions): SplatMeshColorMatchResult | null;
+    selectSplatStateColorMatches({ operation, mutationOptions, ...matchOptions }: SplatMeshColorMatchSelectionOptions): SplatMeshColorMatchSelectionResult | null;
     getEditorState(): SplatEditorState | null;
     ensureEditorState(numSplats?: number): SplatEditorState;
     clearEditorState(): void;

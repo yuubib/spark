@@ -295,6 +295,64 @@ export interface SplatCenterRaw {
   z: number;
 }
 
+export interface SplatColorRaw {
+  r: number;
+  g: number;
+  b: number;
+}
+
+export interface SplatMeshColorMatchOptions {
+  seedIndex: number;
+  threshold?: number;
+  mode?: SplatEditorStateFilterMode;
+  maxMatches?: number;
+}
+
+export interface SplatMeshColorMatchResult {
+  indices: Uint32Array;
+  seedColor: SplatColorRaw;
+  threshold: number;
+  tested: number;
+  matched: number;
+  stateRejected: number;
+  earlyExit: boolean;
+}
+
+export interface SplatMeshColorMatchSelectionOptions
+  extends SplatMeshColorMatchOptions {
+  operation?: SplatEditorSelectionOperation;
+  mutationOptions?: SplatEditorStateMutationOptions;
+}
+
+export interface SplatMeshColorMatchSelectionResult {
+  match: SplatMeshColorMatchResult;
+  mutation: SplatEditorStateMutationResult;
+}
+
+function normalizeColorMatchThreshold(threshold = 0): number {
+  return Math.min(1, Math.max(0, Number.isFinite(threshold) ? threshold : 0));
+}
+
+function splatColorMatchesThreshold(
+  color: SplatColorRaw,
+  seed: SplatColorRaw,
+  threshold: number,
+): boolean {
+  return (
+    Math.abs(color.r - seed.r) <= threshold &&
+    Math.abs(color.g - seed.g) <= threshold &&
+    Math.abs(color.b - seed.b) <= threshold
+  );
+}
+
+function copySplatColorRaw(color: SplatColorRaw): SplatColorRaw {
+  return {
+    r: color.r,
+    g: color.g,
+    b: color.b,
+  };
+}
+
 export interface SplatSource {
   prepareFetchSplat(): void;
   dispose(): void;
@@ -335,6 +393,8 @@ export interface SplatSource {
   ): void;
 
   getSplatCenterRaw?(index: number, target: SplatCenterRaw): boolean;
+
+  getSplatColorRaw?(index: number, target: SplatColorRaw): boolean;
 }
 
 type MutableSplatSource = SplatSource & {
@@ -401,6 +461,10 @@ export class EmptySplatSource implements SplatSource {
   forEachSplatCenterRaw() {}
 
   getSplatCenterRaw() {
+    return false;
+  }
+
+  getSplatColorRaw() {
     return false;
   }
 }
@@ -878,6 +942,145 @@ export class SplatMesh extends SplatGenerator {
       found = true;
     });
     return found;
+  }
+
+  hasIndexedSplatColors(): boolean {
+    return this.splats?.getSplatColorRaw != null;
+  }
+
+  getSplatColorRaw(index: number, target: SplatColorRaw): boolean {
+    const source = this.splats;
+    if (!source || index < 0 || index >= source.getNumSplats()) {
+      return false;
+    }
+    if (source.getSplatColorRaw) {
+      return source.getSplatColorRaw(index, target);
+    }
+
+    let found = false;
+    source.forEachSplat(
+      (_index, _center, _scales, _quaternion, _opacity, color) => {
+        if (found || _index !== index) {
+          return;
+        }
+        target.r = color.r;
+        target.g = color.g;
+        target.b = color.b;
+        found = true;
+      },
+    );
+    return found;
+  }
+
+  findSplatColorMatches({
+    seedIndex,
+    threshold = 0,
+    mode = "all",
+    maxMatches,
+  }: SplatMeshColorMatchOptions): SplatMeshColorMatchResult | null {
+    const source = this.splats;
+    const seed = { r: 0, g: 0, b: 0 };
+    if (!source || !this.getSplatColorRaw(seedIndex, seed)) {
+      return null;
+    }
+
+    const safeThreshold = normalizeColorMatchThreshold(threshold);
+    const max =
+      maxMatches != null
+        ? Math.max(0, Math.floor(maxMatches))
+        : Number.POSITIVE_INFINITY;
+    let indices = new Uint32Array(
+      Math.min(Number.isFinite(max) ? max : 1024, 1024),
+    );
+    let matched = 0;
+    let tested = 0;
+    let stateRejected = 0;
+    let earlyExit = false;
+    const editorState = this.getEditorState();
+    const color = { r: 0, g: 0, b: 0 };
+    const pushIndex = (index: number) => {
+      if (matched >= max) {
+        earlyExit = true;
+        return false;
+      }
+      if (matched >= indices.length) {
+        const next = new Uint32Array(
+          indices.length ? indices.length * 2 : 1024,
+        );
+        next.set(indices);
+        indices = next;
+      }
+      indices[matched] = index;
+      matched += 1;
+      return true;
+    };
+    const testColor = (index: number, r: number, g: number, b: number) => {
+      if (matched >= max) {
+        earlyExit = true;
+        return false;
+      }
+      const bits = this.getEditorStateBits(editorState, index);
+      if (!matchesSplatEditorStateBits(bits, mode)) {
+        stateRejected += 1;
+        return true;
+      }
+      tested += 1;
+      color.r = r;
+      color.g = g;
+      color.b = b;
+      if (splatColorMatchesThreshold(color, seed, safeThreshold)) {
+        return pushIndex(index);
+      }
+      return true;
+    };
+
+    if (this.hasIndexedSplatColors()) {
+      const count = source.getNumSplats();
+      for (let index = 0; index < count; index++) {
+        if (!this.getSplatColorRaw(index, color)) {
+          continue;
+        }
+        if (testColor(index, color.r, color.g, color.b) === false) {
+          break;
+        }
+      }
+    } else {
+      source.forEachSplat(
+        (index, _center, _scales, _quaternion, _opacity, splatColor) => {
+          if (earlyExit) {
+            return;
+          }
+          testColor(index, splatColor.r, splatColor.g, splatColor.b);
+        },
+      );
+    }
+
+    return {
+      indices: indices.subarray(0, matched),
+      seedColor: copySplatColorRaw(seed),
+      threshold: safeThreshold,
+      tested,
+      matched,
+      stateRejected,
+      earlyExit,
+    };
+  }
+
+  selectSplatStateColorMatches({
+    operation = "set",
+    mutationOptions = {},
+    ...matchOptions
+  }: SplatMeshColorMatchSelectionOptions): SplatMeshColorMatchSelectionResult | null {
+    const match = this.findSplatColorMatches(matchOptions);
+    if (!match) {
+      return null;
+    }
+    const mutation = this.selectSplatStateCandidates(
+      match.indices,
+      operation,
+      mutationOptions,
+    );
+    return { match, mutation };
   }
 
   getEditorState(): SplatEditorState | null {

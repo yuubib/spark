@@ -2,7 +2,7 @@ import { FullScreenQuad } from 'three/addons/postprocessing/Pass.js';
 import { RgbaArray } from './RgbaArray';
 import { SplatEditorState } from './SplatEditorState';
 import { GsplatGenerator } from './SplatGenerator';
-import { SplatCenterRaw, SplatSource } from './SplatMesh';
+import { SplatCenterRaw, SplatColorRaw, SplatSource } from './SplatMesh';
 import { SplatEncoding, SplatFileType } from './defines';
 import { DynoInt, DynoProgram, DynoProgramTemplate, DynoUniform, DynoUsampler2DArray, DynoVal, DynoVec3 } from './dyno';
 import { Gsplat, TPackedSplats } from './dyno/splats';
@@ -79,6 +79,7 @@ export declare class PackedSplats implements SplatSource {
     forEachSplatCenter(callback: (index: number, center: THREE.Vector3) => void): void;
     forEachSplatCenterRaw(callback: (index: number, x: number, y: number, z: number) => void): void;
     getSplatCenterRaw(index: number, target: SplatCenterRaw): boolean;
+    getSplatColorRaw(index: number, target: SplatColorRaw): boolean;
     ensureGenerate(maxSplats: number): boolean;
     generateMapping(splatCounts: number[]): {
         maxSplats: number;

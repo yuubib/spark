@@ -5,7 +5,7 @@ import type { RgbaArray } from "./RgbaArray";
 import { SplatEditorState } from "./SplatEditorState";
 import type { GsplatGenerator } from "./SplatGenerator";
 import { SplatLoader } from "./SplatLoader";
-import type { SplatCenterRaw, SplatSource } from "./SplatMesh";
+import type { SplatCenterRaw, SplatColorRaw, SplatSource } from "./SplatMesh";
 import { workerPool } from "./SplatWorker";
 import {
   DEFAULT_SPLAT_ENCODING,
@@ -709,6 +709,25 @@ export class PackedSplats implements SplatSource {
     target.x = fromHalf(word1 & 0xffff);
     target.y = fromHalf((word1 >>> 16) & 0xffff);
     target.z = fromHalf(word2 & 0xffff);
+    return true;
+  }
+
+  getSplatColorRaw(index: number, target: SplatColorRaw): boolean {
+    if (
+      !this.packedArray ||
+      !Number.isInteger(index) ||
+      index < 0 ||
+      index >= this.numSplats
+    ) {
+      return false;
+    }
+    const word0 = this.packedArray[index * 4];
+    const rgbMin = this.splatEncoding?.rgbMin ?? 0.0;
+    const rgbMax = this.splatEncoding?.rgbMax ?? 1.0;
+    const rgbRange = rgbMax - rgbMin;
+    target.r = rgbMin + ((word0 & 0xff) / 255) * rgbRange;
+    target.g = rgbMin + (((word0 >>> 8) & 0xff) / 255) * rgbRange;
+    target.b = rgbMin + (((word0 >>> 16) & 0xff) / 255) * rgbRange;
     return true;
   }
 
