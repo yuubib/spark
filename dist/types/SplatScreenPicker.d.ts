@@ -182,6 +182,7 @@ export type SplatScreenPickCenterBounds = {
     minNdcZ: number;
     maxNdcZ: number;
 };
+export type SplatScreenPickCenterBoundsMode = "half-open" | "strict";
 export type SplatScreenPickViewOffset = {
     fullWidth: number;
     fullHeight: number;
@@ -263,4 +264,4 @@ export declare function createSplatScreenPickCenterCollectStats(): SplatScreenPi
 export declare function recordSplatScreenPickProjectedCenter(stats: SplatScreenPickCenterCollectStats, center: SplatScreenPickProjectedCenter): void;
 export declare function recordSplatScreenPickCandidateCenter(stats: SplatScreenPickCenterCollectStats, center: SplatScreenPickProjectedCenter): void;
 export declare function projectSplatScreenPickCenter(objectToClipElements: ArrayLike<number>, centerX: number, centerY: number, centerZ: number, viewportWidth: number, viewportHeight: number, target: SplatScreenPickProjectedCenter): boolean;
-export declare function testSplatScreenPickCenter(rect: SplatScreenPickRect, x: number, y: number, stats?: SplatScreenPickCenterCollectStats): boolean;
+export declare function testSplatScreenPickCenter(rect: SplatScreenPickRect, x: number, y: number, stats?: SplatScreenPickCenterCollectStats, boundsMode?: SplatScreenPickCenterBoundsMode): boolean;

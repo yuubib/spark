@@ -18,6 +18,7 @@ import {
   type SplatScreenFloodMaskRenderOptions,
   type SplatScreenFloodMaskResult,
   type SplatScreenFloodMaskWorkspace,
+  type SplatScreenPickCenterBoundsMode,
   type SplatScreenPickCenterCollectStats,
   type SplatScreenPickCollectStats,
   type SplatScreenPickHit,
@@ -130,6 +131,12 @@ function resolveSplatScreenPickRankPoint(
     x: rect.x + rect.width * 0.5,
     y: rect.y + rect.height * 0.5,
   };
+}
+
+function resolveSplatScreenPickCenterBoundsMode(
+  shape: SplatScreenPickOptions["shape"],
+): SplatScreenPickCenterBoundsMode {
+  return shape.kind === "rect" ? "strict" : "half-open";
 }
 
 function isBetterSplatScreenPickCenter(
@@ -2146,6 +2153,7 @@ export class SparkRenderer extends THREE.Mesh {
         scene,
         camera,
         rect,
+        boundsMode: resolveSplatScreenPickCenterBoundsMode(options.shape),
         viewportWidth: width,
         viewportHeight: height,
         editorStateMode,
@@ -2331,6 +2339,7 @@ export class SparkRenderer extends THREE.Mesh {
       camera,
       target,
       rect,
+      boundsMode: resolveSplatScreenPickCenterBoundsMode(options.shape),
       viewportWidth: width,
       viewportHeight: height,
       editorStateMode,
@@ -2458,6 +2467,7 @@ export class SparkRenderer extends THREE.Mesh {
       target,
       rect,
       shape: options.shape,
+      boundsMode: resolveSplatScreenPickCenterBoundsMode(options.shape),
       viewportWidth: width,
       viewportHeight: height,
       editorStateMode,
@@ -2571,6 +2581,7 @@ export class SparkRenderer extends THREE.Mesh {
     scene,
     camera,
     rect,
+    boundsMode,
     viewportWidth,
     viewportHeight,
     editorStateMode,
@@ -2581,6 +2592,7 @@ export class SparkRenderer extends THREE.Mesh {
     scene: THREE.Object3D;
     camera: THREE.Camera;
     rect: SplatScreenPickRect;
+    boundsMode: SplatScreenPickCenterBoundsMode;
     viewportWidth: number;
     viewportHeight: number;
     editorStateMode: NonNullable<SplatScreenPickOptions["editorStateMode"]>;
@@ -2670,6 +2682,7 @@ export class SparkRenderer extends THREE.Mesh {
             projectedCenter.x,
             projectedCenter.y,
             stats,
+            boundsMode,
           )
         ) {
           return;
@@ -2768,6 +2781,7 @@ export class SparkRenderer extends THREE.Mesh {
     camera,
     target,
     rect,
+    boundsMode,
     viewportWidth,
     viewportHeight,
     editorStateMode,
@@ -2780,6 +2794,7 @@ export class SparkRenderer extends THREE.Mesh {
     camera: THREE.Camera;
     target: SplatMesh;
     rect: SplatScreenPickRect;
+    boundsMode: SplatScreenPickCenterBoundsMode;
     viewportWidth: number;
     viewportHeight: number;
     editorStateMode: NonNullable<SplatScreenPickOptions["editorStateMode"]>;
@@ -2881,6 +2896,7 @@ export class SparkRenderer extends THREE.Mesh {
               projectedCenter.x,
               projectedCenter.y,
               stats,
+              boundsMode,
             )
           ) {
             return;
@@ -2908,6 +2924,7 @@ export class SparkRenderer extends THREE.Mesh {
     target,
     rect,
     shape,
+    boundsMode,
     viewportWidth,
     viewportHeight,
     editorStateMode,
@@ -2920,6 +2937,7 @@ export class SparkRenderer extends THREE.Mesh {
     target: SplatMesh;
     rect: SplatScreenPickRect;
     shape: SplatScreenPickOptions["shape"];
+    boundsMode: SplatScreenPickCenterBoundsMode;
     viewportWidth: number;
     viewportHeight: number;
     editorStateMode: NonNullable<SplatScreenPickOptions["editorStateMode"]>;
@@ -2996,6 +3014,7 @@ export class SparkRenderer extends THREE.Mesh {
               projectedCenter.x,
               projectedCenter.y,
               stats,
+              boundsMode,
             )
           ) {
             return;

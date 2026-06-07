@@ -220,6 +220,8 @@ export type SplatScreenPickCenterBounds = {
   maxNdcZ: number;
 };
 
+export type SplatScreenPickCenterBoundsMode = "half-open" | "strict";
+
 export type SplatScreenPickViewOffset = {
   fullWidth: number;
   fullHeight: number;
@@ -799,15 +801,19 @@ export function testSplatScreenPickCenter(
   x: number,
   y: number,
   stats?: SplatScreenPickCenterCollectStats,
+  boundsMode: SplatScreenPickCenterBoundsMode = "half-open",
 ): boolean {
-  if (
-    !Number.isFinite(x) ||
-    !Number.isFinite(y) ||
-    x < rect.x ||
-    y < rect.y ||
-    x >= rect.x + rect.width ||
-    y >= rect.y + rect.height
-  ) {
+  const outsideRect =
+    boundsMode === "strict"
+      ? x <= rect.x ||
+        y <= rect.y ||
+        x >= rect.x + rect.width ||
+        y >= rect.y + rect.height
+      : x < rect.x ||
+        y < rect.y ||
+        x >= rect.x + rect.width ||
+        y >= rect.y + rect.height;
+  if (!Number.isFinite(x) || !Number.isFinite(y) || outsideRect) {
     if (stats) {
       stats.viewRejectedCenterCount += 1;
     }

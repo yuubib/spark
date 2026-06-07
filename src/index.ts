@@ -28,6 +28,7 @@ export {
   type SplatScreenFloodMaskShape,
   type SplatScreenFloodMaskWorkspace,
   type SplatScreenPickCandidateMode,
+  type SplatScreenPickCenterBoundsMode,
   type SplatScreenPickCenterCollectStats,
   type SplatScreenPickCollectStats,
   type SplatScreenPickHit,

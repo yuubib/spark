@@ -174,6 +174,41 @@ assert.deepStrictEqual([...(cappedReuse ?? [])], [0]);
 assert.strictEqual(cappedReuse?.buffer, cappedIndexBuffer.buffer.buffer);
 assert.strictEqual(cappedIndexBuffer.buffer[1], 999);
 
+const strictRectBoundary = await sparkRenderer.pickSplatCandidateIndices({
+  target: mesh,
+  scene,
+  camera,
+  candidateMode: "centers",
+  shape: { kind: "rect", x: 0.25, y: 0, width: 0.5, height: 1 },
+  width: 100,
+  height: 100,
+  operation: "set",
+});
+
+assert.deepStrictEqual([...(strictRectBoundary ?? [])], []);
+
+const fullMaskBoundary = await sparkRenderer.pickSplatCandidateIndices({
+  target: mesh,
+  scene,
+  camera,
+  candidateMode: "centers",
+  shape: {
+    kind: "mask",
+    x: 0.25,
+    y: 0,
+    width: 0.5,
+    height: 1,
+    mask: new Uint8Array(50 * 100 * 4).fill(255),
+    maskWidth: 50,
+    maskHeight: 100,
+  },
+  width: 100,
+  height: 100,
+  operation: "set",
+});
+
+assert.deepStrictEqual([...(fullMaskBoundary ?? [])], [0]);
+
 const originalPickSplatCandidates =
   sparkRenderer.pickSplatCandidates.bind(sparkRenderer);
 let renderedSeedOptions: unknown = null;

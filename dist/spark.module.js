@@ -12337,8 +12337,9 @@ function projectSplatScreenPickCenter(objectToClipElements, centerX, centerY, ce
   target.ndcZ = ndcZ;
   return true;
 }
-function testSplatScreenPickCenter(rect, x, y, stats) {
-  if (!Number.isFinite(x) || !Number.isFinite(y) || x < rect.x || y < rect.y || x >= rect.x + rect.width || y >= rect.y + rect.height) {
+function testSplatScreenPickCenter(rect, x, y, stats, boundsMode = "half-open") {
+  const outsideRect = boundsMode === "strict" ? x <= rect.x || y <= rect.y || x >= rect.x + rect.width || y >= rect.y + rect.height : x < rect.x || y < rect.y || x >= rect.x + rect.width || y >= rect.y + rect.height;
+  if (!Number.isFinite(x) || !Number.isFinite(y) || outsideRect) {
     if (stats) {
       stats.viewRejectedCenterCount += 1;
     }
@@ -12576,6 +12577,9 @@ function resolveSplatScreenPickRankPoint(shape, rect, viewportWidth, viewportHei
     x: rect.x + rect.width * 0.5,
     y: rect.y + rect.height * 0.5
   };
+}
+function resolveSplatScreenPickCenterBoundsMode(shape) {
+  return shape.kind === "rect" ? "strict" : "half-open";
 }
 function isBetterSplatScreenPickCenter(candidate, current, rankMode) {
   switch (rankMode) {
@@ -13790,6 +13794,7 @@ const _SparkRenderer = class _SparkRenderer extends THREE.Mesh {
         scene,
         camera,
         rect,
+        boundsMode: resolveSplatScreenPickCenterBoundsMode(options.shape),
         viewportWidth: width,
         viewportHeight: height,
         editorStateMode,
@@ -13959,6 +13964,7 @@ const _SparkRenderer = class _SparkRenderer extends THREE.Mesh {
       camera,
       target,
       rect,
+      boundsMode: resolveSplatScreenPickCenterBoundsMode(options.shape),
       viewportWidth: width,
       viewportHeight: height,
       editorStateMode,
@@ -14067,6 +14073,7 @@ const _SparkRenderer = class _SparkRenderer extends THREE.Mesh {
       target,
       rect,
       shape: options.shape,
+      boundsMode: resolveSplatScreenPickCenterBoundsMode(options.shape),
       viewportWidth: width,
       viewportHeight: height,
       editorStateMode,
@@ -14171,6 +14178,7 @@ const _SparkRenderer = class _SparkRenderer extends THREE.Mesh {
     scene,
     camera,
     rect,
+    boundsMode,
     viewportWidth,
     viewportHeight,
     editorStateMode,
@@ -14241,7 +14249,8 @@ const _SparkRenderer = class _SparkRenderer extends THREE.Mesh {
           rect,
           projectedCenter.x,
           projectedCenter.y,
-          stats
+          stats,
+          boundsMode
         )) {
           return;
         }
@@ -14312,6 +14321,7 @@ const _SparkRenderer = class _SparkRenderer extends THREE.Mesh {
     camera,
     target,
     rect,
+    boundsMode,
     viewportWidth,
     viewportHeight,
     editorStateMode,
@@ -14397,7 +14407,8 @@ const _SparkRenderer = class _SparkRenderer extends THREE.Mesh {
             rect,
             projectedCenter.x,
             projectedCenter.y,
-            stats
+            stats,
+            boundsMode
           )) {
             return;
           }
@@ -14421,6 +14432,7 @@ const _SparkRenderer = class _SparkRenderer extends THREE.Mesh {
     target,
     rect,
     shape,
+    boundsMode,
     viewportWidth,
     viewportHeight,
     editorStateMode,
@@ -14484,7 +14496,8 @@ const _SparkRenderer = class _SparkRenderer extends THREE.Mesh {
             rect,
             projectedCenter.x,
             projectedCenter.y,
-            stats
+            stats,
+            boundsMode
           )) {
             return;
           }

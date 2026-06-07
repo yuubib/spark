@@ -310,6 +310,45 @@ assert.strictEqual(
   false,
 );
 assert.strictEqual(centerStats.viewRejectedCenterCount, 1);
+assert.strictEqual(
+  testSplatScreenPickCenter(
+    { x: 10, y: 20, width: 10, height: 5 },
+    10,
+    22.5,
+    centerStats,
+  ),
+  true,
+);
+assert.strictEqual(
+  testSplatScreenPickCenter(
+    { x: 10, y: 20, width: 10, height: 5 },
+    10,
+    22.5,
+    centerStats,
+    "strict",
+  ),
+  false,
+);
+assert.strictEqual(
+  testSplatScreenPickCenter(
+    { x: 10, y: 20, width: 10, height: 5 },
+    12.5,
+    20,
+    centerStats,
+    "strict",
+  ),
+  false,
+);
+assert.strictEqual(
+  testSplatScreenPickCenter(
+    { x: 10, y: 20, width: 10, height: 5 },
+    10.001,
+    20.001,
+    centerStats,
+    "strict",
+  ),
+  true,
+);
 
 const centerMask = new Uint8Array([
   0, 0, 0, 0, 0, 0, 0, 255, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
