@@ -116,6 +116,7 @@ export type SplatScreenPickCenterProcessorMode = "cpu" | "gpu";
 export type SplatCenterIntersectionOutputEncoding =
   | "bytes-rgba8"
   | "bitset-rgba8";
+export type SplatCenterIntersectionReadbackMode = "async" | "sync";
 export type SplatScreenPickCenterProcessorFallbackReason =
   | "requested-cpu"
   | "auto-cpu-estimated-faster"
@@ -289,6 +290,7 @@ export type SplatScreenPickCenterCollectStats = {
   uniqueHitCount: number;
   processorOutputEncoding?: SplatCenterIntersectionOutputEncoding;
   processorReadbackByteCount?: number;
+  processorReadbackMode?: SplatCenterIntersectionReadbackMode;
   projectedBounds: SplatScreenPickCenterBounds | null;
   candidateBounds: SplatScreenPickCenterBounds | null;
   earlyExit: boolean;

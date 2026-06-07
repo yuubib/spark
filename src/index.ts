@@ -40,6 +40,7 @@ export {
   type SplatScreenPickCollectStats,
   type SplatCenterIntersectionCompactStats,
   type SplatCenterIntersectionOutputEncoding,
+  type SplatCenterIntersectionReadbackMode,
   type SplatScreenPickHit,
   type SplatScreenPickIndexBuffer,
   type SplatScreenPickIndexOptions,

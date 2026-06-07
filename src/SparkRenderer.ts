@@ -17,6 +17,7 @@ import {
 import { SplatGeometry } from "./SplatGeometry";
 import {
   type SplatCenterIntersectionOutputEncoding,
+  type SplatCenterIntersectionReadbackMode,
   type SplatScreenFloodMaskRenderOptions,
   type SplatScreenFloodMaskResult,
   type SplatScreenFloodMaskWorkspace,
@@ -212,6 +213,7 @@ const SPLAT_CENTER_INTERSECTION_OUTPUT_WIDTH = 4096;
 const SPLAT_CENTER_INTERSECTION_AUTO_CPU_MAX_SPLATS = 500_000;
 const SPLAT_CENTER_INTERSECTION_OUTPUT_ENCODING_BITSET =
   "bitset-rgba8" satisfies SplatCenterIntersectionOutputEncoding;
+const SPLAT_CENTER_INTERSECTION_SYNC_READBACK_MAX_BYTES = 256 * 1024;
 
 function getSplatCenterIntersectionOutputSizeForEncoding(
   numSplats: number,
@@ -238,6 +240,14 @@ function getSplatCenterIntersectionOutputSizeForEncoding(
     byteCount,
     pixelCount,
   };
+}
+
+function chooseSplatCenterIntersectionReadbackMode(
+  targetByteCount: number,
+): SplatCenterIntersectionReadbackMode {
+  return targetByteCount <= SPLAT_CENTER_INTERSECTION_SYNC_READBACK_MAX_BYTES
+    ? "sync"
+    : "async";
 }
 
 function isSplatScreenPickTargetVisible(
@@ -3233,6 +3243,9 @@ export class SparkRenderer extends THREE.Mesh {
       width,
       height,
     );
+    const readbackByteCount = outputTarget.width * outputTarget.height * 4;
+    const readbackMode =
+      chooseSplatCenterIntersectionReadbackMode(readbackByteCount);
     const material = this.ensureSplatCenterIntersectionMaterial();
     const uniforms = material.uniforms;
     const centerImage = centerTexture.image;
@@ -3285,7 +3298,10 @@ export class SparkRenderer extends THREE.Mesh {
     }
 
     try {
-      const pass = await this.renderSplatCenterIntersectionPass(outputTarget);
+      const pass = await this.renderSplatCenterIntersectionPass(
+        outputTarget,
+        readbackMode,
+      );
       const compactStartedAt = readNowMs();
       const compactStats = {
         byteCount: 0,
@@ -3316,8 +3332,8 @@ export class SparkRenderer extends THREE.Mesh {
       stats.uniqueHitCount = compactStats.uniqueHitCount;
       stats.earlyExit = compactStats.earlyExit;
       stats.processorOutputEncoding = outputEncoding;
-      stats.processorReadbackByteCount =
-        outputTarget.width * outputTarget.height * 4;
+      stats.processorReadbackByteCount = readbackByteCount;
+      stats.processorReadbackMode = pass.readbackMode;
       return {
         indices,
         renderMs: pass.renderMs,
@@ -3639,10 +3655,12 @@ export class SparkRenderer extends THREE.Mesh {
 
   private async renderSplatCenterIntersectionPass(
     target: THREE.WebGLRenderTarget,
+    readbackMode: SplatCenterIntersectionReadbackMode,
   ): Promise<{
     pixels: Uint8Array;
     renderMs: number;
     readbackMs: number;
+    readbackMode: SplatCenterIntersectionReadbackMode;
   }> {
     const renderer = this.renderer;
     const byteLength = target.width * target.height * 4;
@@ -3681,18 +3699,30 @@ export class SparkRenderer extends THREE.Mesh {
       quad.render(renderer);
       const renderMs = readNowMs() - renderStartedAt;
       const readbackStartedAt = readNowMs();
-      await renderer.readRenderTargetPixelsAsync(
-        target,
-        0,
-        0,
-        target.width,
-        target.height,
-        pixels,
-      );
+      if (readbackMode === "sync") {
+        renderer.readRenderTargetPixels(
+          target,
+          0,
+          0,
+          target.width,
+          target.height,
+          pixels,
+        );
+      } else {
+        await renderer.readRenderTargetPixelsAsync(
+          target,
+          0,
+          0,
+          target.width,
+          target.height,
+          pixels,
+        );
+      }
       return {
         pixels,
         renderMs,
         readbackMs: readNowMs() - readbackStartedAt,
+        readbackMode,
       };
     } finally {
       renderer.setViewport(viewport);
