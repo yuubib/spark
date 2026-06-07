@@ -11175,6 +11175,38 @@ function normalizeSplatScreenPickShape(shape, targetWidth, targetHeight) {
     }
   };
 }
+function resolveSplatScreenPickRenderLayout(rect, viewportWidth, viewportHeight, renderMode = "viewport") {
+  const fullWidth = Math.max(1, Math.floor(viewportWidth));
+  const fullHeight = Math.max(1, Math.floor(viewportHeight));
+  const x = Math.max(0, Math.floor(rect.x));
+  const y = Math.max(0, Math.floor(rect.y));
+  const width = Math.max(1, Math.floor(rect.width));
+  const height = Math.max(1, Math.floor(rect.height));
+  if (renderMode === "shape") {
+    return {
+      targetWidth: width,
+      targetHeight: height,
+      readRect: { x: 0, y: 0, width, height },
+      viewOffset: {
+        fullWidth,
+        fullHeight,
+        x,
+        y,
+        width,
+        height
+      }
+    };
+  }
+  if (renderMode !== "viewport") {
+    throw new Error(`Unsupported splat screen pick render mode: ${renderMode}`);
+  }
+  return {
+    targetWidth: fullWidth,
+    targetHeight: fullHeight,
+    readRect: { x, y, width, height },
+    viewOffset: null
+  };
+}
 function collectSplatScreenPickHitsFromRgba8(pixels, rect, options = {}) {
   const expectedLength = rect.width * rect.height * 4;
   if (pixels.length < expectedLength) {
@@ -12310,15 +12342,25 @@ const _SparkRenderer = class _SparkRenderer extends THREE.Mesh {
     const width = Math.max(1, Math.floor(options.width ?? size.x));
     const height = Math.max(1, Math.floor(options.height ?? size.y));
     const rect = normalizeSplatScreenPickShape(options.shape, width, height);
+    const layout = resolveSplatScreenPickRenderLayout(
+      rect,
+      width,
+      height,
+      options.renderMode ?? "viewport"
+    );
     if (options.update !== false) {
       await this.update({ scene, camera });
     }
-    const target = this.ensureScreenPickTarget(width, height);
+    const target = this.ensureScreenPickTarget(
+      layout.targetWidth,
+      layout.targetHeight
+    );
     const pixels = await this.renderSplatScreenPickPass({
       target,
       scene,
       camera,
-      rect,
+      readRect: layout.readRect,
+      viewOffset: layout.viewOffset,
       editorStateMode: options.editorStateMode ?? editorSelectionOperationToPickFilterMode(options.operation ?? "set")
     });
     const pixelHits = collectSplatScreenPickHitsFromRgba8(pixels, rect, {
@@ -12351,11 +12393,12 @@ const _SparkRenderer = class _SparkRenderer extends THREE.Mesh {
     target,
     scene,
     camera,
-    rect,
+    readRect,
+    viewOffset,
     editorStateMode
   }) {
     const renderer = this.renderer;
-    const byteLength = rect.width * rect.height * 4;
+    const byteLength = readRect.width * readRect.height * 4;
     if (!this.screenPickPixels || this.screenPickPixels.length < byteLength) {
       this.screenPickPixels = new Uint8Array(byteLength);
     }
@@ -12376,6 +12419,7 @@ const _SparkRenderer = class _SparkRenderer extends THREE.Mesh {
     const previousFilterMode = this.uniforms.splatEditorStateFilterMode.value;
     const previousRenderSize = this.screenPickRenderSize;
     const previousAutoUpdate = this.autoUpdate;
+    const pickCamera = viewOffset ? this.createScreenPickViewOffsetCamera(camera, viewOffset) : camera;
     try {
       this.autoUpdate = false;
       this.screenPickRenderSize = new THREE.Vector2(
@@ -12395,13 +12439,13 @@ const _SparkRenderer = class _SparkRenderer extends THREE.Mesh {
       renderer.setClearColor(0, 0);
       renderer.clear(true, true, true);
       _SparkRenderer.sparkOverride = this;
-      renderer.render(this, camera);
+      renderer.render(this, pickCamera);
       await renderer.readRenderTargetPixelsAsync(
         target,
-        rect.x,
-        target.height - rect.y - rect.height,
-        rect.width,
-        rect.height,
+        readRect.x,
+        target.height - readRect.y - readRect.height,
+        readRect.width,
+        readRect.height,
         pixels
       );
       return pixels;
@@ -12420,6 +12464,24 @@ const _SparkRenderer = class _SparkRenderer extends THREE.Mesh {
       renderer.setClearColor(clearColor, clearAlpha);
       this.resetRenderState(renderer, renderState);
     }
+  }
+  createScreenPickViewOffsetCamera(camera, viewOffset) {
+    if (!("setViewOffset" in camera) || typeof camera.clone !== "function") {
+      throw new Error(
+        "Shape-sized splat screen picking requires a camera with setViewOffset"
+      );
+    }
+    const pickCamera = camera.clone();
+    pickCamera.setViewOffset(
+      viewOffset.fullWidth,
+      viewOffset.fullHeight,
+      viewOffset.x,
+      viewOffset.y,
+      viewOffset.width,
+      viewOffset.height
+    );
+    pickCamera.updateMatrixWorld(true);
+    return pickCamera;
   }
   mapSplatScreenPickHits(pixelHits) {
     const hits = [];
@@ -22797,6 +22859,7 @@ export {
   normalizeSplatScreenPickShape,
   pixelsToPngUrl,
   readRgbaArray,
+  resolveSplatScreenPickRenderLayout,
   setPackedSplat,
   splatEditorStateFilterModeToPickUniform,
   textSplats,

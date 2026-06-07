@@ -557,6 +557,7 @@ export declare class SparkRenderer extends THREE.Mesh {
     pickSplatCandidates(options: SplatScreenPickOptions): Promise<SplatScreenPickHit[]>;
     private ensureScreenPickTarget;
     private renderSplatScreenPickPass;
+    private createScreenPickViewOffsetCamera;
     private mapSplatScreenPickHits;
     renderTarget({ scene, camera, }: {
         scene: THREE.Scene;

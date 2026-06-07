@@ -15,13 +15,17 @@ export {
   collectSplatScreenPickHitsFromRgba8,
   editorSelectionOperationToPickFilterMode,
   normalizeSplatScreenPickShape,
+  resolveSplatScreenPickRenderLayout,
   splatEditorStateFilterModeToPickUniform,
   type SplatScreenPickHit,
   type SplatScreenPickMask,
   type SplatScreenPickOptions,
   type SplatScreenPickPixelHit,
   type SplatScreenPickRect,
+  type SplatScreenPickRenderLayout,
+  type SplatScreenPickRenderMode,
   type SplatScreenPickShape,
+  type SplatScreenPickViewOffset,
 } from "./SplatScreenPicker";
 export { SplatAccumulator, type GeneratorMapping } from "./SplatAccumulator";
 

@@ -33,6 +33,8 @@ export type SplatScreenPickShape =
       maskThreshold?: number;
     };
 
+export type SplatScreenPickRenderMode = "viewport" | "shape";
+
 export type SplatScreenPickOptions = {
   scene: THREE.Object3D;
   camera: THREE.Camera;
@@ -44,6 +46,7 @@ export type SplatScreenPickOptions = {
   update?: boolean;
   maxCandidates?: number;
   sort?: boolean;
+  renderMode?: SplatScreenPickRenderMode;
 };
 
 export type SplatScreenPickHit = {
@@ -79,6 +82,22 @@ export type SplatScreenPickPixelHit = {
     x: number;
     y: number;
   };
+};
+
+export type SplatScreenPickViewOffset = {
+  fullWidth: number;
+  fullHeight: number;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
+export type SplatScreenPickRenderLayout = {
+  targetWidth: number;
+  targetHeight: number;
+  readRect: Omit<SplatScreenPickRect, "mask">;
+  viewOffset: SplatScreenPickViewOffset | null;
 };
 
 export const SPLAT_SCREEN_PICK_FILTER_OFF = 0;
@@ -177,6 +196,47 @@ export function normalizeSplatScreenPickShape(
       channel: shape.maskChannel ?? 3,
       threshold: shape.maskThreshold ?? 0,
     },
+  };
+}
+
+export function resolveSplatScreenPickRenderLayout(
+  rect: SplatScreenPickRect,
+  viewportWidth: number,
+  viewportHeight: number,
+  renderMode: SplatScreenPickRenderMode = "viewport",
+): SplatScreenPickRenderLayout {
+  const fullWidth = Math.max(1, Math.floor(viewportWidth));
+  const fullHeight = Math.max(1, Math.floor(viewportHeight));
+  const x = Math.max(0, Math.floor(rect.x));
+  const y = Math.max(0, Math.floor(rect.y));
+  const width = Math.max(1, Math.floor(rect.width));
+  const height = Math.max(1, Math.floor(rect.height));
+
+  if (renderMode === "shape") {
+    return {
+      targetWidth: width,
+      targetHeight: height,
+      readRect: { x: 0, y: 0, width, height },
+      viewOffset: {
+        fullWidth,
+        fullHeight,
+        x,
+        y,
+        width,
+        height,
+      },
+    };
+  }
+
+  if (renderMode !== "viewport") {
+    throw new Error(`Unsupported splat screen pick render mode: ${renderMode}`);
+  }
+
+  return {
+    targetWidth: fullWidth,
+    targetHeight: fullHeight,
+    readRect: { x, y, width, height },
+    viewOffset: null,
   };
 }
 

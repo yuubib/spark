@@ -4,6 +4,7 @@ import {
   collectSplatScreenPickHitsFromRgba8,
   editorSelectionOperationToPickFilterMode,
   normalizeSplatScreenPickShape,
+  resolveSplatScreenPickRenderLayout,
   splatEditorStateFilterModeToPickUniform,
 } from "../src/SplatScreenPicker.js";
 
@@ -38,6 +39,48 @@ assert.deepStrictEqual(
     100,
   ),
   { x: 110, y: 30, width: 50, height: 30 },
+);
+
+const pickRect = normalizeSplatScreenPickShape(
+  { kind: "rect", x: 0.25, y: 0.25, width: 0.25, height: 0.25 },
+  1000,
+  500,
+);
+
+assert.deepStrictEqual(
+  resolveSplatScreenPickRenderLayout(pickRect, 1000, 500, "viewport"),
+  {
+    targetWidth: 1000,
+    targetHeight: 500,
+    readRect: { x: 250, y: 125, width: 250, height: 125 },
+    viewOffset: null,
+  },
+);
+
+assert.deepStrictEqual(
+  resolveSplatScreenPickRenderLayout(pickRect, 1000, 500, "shape"),
+  {
+    targetWidth: 250,
+    targetHeight: 125,
+    readRect: { x: 0, y: 0, width: 250, height: 125 },
+    viewOffset: {
+      fullWidth: 1000,
+      fullHeight: 500,
+      x: 250,
+      y: 125,
+      width: 250,
+      height: 125,
+    },
+  },
+);
+
+assert.throws(() =>
+  resolveSplatScreenPickRenderLayout(
+    { x: 0, y: 0, width: 1, height: 1 },
+    1,
+    1,
+    "bogus" as never,
+  ),
 );
 
 const encode = (accumulatorIndex: number) => {

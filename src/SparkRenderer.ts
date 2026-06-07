@@ -15,9 +15,11 @@ import {
   type SplatScreenPickHit,
   type SplatScreenPickOptions,
   type SplatScreenPickRect,
+  type SplatScreenPickViewOffset,
   collectSplatScreenPickHitsFromRgba8,
   editorSelectionOperationToPickFilterMode,
   normalizeSplatScreenPickShape,
+  resolveSplatScreenPickRenderLayout,
   splatEditorStateFilterModeToPickUniform,
 } from "./SplatScreenPicker";
 import { SplatWorker } from "./SplatWorker";
@@ -1830,17 +1832,27 @@ export class SparkRenderer extends THREE.Mesh {
     const width = Math.max(1, Math.floor(options.width ?? size.x));
     const height = Math.max(1, Math.floor(options.height ?? size.y));
     const rect = normalizeSplatScreenPickShape(options.shape, width, height);
+    const layout = resolveSplatScreenPickRenderLayout(
+      rect,
+      width,
+      height,
+      options.renderMode ?? "viewport",
+    );
 
     if (options.update !== false) {
       await this.update({ scene: scene as THREE.Scene, camera });
     }
 
-    const target = this.ensureScreenPickTarget(width, height);
+    const target = this.ensureScreenPickTarget(
+      layout.targetWidth,
+      layout.targetHeight,
+    );
     const pixels = await this.renderSplatScreenPickPass({
       target,
       scene,
       camera,
-      rect,
+      readRect: layout.readRect,
+      viewOffset: layout.viewOffset,
       editorStateMode:
         options.editorStateMode ??
         editorSelectionOperationToPickFilterMode(options.operation ?? "set"),
@@ -1878,17 +1890,19 @@ export class SparkRenderer extends THREE.Mesh {
     target,
     scene,
     camera,
-    rect,
+    readRect,
+    viewOffset,
     editorStateMode,
   }: {
     target: THREE.WebGLRenderTarget;
     scene: THREE.Object3D;
     camera: THREE.Camera;
-    rect: SplatScreenPickRect;
+    readRect: Omit<SplatScreenPickRect, "mask">;
+    viewOffset: SplatScreenPickViewOffset | null;
     editorStateMode: SplatScreenPickOptions["editorStateMode"];
   }) {
     const renderer = this.renderer;
-    const byteLength = rect.width * rect.height * 4;
+    const byteLength = readRect.width * readRect.height * 4;
     if (!this.screenPickPixels || this.screenPickPixels.length < byteLength) {
       this.screenPickPixels = new Uint8Array(byteLength);
     }
@@ -1910,6 +1924,9 @@ export class SparkRenderer extends THREE.Mesh {
     const previousFilterMode = this.uniforms.splatEditorStateFilterMode.value;
     const previousRenderSize = this.screenPickRenderSize;
     const previousAutoUpdate = this.autoUpdate;
+    const pickCamera = viewOffset
+      ? this.createScreenPickViewOffsetCamera(camera, viewOffset)
+      : camera;
 
     try {
       this.autoUpdate = false;
@@ -1931,13 +1948,13 @@ export class SparkRenderer extends THREE.Mesh {
       renderer.setClearColor(0, 0);
       renderer.clear(true, true, true);
       SparkRenderer.sparkOverride = this;
-      renderer.render(this, camera);
+      renderer.render(this, pickCamera);
       await renderer.readRenderTargetPixelsAsync(
         target,
-        rect.x,
-        target.height - rect.y - rect.height,
-        rect.width,
-        rect.height,
+        readRect.x,
+        target.height - readRect.y - readRect.height,
+        readRect.width,
+        readRect.height,
         pixels,
       );
       return pixels;
@@ -1956,6 +1973,38 @@ export class SparkRenderer extends THREE.Mesh {
       renderer.setClearColor(clearColor, clearAlpha);
       this.resetRenderState(renderer, renderState);
     }
+  }
+
+  private createScreenPickViewOffsetCamera(
+    camera: THREE.Camera,
+    viewOffset: SplatScreenPickViewOffset,
+  ): THREE.Camera {
+    if (!("setViewOffset" in camera) || typeof camera.clone !== "function") {
+      throw new Error(
+        "Shape-sized splat screen picking requires a camera with setViewOffset",
+      );
+    }
+    const pickCamera = camera.clone() as THREE.Camera & {
+      setViewOffset: (
+        fullWidth: number,
+        fullHeight: number,
+        x: number,
+        y: number,
+        width: number,
+        height: number,
+      ) => void;
+      clearViewOffset?: () => void;
+    };
+    pickCamera.setViewOffset(
+      viewOffset.fullWidth,
+      viewOffset.fullHeight,
+      viewOffset.x,
+      viewOffset.y,
+      viewOffset.width,
+      viewOffset.height,
+    );
+    pickCamera.updateMatrixWorld(true);
+    return pickCamera;
   }
 
   private mapSplatScreenPickHits(
