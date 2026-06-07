@@ -15149,9 +15149,6 @@ const _SparkRenderer = class _SparkRenderer extends THREE__namespace.Mesh {
     if (target.context.enableLod.value !== false || target.paged) {
       return { fallbackReason: "lod-or-paged" };
     }
-    if (canUseSelectedSplatCenterIndexMode(editorStateMode)) {
-      return { fallbackReason: "selected-index-mode" };
-    }
     if (!isSplatScreenPickTargetVisible(scene, target)) {
       return { fallbackReason: "target-not-visible" };
     }

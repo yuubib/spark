@@ -194,7 +194,45 @@ assert.strictEqual(
 );
 
 sparkRenderer.renderer.capabilities = { isWebGL2: true };
+mesh.selectSplatStateCandidates([1], "set");
 let selectedIndexModeGpuStats: SplatScreenPickStats | null = null;
+let selectedIndexModeGpuCalled = false;
+const originalSelectedIndexGpuCollector = (
+  sparkRenderer as unknown as {
+    tryCollectSplatScreenPickCenterIndicesGpu?: unknown;
+  }
+).tryCollectSplatScreenPickCenterIndicesGpu;
+(
+  sparkRenderer as unknown as {
+    tryCollectSplatScreenPickCenterIndicesGpu: (options: {
+      target: SplatMesh;
+      editorStateMode: string;
+      stats: {
+        centerCount: number;
+        candidateCenterCount: number;
+        uniqueHitCount: number;
+      };
+    }) => Promise<{
+      indices: Uint32Array;
+      renderMs: number;
+      readbackMs: number;
+      compactMs: number;
+    }>;
+  }
+).tryCollectSplatScreenPickCenterIndicesGpu = async (options) => {
+  selectedIndexModeGpuCalled = true;
+  assert.strictEqual(options.target, mesh);
+  assert.strictEqual(options.editorStateMode, "pick-remove");
+  options.stats.centerCount = 3;
+  options.stats.candidateCenterCount = 1;
+  options.stats.uniqueHitCount = 1;
+  return {
+    indices: new Uint32Array([1]),
+    renderMs: 0.1,
+    readbackMs: 0.2,
+    compactMs: 0.3,
+  };
+};
 const selectedIndexModeGpuIndices =
   await sparkRenderer.pickSplatCandidateIndices({
     target: mesh,
@@ -210,16 +248,23 @@ const selectedIndexModeGpuIndices =
       selectedIndexModeGpuStats = nextStats;
     },
   });
+(
+  sparkRenderer as unknown as {
+    tryCollectSplatScreenPickCenterIndicesGpu?: unknown;
+  }
+).tryCollectSplatScreenPickCenterIndicesGpu = originalSelectedIndexGpuCollector;
+mesh.clearSplatStateSelection();
 
-assert.deepStrictEqual([...(selectedIndexModeGpuIndices ?? [])], []);
+assert.deepStrictEqual([...(selectedIndexModeGpuIndices ?? [])], [1]);
+assert.strictEqual(selectedIndexModeGpuCalled, true);
 assert.strictEqual(
   selectedIndexModeGpuStats?.centerCollect?.requestedProcessor,
   "gpu",
 );
-assert.strictEqual(selectedIndexModeGpuStats?.centerCollect?.processor, "cpu");
+assert.strictEqual(selectedIndexModeGpuStats?.centerCollect?.processor, "gpu");
 assert.strictEqual(
   selectedIndexModeGpuStats?.centerCollect?.fallbackReason,
-  "selected-index-mode",
+  undefined,
 );
 sparkRenderer.renderer.capabilities = undefined;
 
