@@ -18796,7 +18796,7 @@ function applySelectedTransformToDecodedSplat(center, scales, quaternion, { pivo
   center.sub(pivot).multiplyScalar(scale).applyQuaternion(rotate);
   center.add(pivot).add(translate);
   scales.multiplyScalar(scale);
-  quaternion.premultiply(rotate);
+  quaternion.premultiply(rotate).normalize();
 }
 function applySelectedTransformToCenter(center, { pivot, translate, rotate, scale }) {
   center.sub(pivot).multiplyScalar(scale).applyQuaternion(rotate);
@@ -20581,7 +20581,7 @@ const _PackedSplats = class _PackedSplats {
     splat.center.sub(pivot).multiplyScalar(scale).applyQuaternion(rotate);
     splat.center.add(pivot).add(translate);
     splat.scales.multiplyScalar(scale);
-    splat.quaternion.premultiply(rotate);
+    splat.quaternion.premultiply(rotate).normalize();
     setPackedSplatCenter(
       this.packedArray,
       index,

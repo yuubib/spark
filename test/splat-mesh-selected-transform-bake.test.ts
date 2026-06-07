@@ -243,6 +243,80 @@ function assertColorClose(
 }
 
 {
+  const state = new SplatEditorState(1);
+  state.set(0, SPLAT_EDITOR_STATE_SELECTED);
+  const sourceQuaternion = new THREE.Quaternion(
+    0,
+    Math.sin(Math.PI / 8) * 2,
+    0,
+    Math.cos(Math.PI / 8) * 2,
+  );
+  const rotate = new THREE.Quaternion().setFromAxisAngle(
+    new THREE.Vector3(0, 1, 0),
+    Math.PI / 4,
+  );
+  let bakedQuaternion: THREE.Quaternion | null = null;
+  const source = {
+    prepareFetchSplat() {},
+    dispose() {},
+    getNumSplats: () => 1,
+    hasRgbDir: () => false,
+    getNumSh: () => 0,
+    setMaxSh() {},
+    getEditorState: () => state,
+    ensureEditorState: () => state,
+    fetchSplat: () => {
+      throw new Error("not used");
+    },
+    forEachSplat() {},
+    getSplat: () => ({
+      center: new THREE.Vector3(),
+      scales: new THREE.Vector3(1, 1, 1),
+      quaternion: sourceQuaternion.clone(),
+      opacity: 1,
+      color: new THREE.Color(1, 1, 1),
+    }),
+    setSplat: (
+      _index: number,
+      _center: THREE.Vector3,
+      _scales: THREE.Vector3,
+      quaternion: THREE.Quaternion,
+    ) => {
+      bakedQuaternion = quaternion.clone();
+    },
+  };
+  const mesh = new SplatMesh({ splats: source as never });
+  mesh.setSelectedSplatTransform({ rotate });
+
+  const result = mesh.bakeSelectedSplatTransform();
+
+  assert.deepStrictEqual(result, {
+    applied: true,
+    changed: 1,
+    selected: 1,
+    cleared: true,
+    unsupported: false,
+  });
+  assert.ok(bakedQuaternion);
+  assert.ok(
+    Math.abs(
+      Math.hypot(
+        bakedQuaternion.x,
+        bakedQuaternion.y,
+        bakedQuaternion.z,
+        bakedQuaternion.w,
+      ) - 1,
+    ) < 1e-6,
+  );
+  assert.strictEqual(bakedQuaternion.x, 0);
+  assert.strictEqual(bakedQuaternion.z, 0);
+  assert.ok(Math.abs(bakedQuaternion.y - Math.sin(Math.PI / 4)) < 1e-6);
+  assert.ok(Math.abs(bakedQuaternion.w - Math.cos(Math.PI / 4)) < 1e-6);
+
+  mesh.dispose();
+}
+
+{
   const mesh = createMesh();
   mesh.setSplatState(1, SPLAT_EDITOR_STATE_SELECTED);
 

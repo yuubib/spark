@@ -2711,7 +2711,7 @@ function applySelectedTransformToDecodedSplat(
   center.sub(pivot).multiplyScalar(scale).applyQuaternion(rotate);
   center.add(pivot).add(translate);
   scales.multiplyScalar(scale);
-  quaternion.premultiply(rotate);
+  quaternion.premultiply(rotate).normalize();
 }
 
 function applySelectedTransformToCenter(

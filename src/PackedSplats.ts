@@ -739,7 +739,7 @@ export class PackedSplats implements SplatSource {
     splat.center.sub(pivot).multiplyScalar(scale).applyQuaternion(rotate);
     splat.center.add(pivot).add(translate);
     splat.scales.multiplyScalar(scale);
-    splat.quaternion.premultiply(rotate);
+    splat.quaternion.premultiply(rotate).normalize();
 
     setPackedSplatCenter(
       this.packedArray,
