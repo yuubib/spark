@@ -76,6 +76,7 @@ export declare class PackedSplats implements SplatSource {
     setSplat(index: number, center: THREE.Vector3, scales: THREE.Vector3, quaternion: THREE.Quaternion, opacity: number, color: THREE.Color): void;
     pushSplat(center: THREE.Vector3, scales: THREE.Vector3, quaternion: THREE.Quaternion, opacity: number, color: THREE.Color): void;
     forEachSplat(callback: (index: number, center: THREE.Vector3, scales: THREE.Vector3, quaternion: THREE.Quaternion, opacity: number, color: THREE.Color) => void): void;
+    forEachSplatCenter(callback: (index: number, center: THREE.Vector3) => void): void;
     ensureGenerate(maxSplats: number): boolean;
     generateMapping(splatCounts: number[]): {
         maxSplats: number;

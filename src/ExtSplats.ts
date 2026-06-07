@@ -25,7 +25,12 @@ import {
   unindent,
   unindentLines,
 } from "./dyno";
-import { decodeExtSplat, encodeExtSplat, getTextureSize } from "./utils";
+import {
+  decodeExtSplat,
+  decodeExtSplatCenter,
+  encodeExtSplat,
+  getTextureSize,
+} from "./utils";
 
 export type ExtSplatsOptions = {
   // URL to fetch a Gaussian splat file from (supports .ply, .splat, .ksplat,
@@ -602,6 +607,15 @@ export class ExtSplats implements SplatSource {
         unpacked.opacity,
         unpacked.color,
       );
+    }
+  }
+
+  forEachSplatCenter(callback: (index: number, center: THREE.Vector3) => void) {
+    if (!this.numSplats) {
+      return;
+    }
+    for (let i = 0; i < this.numSplats; ++i) {
+      callback(i, decodeExtSplatCenter(this.extArrays, i));
     }
   }
 

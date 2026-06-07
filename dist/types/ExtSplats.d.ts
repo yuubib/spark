@@ -66,6 +66,7 @@ export declare class ExtSplats implements SplatSource {
     setSplat(index: number, center: THREE.Vector3, scales: THREE.Vector3, quaternion: THREE.Quaternion, opacity: number, color: THREE.Color): void;
     pushSplat(center: THREE.Vector3, scales: THREE.Vector3, quaternion: THREE.Quaternion, opacity: number, color: THREE.Color): void;
     forEachSplat(callback: (index: number, center: THREE.Vector3, scales: THREE.Vector3, quaternion: THREE.Quaternion, opacity: number, color: THREE.Color) => void): void;
+    forEachSplatCenter(callback: (index: number, center: THREE.Vector3) => void): void;
     private updateTextures;
     extractSplats(indices: Uint32Array, pageColoring: boolean): ExtSplats;
     static emptyArray: THREE.DataArrayTexture;

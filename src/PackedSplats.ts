@@ -45,7 +45,12 @@ import {
   splitGsplat,
 } from "./dyno/splats";
 import { getShaders } from "./shaders";
-import { getTextureSize, setPackedSplat, unpackSplat } from "./utils";
+import {
+  getTextureSize,
+  setPackedSplat,
+  unpackSplat,
+  unpackSplatCenter,
+} from "./utils";
 
 // Initialize a PackedSplats collection from source data via
 // url, fileBytes, or packedArray. Creates an empty array if none are set,
@@ -657,6 +662,15 @@ export class PackedSplats implements SplatSource {
         unpacked.opacity,
         unpacked.color,
       );
+    }
+  }
+
+  forEachSplatCenter(callback: (index: number, center: THREE.Vector3) => void) {
+    if (!this.packedArray || !this.numSplats) {
+      return;
+    }
+    for (let i = 0; i < this.numSplats; ++i) {
+      callback(i, unpackSplatCenter(this.packedArray, i));
     }
   }
 

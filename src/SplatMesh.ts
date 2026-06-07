@@ -280,6 +280,10 @@ export interface SplatSource {
       color: THREE.Color,
     ) => void,
   ): void;
+
+  forEachSplatCenter?(
+    callback: (index: number, center: THREE.Vector3) => void,
+  ): void;
 }
 
 export type SplatStateBoundingBoxOptions = {
@@ -319,6 +323,8 @@ export class EmptySplatSource implements SplatSource {
   }
 
   forEachSplat() {}
+
+  forEachSplatCenter() {}
 }
 
 export class SplatMesh extends SplatGenerator {
@@ -696,6 +702,21 @@ export class SplatMesh extends SplatGenerator {
     ) => void,
   ) {
     this.splats?.forEachSplat(callback);
+  }
+
+  // Iterate over splat centers without requiring sources to decode scale,
+  // rotation, opacity, or color attributes. Custom sources may omit the center
+  // hook; in that case Spark falls back to the full splat iterator.
+  forEachSplatCenter(callback: (index: number, center: THREE.Vector3) => void) {
+    const source = this.splats;
+    if (!source) {
+      return;
+    }
+    if (source.forEachSplatCenter) {
+      source.forEachSplatCenter(callback);
+      return;
+    }
+    source.forEachSplat((index, center) => callback(index, center));
   }
 
   getEditorState(): SplatEditorState | null {
@@ -1166,6 +1187,22 @@ export class SplatMesh extends SplatGenerator {
     const corners = new THREE.Vector3();
     const signs = [-1, 1];
 
+    if (centersOnly) {
+      this.forEachSplatCenter((index, center) => {
+        if (
+          !matchesSplatEditorStateBits(
+            this.getEditorStateBits(editorState, index),
+            mode,
+          )
+        ) {
+          return;
+        }
+
+        box.expandByPoint(center);
+      });
+      return box;
+    }
+
     this.splats?.forEachSplat(
       (index, center, scales, quaternion, _opacity, _color) => {
         if (
@@ -1176,12 +1213,6 @@ export class SplatMesh extends SplatGenerator {
         ) {
           return;
         }
-
-        if (centersOnly) {
-          box.expandByPoint(center);
-          return;
-        }
-
         for (const x of signs) {
           for (const y of signs) {
             for (const z of signs) {

@@ -2170,7 +2170,7 @@ export class SparkRenderer extends THREE.Mesh {
       object.updateMatrixWorld(true);
       const matrixWorld = object.matrixWorld;
 
-      object.forEachSplat((index, center) => {
+      object.forEachSplatCenter((index, center) => {
         if (hits.length >= max) {
           stats.earlyExit = true;
           return;

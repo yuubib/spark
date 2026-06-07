@@ -117,6 +117,7 @@ export interface SplatSource {
         viewOrigin?: DynoVal<"vec3">;
     }): DynoVal<typeof Gsplat>;
     forEachSplat(callback: (index: number, center: THREE.Vector3, scales: THREE.Vector3, quaternion: THREE.Quaternion, opacity: number, color: THREE.Color) => void): void;
+    forEachSplatCenter?(callback: (index: number, center: THREE.Vector3) => void): void;
 }
 export type SplatStateBoundingBoxOptions = {
     centersOnly?: boolean;
@@ -137,6 +138,7 @@ export declare class EmptySplatSource implements SplatSource {
         index: DynoVal<"int">;
     }): DynoVal<typeof Gsplat>;
     forEachSplat(): void;
+    forEachSplatCenter(): void;
 }
 export declare class SplatMesh extends SplatGenerator {
     initialized: Promise<SplatMesh>;
@@ -196,6 +198,7 @@ export declare class SplatMesh extends SplatGenerator {
     static staticInitialize(): Promise<void>;
     pushSplat(center: THREE.Vector3, scales: THREE.Vector3, quaternion: THREE.Quaternion, opacity: number, color: THREE.Color): void;
     forEachSplat(callback: (index: number, center: THREE.Vector3, scales: THREE.Vector3, quaternion: THREE.Quaternion, opacity: number, color: THREE.Color) => void): void;
+    forEachSplatCenter(callback: (index: number, center: THREE.Vector3) => void): void;
     getEditorState(): SplatEditorState | null;
     ensureEditorState(numSplats?: number): SplatEditorState;
     clearEditorState(): void;

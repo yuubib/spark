@@ -16,7 +16,13 @@ import {
   SplatFileType,
 } from "./defines";
 import { pagedSplatTexCoord } from "./dyno";
-import { decodeExtSplat, getTextureSize, unpackSplat } from "./utils";
+import {
+  decodeExtSplat,
+  decodeExtSplatCenter,
+  getTextureSize,
+  unpackSplat,
+  unpackSplatCenter,
+} from "./utils";
 
 export interface PagedSplatsOptions {
   pager?: SplatPager;
@@ -469,6 +475,32 @@ export class PagedSplats implements SplatSource {
         unpacked.quaternion,
         unpacked.opacity,
         unpacked.color,
+      );
+    }
+  }
+
+  forEachSplatCenter(callback: (index: number, center: THREE.Vector3) => void) {
+    if (!this.pager || !this.numSplats) {
+      return;
+    }
+    const extSplats = this.pager.extSplats;
+    const indices = this.dynoIndices.value.image.data as Uint32Array;
+    const packedSplatArray = this.pager.packedTexture.value.image
+      .data as Uint32Array;
+    const extPackedSplatArray = this.pager.extTexture.value.image
+      .data as Uint32Array;
+    const extArrays: [Uint32Array, Uint32Array] = [
+      packedSplatArray,
+      extPackedSplatArray,
+    ];
+
+    for (let i = 0; i < this.numSplats; ++i) {
+      const splatIndex = indices[i];
+      callback(
+        i,
+        extSplats
+          ? decodeExtSplatCenter(extArrays, splatIndex)
+          : unpackSplatCenter(packedSplatArray, splatIndex),
       );
     }
   }

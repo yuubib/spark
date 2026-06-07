@@ -56,6 +56,7 @@ export declare function decodeExtSplat(extArrays: [Uint32Array, Uint32Array], in
     color: THREE.Color;
     opacity: number;
 };
+export declare function decodeExtSplatCenter(extArrays: [Uint32Array, Uint32Array], index: number, target?: THREE.Vector3): THREE.Vector3;
 export declare function setPackedSplat(packedSplats: Uint32Array, index: number, x: number, y: number, z: number, scaleX: number, scaleY: number, scaleZ: number, quatX: number, quatY: number, quatZ: number, quatW: number, opacity: number, r: number, g: number, b: number, encoding?: {
     rgbMin?: number;
     rgbMax?: number;
@@ -92,6 +93,7 @@ export declare function unpackSplat(packedSplats: Uint32Array, index: number, en
     color: THREE.Color;
     opacity: number;
 };
+export declare function unpackSplatCenter(packedSplats: Uint32Array, index: number, target?: THREE.Vector3): THREE.Vector3;
 export declare function getTextureSize(numSplats: number): {
     width: number;
     height: number;

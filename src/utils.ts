@@ -455,6 +455,21 @@ export function decodeExtSplat(
   return result;
 }
 
+export function decodeExtSplatCenter(
+  extArrays: [Uint32Array, Uint32Array],
+  index: number,
+  target = packedCenter,
+): THREE.Vector3 {
+  const i4 = index * 4;
+  const extA = extArrays[0];
+  target.set(
+    uintBitsToFloat(extA[i4]),
+    uintBitsToFloat(extA[i4 + 1]),
+    uintBitsToFloat(extA[i4 + 2]),
+  );
+  return target;
+}
+
 // Encode a PackedSplat as 4 consecutive Uint32 elements in the packedSplats array.
 // The center coordinates x,y,z are encoded as float16, the scales x,y,z as a
 // logarithmic uint8, rotation as three uint8s representing rotation axis and angle,
@@ -790,6 +805,22 @@ export function unpackSplat(
   // decodeQuatEulerXyz888(uQuat, result.quaternion);
 
   return result;
+}
+
+export function unpackSplatCenter(
+  packedSplats: Uint32Array,
+  index: number,
+  target = packedCenter,
+): THREE.Vector3 {
+  const i4 = index * 4;
+  const word1 = packedSplats[i4 + 1];
+  const word2 = packedSplats[i4 + 2];
+  target.set(
+    fromHalf(word1 & 0xffff),
+    fromHalf((word1 >>> 16) & 0xffff),
+    fromHalf(word2 & 0xffff),
+  );
+  return target;
 }
 
 // Compute a texture array size that is large enough to fit numSplats. The most
