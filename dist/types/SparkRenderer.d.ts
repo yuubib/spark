@@ -597,6 +597,7 @@ export declare class SparkRenderer extends THREE.Mesh {
     private getSplatScreenPickProjectionCache;
     private collectSplatScreenPickCenterIndices;
     private tryCollectSplatScreenPickCenterIndicesGpu;
+    private rankNearestSplatScreenPickCenterIndices;
     private ensureSplatCenterIntersectionTarget;
     private ensureSplatCenterIntersectionMaskTexture;
     private ensureSplatCenterIntersectionMaterial;

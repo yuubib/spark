@@ -14793,7 +14793,7 @@ const _SparkRenderer = class _SparkRenderer extends THREE.Mesh {
     };
   }
   async pickNearestSplatCenterIndex(options) {
-    var _a2;
+    var _a2, _b2, _c, _d;
     const totalStartedAt = readNowMs();
     const { scene, camera, target } = options;
     const size = this.renderer.getDrawingBufferSize(new THREE.Vector2());
@@ -14836,11 +14836,106 @@ const _SparkRenderer = class _SparkRenderer extends THREE.Mesh {
       updateMs = readNowMs() - updateStartedAt;
     }
     const collectStats = createSplatScreenPickCenterCollectStats();
+    const requestedProcessor = options.centerProcessor ?? "auto";
+    const editorState = target.getEditorState();
+    const selectedTransform = target.getSelectedSplatTransform();
+    const shouldUseCpuAuto = requestedProcessor === "auto" && shouldPreferCpuSplatCenterProcessor(target.numSplats) && !shouldPreferGpuSplatCenterProcessorForSelectedFilter(
+      target.numSplats,
+      editorState,
+      editorStateMode
+    );
+    let cpuFallbackReason = requestedProcessor === "cpu" ? "requested-cpu" : shouldUseCpuAuto ? "auto-cpu-estimated-faster" : "nearest-unsupported";
+    if (!shouldUseCpuAuto && requestedProcessor !== "cpu") {
+      const sourceSplatCount = (_b2 = (_a2 = target.splats) == null ? void 0 : _a2.getNumSplats) == null ? void 0 : _b2.call(_a2);
+      const targetSplatCount = normalizeSplatCount(target.numSplats);
+      const sourceCountMatches = sourceSplatCount == null || sourceSplatCount === targetSplatCount;
+      const finiteMax = options.maxCandidates != null && Number.isFinite(Math.floor(options.maxCandidates));
+      if (selectedTransform) {
+        cpuFallbackReason = "selected-transform-preview";
+      } else if (finiteMax || !target.hasIndexedSplatCenters()) {
+        cpuFallbackReason = "nearest-unsupported";
+      } else if (!sourceCountMatches) {
+        cpuFallbackReason = "unsupported-source";
+      } else {
+        setSplatScreenPickCenterProcessorStats(
+          collectStats,
+          requestedProcessor,
+          "gpu"
+        );
+        const gpuResult = await this.tryCollectSplatScreenPickCenterIndicesGpu({
+          scene,
+          camera,
+          target,
+          rect,
+          boundsMode: resolveSplatScreenPickCenterBoundsMode(options.shape),
+          viewportWidth: width,
+          viewportHeight: height,
+          editorStateMode,
+          stats: collectStats
+        });
+        if ("indices" in gpuResult) {
+          const rankStartedAt = readNowMs();
+          const hit2 = this.rankNearestSplatScreenPickCenterIndices({
+            target,
+            camera,
+            shape: options.shape,
+            rect,
+            viewportWidth: width,
+            viewportHeight: height,
+            rankMode: options.rankMode,
+            indices: gpuResult.indices,
+            stats: collectStats
+          });
+          const rankMs = readNowMs() - rankStartedAt;
+          collectStats.uniqueHitCount = hit2 ? 1 : 0;
+          (_c = options.onStats) == null ? void 0 : _c.call(options, {
+            shapeKind: options.shape.kind,
+            candidateMode: "centers",
+            renderMode,
+            viewportWidth: width,
+            viewportHeight: height,
+            targetWidth: layout.targetWidth,
+            targetHeight: layout.targetHeight,
+            normalizedRect: {
+              x: rect.x,
+              y: rect.y,
+              width: rect.width,
+              height: rect.height
+            },
+            readRect: layout.readRect,
+            pixelHitCount: 0,
+            mappedHitCount: hit2 ? 1 : 0,
+            sourceStableHitCount: hit2 ? 1 : 0,
+            collect: {
+              pixelCount: 0,
+              candidatePixelCount: 0,
+              maskTestedPixelCount: 0,
+              encodedPixelCount: 0,
+              duplicatePixelHitCount: 0,
+              uniqueHitCount: 0,
+              earlyExit: collectStats.earlyExit
+            },
+            centerCollect: collectStats,
+            timingsMs: {
+              update: updateMs,
+              render: gpuResult.renderMs,
+              readback: gpuResult.readbackMs,
+              renderReadback: gpuResult.renderMs + gpuResult.readbackMs,
+              decode: 0,
+              map: gpuResult.compactMs + rankMs,
+              total: readNowMs() - totalStartedAt
+            }
+          });
+          return hit2;
+        }
+        cpuFallbackReason = gpuResult.fallbackReason;
+      }
+    }
     setSplatScreenPickCenterProcessorStats(
       collectStats,
-      options.centerProcessor ?? "auto",
+      requestedProcessor,
       "cpu",
-      options.centerProcessor === "cpu" ? "requested-cpu" : "nearest-unsupported"
+      cpuFallbackReason
     );
     const collectStartedAt = readNowMs();
     const hit = this.collectNearestSplatScreenPickCenterIndex({
@@ -14858,7 +14953,7 @@ const _SparkRenderer = class _SparkRenderer extends THREE.Mesh {
       stats: collectStats
     });
     const collectMs = readNowMs() - collectStartedAt;
-    (_a2 = options.onStats) == null ? void 0 : _a2.call(options, {
+    (_d = options.onStats) == null ? void 0 : _d.call(options, {
       shapeKind: options.shape.kind,
       candidateMode: "centers",
       renderMode,
@@ -15599,6 +15694,80 @@ const _SparkRenderer = class _SparkRenderer extends THREE.Mesh {
     } catch {
       return { fallbackReason: "gpu-readback-failed" };
     }
+  }
+  rankNearestSplatScreenPickCenterIndices({
+    target,
+    camera,
+    shape,
+    rect,
+    viewportWidth,
+    viewportHeight,
+    rankMode = "screen-distance-depth",
+    indices,
+    stats
+  }) {
+    if (indices.length === 0) {
+      return null;
+    }
+    target.updateMatrixWorld(true);
+    const rankPoint = resolveSplatScreenPickRankPoint(
+      shape,
+      rect,
+      viewportWidth,
+      viewportHeight
+    );
+    const objectToClip = new THREE.Matrix4().multiplyMatrices(
+      camera.projectionMatrix,
+      camera.matrixWorldInverse
+    );
+    objectToClip.multiply(target.matrixWorld);
+    const objectToClipElements = objectToClip.elements;
+    const center = { x: 0, y: 0, z: 0 };
+    const projectedCenter = {
+      x: 0,
+      y: 0,
+      ndcZ: 0
+    };
+    let best = null;
+    for (const index of indices) {
+      if (!target.getSplatCenterRaw(index, center)) {
+        stats.viewRejectedCenterCount += 1;
+        continue;
+      }
+      if (!projectSplatScreenPickCenter(
+        objectToClipElements,
+        center.x,
+        center.y,
+        center.z,
+        viewportWidth,
+        viewportHeight,
+        projectedCenter
+      )) {
+        stats.viewRejectedCenterCount += 1;
+        continue;
+      }
+      const screenDistanceSq = (projectedCenter.x - rankPoint.x) ** 2 + (projectedCenter.y - rankPoint.y) ** 2;
+      if (!best || isBetterSplatScreenPickCenter(
+        {
+          index,
+          screenDistanceSq,
+          ndcZ: projectedCenter.ndcZ
+        },
+        best,
+        rankMode
+      )) {
+        best = {
+          index,
+          pixel: {
+            x: Math.floor(projectedCenter.x),
+            y: Math.floor(projectedCenter.y)
+          },
+          screenDistanceSq,
+          ndcZ: projectedCenter.ndcZ
+        };
+      }
+    }
+    return best;
   }
   ensureSplatCenterIntersectionTarget(width, height) {
     const current = this.centerIntersectionTarget;

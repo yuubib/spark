@@ -605,17 +605,31 @@ transformMesh.forEachSplatCenterRaw = (callback) => {
   nearestTransformRawIterations += 1;
   originalNearestTransformRawIterator(callback);
 };
+let nearestTransformStats: SplatScreenPickStats | null = null;
 const nearestTransformed = await transformRenderer.pickNearestSplatCenterIndex({
   target: transformMesh,
   scene: transformScene,
   camera,
+  centerProcessor: "gpu",
   shape: { kind: "point", x: 0.5, y: 0.5, radiusPixels: 1 },
   width: 100,
   height: 100,
   editorStateMode: "all",
+  onStats: (nextStats) => {
+    nearestTransformStats = nextStats;
+  },
 });
 assert.strictEqual(nearestTransformed?.index, 0);
 assert.strictEqual(nearestTransformRawIterations, 1);
+assert.strictEqual(
+  nearestTransformStats?.centerCollect?.requestedProcessor,
+  "gpu",
+);
+assert.strictEqual(nearestTransformStats?.centerCollect?.processor, "cpu");
+assert.strictEqual(
+  nearestTransformStats?.centerCollect?.fallbackReason,
+  "selected-transform-preview",
+);
 
 transformMesh.clearSplatStateSelection();
 transformMesh.selectSplatStateCandidates([2], "set");
@@ -1039,6 +1053,139 @@ assert.strictEqual(nearestStats?.mappedHitCount, 1);
 assert.strictEqual(nearestStats?.sourceStableHitCount, 1);
 assert.strictEqual(nearestStats?.centerCollect?.candidateCenterCount, 1);
 assert.strictEqual(nearestStats?.centerCollect?.uniqueHitCount, 1);
+
+const gpuNearestCollectorOwner = sparkRenderer as unknown as {
+  tryCollectSplatScreenPickCenterIndicesGpu: (
+    options: Record<string, unknown>,
+  ) => Promise<{
+    indices: Uint32Array;
+    renderMs: number;
+    readbackMs: number;
+    compactMs: number;
+  }>;
+};
+const originalNearestGpuCollector =
+  gpuNearestCollectorOwner.tryCollectSplatScreenPickCenterIndicesGpu;
+let gpuNearestCollectorCalled = false;
+let gpuNearestIndexedCenterReads = 0;
+const originalNearestIndexedCenter = mesh.getSplatCenterRaw.bind(mesh);
+mesh.getSplatCenterRaw = (index, target) => {
+  gpuNearestIndexedCenterReads += 1;
+  return originalNearestIndexedCenter(index, target);
+};
+gpuNearestCollectorOwner.tryCollectSplatScreenPickCenterIndicesGpu = async (
+  options,
+) => {
+  gpuNearestCollectorCalled = true;
+  assert.strictEqual(options.target, mesh);
+  assert.strictEqual(options.editorStateMode, "pick-set");
+  const stats = options.stats as {
+    centerCount: number;
+    candidateCenterCount: number;
+    uniqueHitCount: number;
+  };
+  stats.centerCount = 3;
+  stats.candidateCenterCount = 3;
+  stats.uniqueHitCount = 3;
+  return {
+    indices: new Uint32Array([0, 1, 2]),
+    renderMs: 1,
+    readbackMs: 2,
+    compactMs: 3,
+  };
+};
+rawCenterIteratorUsed = false;
+let gpuNearestStats: SplatScreenPickStats | null = null;
+const gpuNearest = await sparkRenderer.pickNearestSplatCenterIndex({
+  target: mesh,
+  scene,
+  camera,
+  candidateMode: "centers",
+  centerProcessor: "gpu",
+  shape: { kind: "point", x: 0.7, y: 0.5, radiusPixels: 30 },
+  width: 100,
+  height: 100,
+  operation: "set",
+  onStats: (nextStats) => {
+    gpuNearestStats = nextStats;
+  },
+});
+
+assert.deepStrictEqual(gpuNearest, {
+  index: 1,
+  pixel: { x: 75, y: 50 },
+  screenDistanceSq: 25,
+  ndcZ: -0.8,
+});
+assert.strictEqual(gpuNearestCollectorCalled, true);
+assert.strictEqual(rawCenterIteratorUsed, false);
+assert.strictEqual(gpuNearestIndexedCenterReads, 3);
+assert.strictEqual(gpuNearestStats?.mappedHitCount, 1);
+assert.strictEqual(gpuNearestStats?.sourceStableHitCount, 1);
+assert.strictEqual(gpuNearestStats?.centerCollect?.requestedProcessor, "gpu");
+assert.strictEqual(gpuNearestStats?.centerCollect?.processor, "gpu");
+assert.strictEqual(gpuNearestStats?.centerCollect?.fallbackReason, undefined);
+assert.strictEqual(gpuNearestStats?.centerCollect?.candidateCenterCount, 3);
+assert.strictEqual(gpuNearestStats?.centerCollect?.uniqueHitCount, 1);
+
+gpuNearestCollectorCalled = false;
+let nearestExplicitCpuStats: SplatScreenPickStats | null = null;
+await sparkRenderer.pickNearestSplatCenterIndex({
+  target: mesh,
+  scene,
+  camera,
+  candidateMode: "centers",
+  centerProcessor: "cpu",
+  shape: { kind: "point", x: 0.7, y: 0.5, radiusPixels: 30 },
+  width: 100,
+  height: 100,
+  operation: "set",
+  onStats: (nextStats) => {
+    nearestExplicitCpuStats = nextStats;
+  },
+});
+assert.strictEqual(gpuNearestCollectorCalled, false);
+assert.strictEqual(
+  nearestExplicitCpuStats?.centerCollect?.requestedProcessor,
+  "cpu",
+);
+assert.strictEqual(nearestExplicitCpuStats?.centerCollect?.processor, "cpu");
+assert.strictEqual(
+  nearestExplicitCpuStats?.centerCollect?.fallbackReason,
+  "requested-cpu",
+);
+
+gpuNearestCollectorCalled = false;
+let nearestFiniteMaxStats: SplatScreenPickStats | null = null;
+await sparkRenderer.pickNearestSplatCenterIndex({
+  target: mesh,
+  scene,
+  camera,
+  candidateMode: "centers",
+  centerProcessor: "gpu",
+  maxCandidates: 2,
+  shape: { kind: "point", x: 0.7, y: 0.5, radiusPixels: 30 },
+  width: 100,
+  height: 100,
+  operation: "set",
+  onStats: (nextStats) => {
+    nearestFiniteMaxStats = nextStats;
+  },
+});
+assert.strictEqual(gpuNearestCollectorCalled, false);
+assert.strictEqual(
+  nearestFiniteMaxStats?.centerCollect?.requestedProcessor,
+  "gpu",
+);
+assert.strictEqual(nearestFiniteMaxStats?.centerCollect?.processor, "cpu");
+assert.strictEqual(
+  nearestFiniteMaxStats?.centerCollect?.fallbackReason,
+  "nearest-unsupported",
+);
+
+mesh.getSplatCenterRaw = originalNearestIndexedCenter;
+gpuNearestCollectorOwner.tryCollectSplatScreenPickCenterIndicesGpu =
+  originalNearestGpuCollector;
 
 const maskedNearest = await sparkRenderer.pickNearestSplatCenterIndex({
   target: mesh,
