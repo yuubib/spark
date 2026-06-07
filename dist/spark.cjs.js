@@ -7043,6 +7043,15 @@ const _SplatEditorState = class _SplatEditorState {
     }
   }
   selectCandidates(indices, operation = "set", options = {}) {
+    if (operation === "set") {
+      const arrayLikeLength = getArrayLikeLength(indices);
+      if (this.selected === 0 && options.recordChanges && options.changeFormat === "packed" && arrayLikeLength !== null) {
+        return this.selectCandidateSetFromEmptyPackedArrayLike(
+          indices,
+          arrayLikeLength
+        );
+      }
+    }
     const changes = createMutationChanges(options);
     if (operation === "set") {
       if (this.selected === 0) {
@@ -7959,6 +7968,41 @@ const _SplatEditorState = class _SplatEditorState {
     }
     return this.commitMutation(changed, dirtyIndices, fullRange, changes);
   }
+  selectCandidateSetFromEmptyPackedArrayLike(indices, length2) {
+    const changedIndices = new Uint32Array(length2);
+    const previousValues = new Uint8Array(length2);
+    const nextValues = new Uint8Array(length2);
+    const dirtyIndices = [];
+    let fullRange = false;
+    let changed = 0;
+    for (let offset = 0; offset < length2; offset++) {
+      const index = this.normalizeIndex(indices[offset]);
+      if (index === null || this.states[index] !== SPLAT_EDITOR_STATE_NONE) {
+        continue;
+      }
+      if (!this.setUnchecked(index, SPLAT_EDITOR_STATE_SELECTED, false)) {
+        continue;
+      }
+      changedIndices[changed] = index;
+      nextValues[changed] = SPLAT_EDITOR_STATE_SELECTED;
+      changed++;
+      fullRange || (fullRange = this.collectDirtyIndex(dirtyIndices, index));
+    }
+    const changeSet = {
+      kind: "packed-list",
+      indices: changedIndices.subarray(0, changed),
+      previous: previousValues.subarray(0, changed),
+      next: nextValues.subarray(0, changed),
+      changed
+    };
+    return this.commitMutation(
+      changed,
+      dirtyIndices,
+      fullRange,
+      void 0,
+      changeSet
+    );
+  }
   selectCandidateSetDense(candidates, changes) {
     const dirtyIndices = [];
     let fullRange = false;
@@ -8158,6 +8202,13 @@ function createMutationChanges(options) {
     previous: [],
     next: []
   } : [];
+}
+function getArrayLikeLength(value) {
+  const length2 = value.length;
+  if (typeof length2 !== "number" || !Number.isFinite(length2)) {
+    return null;
+  }
+  return Math.max(0, Math.floor(length2));
 }
 function recordMutationChange(changes, index, previous, next) {
   if (!changes) {

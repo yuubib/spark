@@ -387,6 +387,21 @@ export class SplatEditorState {
     operation: SplatEditorSelectionOperation = "set",
     options: SplatEditorStateMutationOptions = {},
   ): SplatEditorStateMutationResult {
+    if (operation === "set") {
+      const arrayLikeLength = getArrayLikeLength(indices);
+      if (
+        this.selected === 0 &&
+        options.recordChanges &&
+        options.changeFormat === "packed" &&
+        arrayLikeLength !== null
+      ) {
+        return this.selectCandidateSetFromEmptyPackedArrayLike(
+          indices as unknown as ArrayLike<number>,
+          arrayLikeLength,
+        );
+      }
+    }
+
     const changes = createMutationChanges(options);
     if (operation === "set") {
       if (this.selected === 0) {
@@ -1600,6 +1615,47 @@ export class SplatEditorState {
     return this.commitMutation(changed, dirtyIndices, fullRange, changes);
   }
 
+  private selectCandidateSetFromEmptyPackedArrayLike(
+    indices: ArrayLike<number>,
+    length: number,
+  ): SplatEditorStateMutationResult {
+    const changedIndices = new Uint32Array(length);
+    const previousValues = new Uint8Array(length);
+    const nextValues = new Uint8Array(length);
+    const dirtyIndices: number[] = [];
+    let fullRange = false;
+    let changed = 0;
+
+    for (let offset = 0; offset < length; offset++) {
+      const index = this.normalizeIndex(indices[offset]);
+      if (index === null || this.states[index] !== SPLAT_EDITOR_STATE_NONE) {
+        continue;
+      }
+      if (!this.setUnchecked(index, SPLAT_EDITOR_STATE_SELECTED, false)) {
+        continue;
+      }
+      changedIndices[changed] = index;
+      nextValues[changed] = SPLAT_EDITOR_STATE_SELECTED;
+      changed++;
+      fullRange ||= this.collectDirtyIndex(dirtyIndices, index);
+    }
+
+    const changeSet: SplatEditorStatePackedListChangeSet = {
+      kind: "packed-list",
+      indices: changedIndices.subarray(0, changed),
+      previous: previousValues.subarray(0, changed),
+      next: nextValues.subarray(0, changed),
+      changed,
+    };
+    return this.commitMutation(
+      changed,
+      dirtyIndices,
+      fullRange,
+      undefined,
+      changeSet,
+    );
+  }
+
   private selectCandidateSetDense(
     candidates: Uint8Array,
     changes?: SplatEditorStateMutationChangeBuffer,
@@ -1881,6 +1937,14 @@ function createMutationChanges(
         next: [],
       }
     : [];
+}
+
+function getArrayLikeLength(value: Iterable<number>): number | null {
+  const length = (value as unknown as { length?: unknown }).length;
+  if (typeof length !== "number" || !Number.isFinite(length)) {
+    return null;
+  }
+  return Math.max(0, Math.floor(length));
 }
 
 function recordMutationChange(

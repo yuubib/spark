@@ -161,6 +161,7 @@ export declare class SplatEditorState {
     private resetSelectedIndexTrackingForUniform;
     private setUnchecked;
     private selectCandidateSetFromEmpty;
+    private selectCandidateSetFromEmptyPackedArrayLike;
     private selectCandidateSetDense;
     private selectCandidateSetSparse;
     private commitSparseSelectedMutation;
