@@ -314,6 +314,7 @@ async function unpackPly({
   const numSplats = ply.numSplats;
 
   const extra: Record<string, unknown> = {};
+  const colorMatchRgb = ply.readColorMatchRgb();
   const centerMatchXyz = new Float32Array(numSplats * 3);
 
   ply.parseSplats(
@@ -379,6 +380,9 @@ async function unpackPly({
       }
     },
   );
+  if (colorMatchRgb) {
+    extra.colorMatchRgb = colorMatchRgb;
+  }
   extra.centerMatchXyz = centerMatchXyz;
 
   return { packedArray, numSplats, extra };

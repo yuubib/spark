@@ -83,6 +83,40 @@ const makeDcPly = (rows: readonly (readonly number[])[]) => {
 }
 
 {
+  const ply = new PlyReader({
+    fileBytes: makeDcPly([
+      [0, 0, 0, -1, -1, -1],
+      [0, 0, 0, 1, 1, 1],
+      [0, 0, 0, -0.9, -1, -1],
+    ]),
+  });
+  await ply.parseHeader();
+  const colorMatchRgb = ply.readColorMatchRgb();
+  assert.ok(colorMatchRgb);
+  assert.strictEqual(colorMatchRgb.length, 9);
+  assertClose(colorMatchRgb[0], 0.5 - 0.28209479177387814, 1e-6);
+  assertClose(colorMatchRgb[3], 0.5 + 0.28209479177387814, 1e-6);
+
+  const packedBase = new PackedSplats();
+  pushSplat(packedBase, new THREE.Color(1, 1, 1));
+  pushSplat(packedBase, new THREE.Color(1, 1, 1));
+  pushSplat(packedBase, new THREE.Color(1, 1, 1));
+  const legacyPacked = new PackedSplats({
+    packedArray: packedBase.packedArray?.slice(),
+    numSplats: 3,
+    extra: { colorMatchRgb },
+  });
+  const legacyMesh = new SplatMesh({ packedSplats: legacyPacked });
+  const legacyMatches = legacyMesh.findSplatColorMatches({
+    seedIndex: 0,
+    threshold: 0.03,
+  });
+  assert.deepStrictEqual([...(legacyMatches?.indices ?? [])], [0, 2]);
+  legacyMesh.dispose();
+  packedBase.dispose();
+}
+
+{
   const ext = new ExtSplats();
   pushSplat(ext, new THREE.Color(0.25, 0.5, 0.75));
   const color = { r: 0, g: 0, b: 0 };
