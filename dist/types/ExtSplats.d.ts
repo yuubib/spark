@@ -1,6 +1,6 @@
 import { RgbaArray } from './RgbaArray';
 import { SplatEditorState } from './SplatEditorState';
-import { SplatCenterRaw, SplatColorRaw, SplatSource } from './SplatMesh';
+import { SplatCenterRaw, SplatColorMatchRawCallback, SplatColorRaw, SplatSource } from './SplatMesh';
 import { SplatFileType } from './defines';
 import { DynoInt, DynoUniform, DynoUsampler2DArray, DynoVal, Gsplat, TExtSplats } from './dyno';
 import * as THREE from "three";
@@ -72,6 +72,7 @@ export declare class ExtSplats implements SplatSource {
     getSplatCenterRaw(index: number, target: SplatCenterRaw): boolean;
     getSplatColorRaw(index: number, target: SplatColorRaw): boolean;
     getSplatColorMatchRaw(index: number, target: SplatColorRaw): boolean;
+    forEachSplatColorMatchRaw(callback: SplatColorMatchRawCallback): void;
     private updateTextures;
     extractSplats(indices: Uint32Array, pageColoring: boolean): ExtSplats;
     static emptyArray: THREE.DataArrayTexture;

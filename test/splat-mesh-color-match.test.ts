@@ -127,6 +127,17 @@ source.getSplatColorMatchRaw = (index, target) => {
   indexedColorReads += 1;
   return originalIndexedColor(index, target);
 };
+let bulkColorIterations = 0;
+let bulkColorReads = 0;
+const originalBulkColorMatch = source.forEachSplatColorMatchRaw?.bind(source);
+assert.ok(originalBulkColorMatch);
+source.forEachSplatColorMatchRaw = (callback) => {
+  bulkColorIterations += 1;
+  originalBulkColorMatch((index, r, g, b) => {
+    bulkColorReads += 1;
+    return callback(index, r, g, b);
+  });
+};
 
 const allMatches = mesh.findSplatColorMatches({
   seedIndex: 0,
@@ -140,7 +151,9 @@ assert.strictEqual(allMatches?.matched, 4);
 assert.strictEqual(allMatches?.stateRejected, 0);
 assert.strictEqual(allMatches?.earlyExit, false);
 assert.strictEqual(allMatches?.indices.buffer.byteLength, 5 * 4);
-assert.ok(indexedColorReads >= 6);
+assert.strictEqual(indexedColorReads, 1);
+assert.strictEqual(bulkColorIterations, 1);
+assert.strictEqual(bulkColorReads, 5);
 
 const originalGetEditorState = mesh.getEditorState.bind(mesh);
 mesh.getEditorState = () => {
@@ -174,6 +187,9 @@ assert.deepStrictEqual([...(editableMatches?.indices ?? [])], [0, 1]);
 assert.strictEqual(editableMatches?.tested, 3);
 assert.strictEqual(editableMatches?.stateRejected, 2);
 
+indexedColorReads = 0;
+bulkColorIterations = 0;
+bulkColorReads = 0;
 const capped = mesh.findSplatColorMatches({
   seedIndex: 0,
   threshold: 1,
@@ -184,6 +200,9 @@ assert.deepStrictEqual([...(capped?.indices ?? [])], [0]);
 assert.strictEqual(capped?.threshold, 1);
 assert.strictEqual(capped?.earlyExit, true);
 assert.strictEqual(capped?.indices.buffer.byteLength, 1 * 4);
+assert.strictEqual(indexedColorReads, 1);
+assert.strictEqual(bulkColorIterations, 1);
+assert.strictEqual(bulkColorReads, 1);
 
 const clamped = mesh.findSplatColorMatches({
   seedIndex: 0,
@@ -249,13 +268,87 @@ mesh.dispose();
   assertClose(matchColor.r, 0.5, 1e-6);
 
   const meshWithSidecar = new SplatMesh({ packedSplats: packed });
+  let sidecarBulkReads = 0;
+  const originalSidecarBulk = packed.forEachSplatColorMatchRaw.bind(packed);
+  packed.forEachSplatColorMatchRaw = (callback) => {
+    originalSidecarBulk((index, r, g, b) => {
+      sidecarBulkReads += 1;
+      return callback(index, r, g, b);
+    });
+  };
   const sidecarMatches = meshWithSidecar.findSplatColorMatches({
     seedIndex: 0,
     threshold: 0.05,
   });
   assert.deepStrictEqual([...(sidecarMatches?.indices ?? [])], [0, 2]);
+  assert.strictEqual(sidecarBulkReads, 3);
   meshWithSidecar.dispose();
   packedBase.dispose();
+}
+
+{
+  const ext = new ExtSplats();
+  pushSplat(ext, new THREE.Color(0.2, 0.3, 0.4));
+  pushSplat(ext, new THREE.Color(0.21, 0.3, 0.41));
+  pushSplat(ext, new THREE.Color(0.6, 0.7, 0.8));
+  const meshWithExt = new SplatMesh({ extSplats: ext });
+  let extIndexedReads = 0;
+  let extBulkReads = 0;
+  const originalExtIndexed = ext.getSplatColorMatchRaw.bind(ext);
+  const originalExtBulk = ext.forEachSplatColorMatchRaw.bind(ext);
+  ext.getSplatColorMatchRaw = (index, target) => {
+    extIndexedReads += 1;
+    return originalExtIndexed(index, target);
+  };
+  ext.forEachSplatColorMatchRaw = (callback) => {
+    originalExtBulk((index, r, g, b) => {
+      extBulkReads += 1;
+      return callback(index, r, g, b);
+    });
+  };
+  const extMatches = meshWithExt.findSplatColorMatches({
+    seedIndex: 0,
+    threshold: 0.02,
+  });
+  assert.deepStrictEqual([...(extMatches?.indices ?? [])], [0, 1]);
+  assert.strictEqual(extIndexedReads, 1);
+  assert.strictEqual(extBulkReads, 3);
+  meshWithExt.dispose();
+}
+
+{
+  let decodedSplats = 0;
+  const fallbackPacked = new PackedSplats();
+  pushSplat(fallbackPacked, new THREE.Color(0.5, 0.1, 0.1));
+  pushSplat(fallbackPacked, new THREE.Color(0.52, 0.1, 0.1));
+  pushSplat(fallbackPacked, new THREE.Color(0.1, 0.5, 0.1));
+  const rawFallback = fallbackPacked as unknown as {
+    forEachSplatColorMatchRaw?: unknown;
+    getSplatColorMatchRaw?: unknown;
+    getSplatColorRaw?: unknown;
+  };
+  rawFallback.forEachSplatColorMatchRaw = undefined;
+  rawFallback.getSplatColorMatchRaw = undefined;
+  rawFallback.getSplatColorRaw = undefined;
+  const originalFallbackForEach =
+    fallbackPacked.forEachSplat.bind(fallbackPacked);
+  fallbackPacked.forEachSplat = (callback) => {
+    originalFallbackForEach(
+      (index, center, scales, quaternion, opacity, color) => {
+        decodedSplats += 1;
+        callback(index, center, scales, quaternion, opacity, color);
+      },
+    );
+  };
+  const fallbackMesh = new SplatMesh({ splats: fallbackPacked });
+  const fallbackMatches = fallbackMesh.findSplatColorMatches({
+    seedIndex: 0,
+    threshold: 0.03,
+  });
+  assert.deepStrictEqual([...(fallbackMatches?.indices ?? [])], [0, 1]);
+  assert.ok(decodedSplats >= 4);
+  fallbackMesh.dispose();
+  fallbackPacked.dispose();
 }
 
 console.log("Splat mesh color match tests passed");

@@ -5,7 +5,12 @@ import type { RgbaArray } from "./RgbaArray";
 import { SplatEditorState } from "./SplatEditorState";
 import type { GsplatGenerator } from "./SplatGenerator";
 import { SplatLoader } from "./SplatLoader";
-import type { SplatCenterRaw, SplatColorRaw, SplatSource } from "./SplatMesh";
+import type {
+  SplatCenterRaw,
+  SplatColorMatchRawCallback,
+  SplatColorRaw,
+  SplatSource,
+} from "./SplatMesh";
 import { workerPool } from "./SplatWorker";
 import {
   DEFAULT_SPLAT_ENCODING,
@@ -937,6 +942,40 @@ export class PackedSplats implements SplatSource {
     target.g = colors[offset + 1];
     target.b = colors[offset + 2];
     return true;
+  }
+
+  forEachSplatColorMatchRaw(callback: SplatColorMatchRawCallback): void {
+    const colors = this.colorMatchRgb;
+    if (colors && this.numSplats) {
+      for (let i = 0; i < this.numSplats; ++i) {
+        const i3 = i * 3;
+        if (callback(i, colors[i3], colors[i3 + 1], colors[i3 + 2]) === false) {
+          break;
+        }
+      }
+      return;
+    }
+
+    if (!this.packedArray || !this.numSplats) {
+      return;
+    }
+
+    const rgbMin = this.splatEncoding?.rgbMin ?? 0.0;
+    const rgbMax = this.splatEncoding?.rgbMax ?? 1.0;
+    const rgbRange = rgbMax - rgbMin;
+    for (let i = 0; i < this.numSplats; ++i) {
+      const word0 = this.packedArray[i * 4];
+      if (
+        callback(
+          i,
+          rgbMin + ((word0 & 0xff) / 255) * rgbRange,
+          rgbMin + (((word0 >>> 8) & 0xff) / 255) * rgbRange,
+          rgbMin + (((word0 >>> 16) & 0xff) / 255) * rgbRange,
+        ) === false
+      ) {
+        break;
+      }
+    }
   }
 
   markCenterMatchTextureDirty(): void {

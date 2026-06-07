@@ -2,7 +2,12 @@ import * as THREE from "three";
 import type { RgbaArray } from "./RgbaArray";
 import { SplatEditorState } from "./SplatEditorState";
 import { SplatLoader } from "./SplatLoader";
-import type { SplatCenterRaw, SplatColorRaw, SplatSource } from "./SplatMesh";
+import type {
+  SplatCenterRaw,
+  SplatColorMatchRawCallback,
+  SplatColorRaw,
+  SplatSource,
+} from "./SplatMesh";
 import { workerPool } from "./SplatWorker";
 import { SPLAT_TEX_WIDTH, type SplatFileType } from "./defines";
 import {
@@ -692,6 +697,38 @@ export class ExtSplats implements SplatSource {
     target.g = colors[offset + 1];
     target.b = colors[offset + 2];
     return true;
+  }
+
+  forEachSplatColorMatchRaw(callback: SplatColorMatchRawCallback): void {
+    const colors = this.colorMatchRgb;
+    if (colors && this.numSplats) {
+      for (let i = 0; i < this.numSplats; ++i) {
+        const i3 = i * 3;
+        if (callback(i, colors[i3], colors[i3 + 1], colors[i3 + 2]) === false) {
+          break;
+        }
+      }
+      return;
+    }
+
+    if (!this.numSplats) {
+      return;
+    }
+
+    const extB = this.extArrays[1];
+    for (let i = 0; i < this.numSplats; ++i) {
+      const i4 = i * 4;
+      if (
+        callback(
+          i,
+          fromHalf(extB[i4] & 0xffff),
+          fromHalf(extB[i4] >>> 16),
+          fromHalf(extB[i4 + 1] & 0xffff),
+        ) === false
+      ) {
+        break;
+      }
+    }
   }
 
   // Check if source texture needs to be created/updated

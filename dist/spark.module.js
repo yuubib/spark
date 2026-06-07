@@ -9322,6 +9322,33 @@ const _ExtSplats = class _ExtSplats {
     target.b = colors[offset + 2];
     return true;
   }
+  forEachSplatColorMatchRaw(callback) {
+    const colors = this.colorMatchRgb;
+    if (colors && this.numSplats) {
+      for (let i = 0; i < this.numSplats; ++i) {
+        const i3 = i * 3;
+        if (callback(i, colors[i3], colors[i3 + 1], colors[i3 + 2]) === false) {
+          break;
+        }
+      }
+      return;
+    }
+    if (!this.numSplats) {
+      return;
+    }
+    const extB = this.extArrays[1];
+    for (let i = 0; i < this.numSplats; ++i) {
+      const i4 = i * 4;
+      if (callback(
+        i,
+        fromHalf(extB[i4] & 65535),
+        fromHalf(extB[i4] >>> 16),
+        fromHalf(extB[i4 + 1] & 65535)
+      ) === false) {
+        break;
+      }
+    }
+  }
   // Check if source texture needs to be created/updated
   updateTextures() {
     if (this.textures[0] !== _ExtSplats.emptyTexture) {
@@ -18201,8 +18228,8 @@ const _SplatMesh = class _SplatMesh extends SplatGenerator {
     return ((_a2 = this.splats) == null ? void 0 : _a2.getSplatColorRaw) != null;
   }
   hasIndexedSplatColorMatches() {
-    var _a2, _b2;
-    return ((_a2 = this.splats) == null ? void 0 : _a2.getSplatColorMatchRaw) != null || ((_b2 = this.splats) == null ? void 0 : _b2.getSplatColorRaw) != null;
+    var _a2, _b2, _c;
+    return ((_a2 = this.splats) == null ? void 0 : _a2.forEachSplatColorMatchRaw) != null || ((_b2 = this.splats) == null ? void 0 : _b2.getSplatColorMatchRaw) != null || ((_c = this.splats) == null ? void 0 : _c.getSplatColorRaw) != null;
   }
   getSplatColorRaw(index, target) {
     const source = this.splats;
@@ -18277,6 +18304,10 @@ const _SplatMesh = class _SplatMesh extends SplatGenerator {
       }
       indices[matched] = index;
       matched += 1;
+      if (matched >= max2) {
+        earlyExit = true;
+        return false;
+      }
       return true;
     };
     const testColor = (index, r, g, b) => {
@@ -18300,7 +18331,14 @@ const _SplatMesh = class _SplatMesh extends SplatGenerator {
       }
       return true;
     };
-    if (this.hasIndexedSplatColorMatches()) {
+    if (source.forEachSplatColorMatchRaw) {
+      source.forEachSplatColorMatchRaw((index, r, g, b) => {
+        if (earlyExit) {
+          return false;
+        }
+        return testColor(index, r, g, b);
+      });
+    } else if (this.hasIndexedSplatColorMatches()) {
       for (let index = 0; index < sourceCount; index++) {
         if (!this.getSplatColorMatchRaw(index, color)) {
           continue;
@@ -21536,6 +21574,36 @@ const _PackedSplats = class _PackedSplats {
     target.g = colors[offset + 1];
     target.b = colors[offset + 2];
     return true;
+  }
+  forEachSplatColorMatchRaw(callback) {
+    var _a2, _b2;
+    const colors = this.colorMatchRgb;
+    if (colors && this.numSplats) {
+      for (let i = 0; i < this.numSplats; ++i) {
+        const i3 = i * 3;
+        if (callback(i, colors[i3], colors[i3 + 1], colors[i3 + 2]) === false) {
+          break;
+        }
+      }
+      return;
+    }
+    if (!this.packedArray || !this.numSplats) {
+      return;
+    }
+    const rgbMin = ((_a2 = this.splatEncoding) == null ? void 0 : _a2.rgbMin) ?? 0;
+    const rgbMax = ((_b2 = this.splatEncoding) == null ? void 0 : _b2.rgbMax) ?? 1;
+    const rgbRange = rgbMax - rgbMin;
+    for (let i = 0; i < this.numSplats; ++i) {
+      const word0 = this.packedArray[i * 4];
+      if (callback(
+        i,
+        rgbMin + (word0 & 255) / 255 * rgbRange,
+        rgbMin + (word0 >>> 8 & 255) / 255 * rgbRange,
+        rgbMin + (word0 >>> 16 & 255) / 255 * rgbRange
+      ) === false) {
+        break;
+      }
+    }
   }
   markCenterMatchTextureDirty() {
     this.centerMatchTextureNeedsUpdate = true;

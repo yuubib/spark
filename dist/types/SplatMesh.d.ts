@@ -129,6 +129,7 @@ export interface SplatColorRaw {
     g: number;
     b: number;
 }
+export type SplatColorMatchRawCallback = (index: number, r: number, g: number, b: number) => boolean | undefined;
 export interface SplatMeshColorMatchOptions {
     seedIndex: number;
     threshold?: number;
@@ -172,6 +173,7 @@ export interface SplatSource {
     getSplatCenterRaw?(index: number, target: SplatCenterRaw): boolean;
     getSplatColorRaw?(index: number, target: SplatColorRaw): boolean;
     getSplatColorMatchRaw?(index: number, target: SplatColorRaw): boolean;
+    forEachSplatColorMatchRaw?(callback: SplatColorMatchRawCallback): void;
 }
 export type SplatStateBoundingBoxOptions = {
     centersOnly?: boolean;

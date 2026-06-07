@@ -301,6 +301,13 @@ export interface SplatColorRaw {
   b: number;
 }
 
+export type SplatColorMatchRawCallback = (
+  index: number,
+  r: number,
+  g: number,
+  b: number,
+) => boolean | undefined;
+
 export interface SplatMeshColorMatchOptions {
   seedIndex: number;
   threshold?: number;
@@ -421,6 +428,7 @@ export interface SplatSource {
 
   getSplatColorRaw?(index: number, target: SplatColorRaw): boolean;
   getSplatColorMatchRaw?(index: number, target: SplatColorRaw): boolean;
+  forEachSplatColorMatchRaw?(callback: SplatColorMatchRawCallback): void;
 }
 
 type MutableSplatSource = SplatSource & {
@@ -976,6 +984,7 @@ export class SplatMesh extends SplatGenerator {
 
   hasIndexedSplatColorMatches(): boolean {
     return (
+      this.splats?.forEachSplatColorMatchRaw != null ||
       this.splats?.getSplatColorMatchRaw != null ||
       this.splats?.getSplatColorRaw != null
     );
@@ -1061,6 +1070,10 @@ export class SplatMesh extends SplatGenerator {
       }
       indices[matched] = index;
       matched += 1;
+      if (matched >= max) {
+        earlyExit = true;
+        return false;
+      }
       return true;
     };
     const testColor = (index: number, r: number, g: number, b: number) => {
@@ -1085,7 +1098,14 @@ export class SplatMesh extends SplatGenerator {
       return true;
     };
 
-    if (this.hasIndexedSplatColorMatches()) {
+    if (source.forEachSplatColorMatchRaw) {
+      source.forEachSplatColorMatchRaw((index, r, g, b) => {
+        if (earlyExit) {
+          return false;
+        }
+        return testColor(index, r, g, b);
+      });
+    } else if (this.hasIndexedSplatColorMatches()) {
       for (let index = 0; index < sourceCount; index++) {
         if (!this.getSplatColorMatchRaw(index, color)) {
           continue;
