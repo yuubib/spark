@@ -11754,6 +11754,24 @@ function maybeSortPixelHits(hits, sort = true) {
   }
   return hits;
 }
+function shouldSkipSplatSortReadbackForEditorState({
+  numSplats,
+  editorStateData
+}) {
+  const count = Math.max(0, Math.floor(numSplats));
+  if (count === 0) {
+    return true;
+  }
+  if (!editorStateData || editorStateData.length < count) {
+    return false;
+  }
+  for (let index = 0; index < count; index += 1) {
+    if ((editorStateData[index] & SPLAT_EDITOR_STATE_DELETED) === 0) {
+      return false;
+    }
+  }
+  return true;
+}
 function compactSplatSortInputForEditorState({
   numSplats,
   readback,
@@ -12320,6 +12338,14 @@ const _SparkRenderer = class _SparkRenderer extends THREE__namespace.Mesh {
     this.sortedCenter.copy(current.viewOrigin);
     this.sortedDir.copy(current.viewDirection);
     const { numSplats, maxSplats } = current;
+    if (shouldSkipSplatSortReadbackForEditorState({
+      numSplats,
+      editorStateData: current.editorStateEnabled ? current.editorStateData : null
+    })) {
+      this.activeSplats = 0;
+      this.finishDriveSort(current);
+      return;
+    }
     const rows = Math.max(1, Math.ceil(maxSplats / 16384));
     const orderingMaxSplats = rows * 16384;
     this.maxSplats = Math.max(this.maxSplats, orderingMaxSplats);
@@ -12436,6 +12462,9 @@ const _SparkRenderer = class _SparkRenderer extends THREE__namespace.Mesh {
         renderer.state.bindTexture(gl.TEXTURE_2D, null);
       }
     }
+    this.finishDriveSort(current);
+  }
+  finishDriveSort(current) {
     if (this.current.mappingVersion === current.mappingVersion) {
       if (this.current.mappingVersion !== this.display.mappingVersion) {
         this.accumulators.push(this.display);

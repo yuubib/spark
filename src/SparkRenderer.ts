@@ -26,6 +26,7 @@ import {
   type SplatSortInputForEditorState,
   compactSplatSortInputForEditorState,
   remapCompactSplatOrdering,
+  shouldSkipSplatSortReadbackForEditorState,
 } from "./SplatSortInput";
 import { SplatWorker } from "./SplatWorker";
 import { SPLAT_TEX_HEIGHT, SPLAT_TEX_WIDTH } from "./defines";
@@ -1073,6 +1074,19 @@ export class SparkRenderer extends THREE.Mesh {
     this.sortedDir.copy(current.viewDirection);
 
     const { numSplats, maxSplats } = current;
+    if (
+      shouldSkipSplatSortReadbackForEditorState({
+        numSplats,
+        editorStateData: current.editorStateEnabled
+          ? current.editorStateData
+          : null,
+      })
+    ) {
+      this.activeSplats = 0;
+      this.finishDriveSort(current);
+      return;
+    }
+
     const rows = Math.max(1, Math.ceil(maxSplats / 16384));
     const orderingMaxSplats = rows * 16384;
     this.maxSplats = Math.max(this.maxSplats, orderingMaxSplats);
@@ -1214,6 +1228,10 @@ export class SparkRenderer extends THREE.Mesh {
 
     // console.log(`Sorted (${this.minSortIntervalMs}) ${numSplats} splats in ${(performance.now() - now).toFixed(0)} ms`);
 
+    this.finishDriveSort(current);
+  }
+
+  private finishDriveSort(current: SplatAccumulator) {
     if (this.current.mappingVersion === current.mappingVersion) {
       if (this.current.mappingVersion !== this.display.mappingVersion) {
         this.accumulators.push(this.display);

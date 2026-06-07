@@ -5,7 +5,59 @@ import { SPLAT_EDITOR_STATE_DELETED } from "../src/SplatEditorState.js";
 import {
   compactSplatSortInputForEditorState,
   remapCompactSplatOrdering,
+  shouldSkipSplatSortReadbackForEditorState,
 } from "../src/SplatSortInput.js";
+
+assert.strictEqual(
+  shouldSkipSplatSortReadbackForEditorState({
+    numSplats: 0,
+    editorStateData: null,
+  }),
+  true,
+);
+
+assert.strictEqual(
+  shouldSkipSplatSortReadbackForEditorState({
+    numSplats: 3,
+    editorStateData: null,
+  }),
+  false,
+);
+
+assert.strictEqual(
+  shouldSkipSplatSortReadbackForEditorState({
+    numSplats: 3,
+    editorStateData: new Uint8Array([
+      SPLAT_EDITOR_STATE_DELETED,
+      SPLAT_EDITOR_STATE_DELETED,
+    ]),
+  }),
+  false,
+);
+
+assert.strictEqual(
+  shouldSkipSplatSortReadbackForEditorState({
+    numSplats: 3,
+    editorStateData: new Uint8Array([
+      SPLAT_EDITOR_STATE_DELETED,
+      SPLAT_EDITOR_STATE_DELETED,
+      SPLAT_EDITOR_STATE_DELETED,
+    ]),
+  }),
+  true,
+);
+
+assert.strictEqual(
+  shouldSkipSplatSortReadbackForEditorState({
+    numSplats: 3,
+    editorStateData: new Uint8Array([
+      SPLAT_EDITOR_STATE_DELETED,
+      0,
+      SPLAT_EDITOR_STATE_DELETED,
+    ]),
+  }),
+  false,
+);
 
 {
   const readback = new Uint32Array([10, 20, 30, 40]);

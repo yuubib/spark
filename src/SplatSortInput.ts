@@ -7,6 +7,28 @@ export type SplatSortInputForEditorState = {
   excludedDeleted: number;
 };
 
+export function shouldSkipSplatSortReadbackForEditorState({
+  numSplats,
+  editorStateData,
+}: {
+  numSplats: number;
+  editorStateData?: Uint8Array | null;
+}): boolean {
+  const count = Math.max(0, Math.floor(numSplats));
+  if (count === 0) {
+    return true;
+  }
+  if (!editorStateData || editorStateData.length < count) {
+    return false;
+  }
+  for (let index = 0; index < count; index += 1) {
+    if ((editorStateData[index] & SPLAT_EDITOR_STATE_DELETED) === 0) {
+      return false;
+    }
+  }
+  return true;
+}
+
 export function compactSplatSortInputForEditorState({
   numSplats,
   readback,

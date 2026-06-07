@@ -543,6 +543,7 @@ export declare class SparkRenderer extends THREE.Mesh {
     }): Promise<void>;
     private updateInternal;
     private driveSort;
+    private finishDriveSort;
     private ensureLodWorker;
     defaultSplatTarget(): 500000 | 750000 | 1000000 | 1500000 | 2500000;
     private driveLod;
