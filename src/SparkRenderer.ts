@@ -41,6 +41,9 @@ import {
   type SplatScreenPickRect,
   type SplatScreenPickRenderedIndexOptions,
   type SplatScreenPickRenderedIndexResult,
+  type SplatScreenPickStateSelectionOptions,
+  type SplatScreenPickStateSelectionResult,
+  type SplatScreenPickStats,
   type SplatScreenPickViewOffset,
   collectSplatScreenPickHitsFromRgba8,
   compactSplatCenterIntersectionBitsetBytes,
@@ -2776,6 +2779,61 @@ export class SparkRenderer extends THREE.Mesh {
     });
 
     return indices;
+  }
+
+  async selectSplatStateFromScreenPick(
+    options: SplatScreenPickStateSelectionOptions,
+  ): Promise<SplatScreenPickStateSelectionResult | null> {
+    const {
+      target,
+      operation = "set",
+      mutationOptions = {},
+      shouldMutate,
+    } = options;
+    if (!(target instanceof SplatMesh) || !target.isInitialized) {
+      return null;
+    }
+
+    let pickStats: SplatScreenPickStats | undefined;
+    const indices = await this.pickSplatCandidateIndices({
+      ...options,
+      target,
+      operation,
+      onStats: (stats) => {
+        pickStats = stats;
+        options.onStats?.(stats);
+      },
+    });
+    if (!indices) {
+      return null;
+    }
+
+    if (shouldMutate && !shouldMutate()) {
+      return {
+        applied: false,
+        canceled: true,
+        candidateCount: indices.length,
+        ...(pickStats ? { pickStats } : {}),
+      };
+    }
+
+    const mutation = target.selectSplatStateCandidatesFromProducer(
+      (consume) => {
+        for (let index = 0; index < indices.length; index += 1) {
+          if (consume(indices[index]) === false) {
+            break;
+          }
+        }
+      },
+      operation,
+      mutationOptions,
+    );
+    return {
+      applied: true,
+      candidateCount: indices.length,
+      ...(pickStats ? { pickStats } : {}),
+      mutation,
+    };
   }
 
   async pickRenderedSplatIndex(

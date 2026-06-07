@@ -14789,6 +14789,56 @@ const _SparkRenderer = class _SparkRenderer extends THREE.Mesh {
     });
     return indices;
   }
+  async selectSplatStateFromScreenPick(options) {
+    const {
+      target,
+      operation = "set",
+      mutationOptions = {},
+      shouldMutate
+    } = options;
+    if (!(target instanceof SplatMesh) || !target.isInitialized) {
+      return null;
+    }
+    let pickStats;
+    const indices = await this.pickSplatCandidateIndices({
+      ...options,
+      target,
+      operation,
+      onStats: (stats) => {
+        var _a2;
+        pickStats = stats;
+        (_a2 = options.onStats) == null ? void 0 : _a2.call(options, stats);
+      }
+    });
+    if (!indices) {
+      return null;
+    }
+    if (shouldMutate && !shouldMutate()) {
+      return {
+        applied: false,
+        canceled: true,
+        candidateCount: indices.length,
+        ...pickStats ? { pickStats } : {}
+      };
+    }
+    const mutation = target.selectSplatStateCandidatesFromProducer(
+      (consume) => {
+        for (let index = 0; index < indices.length; index += 1) {
+          if (consume(indices[index]) === false) {
+            break;
+          }
+        }
+      },
+      operation,
+      mutationOptions
+    );
+    return {
+      applied: true,
+      candidateCount: indices.length,
+      ...pickStats ? { pickStats } : {},
+      mutation
+    };
+  }
   async pickRenderedSplatIndex(options) {
     const { target, renderMode, ...pickOptions } = options;
     const hits = await this.pickSplatCandidates({
@@ -18758,6 +18808,11 @@ const _SplatMesh = class _SplatMesh extends SplatGenerator {
   selectSplatStateCandidates(indices, operation = "set", options = {}) {
     return this.mutateEditorState(
       (state) => state.selectCandidates(indices, operation, options)
+    );
+  }
+  selectSplatStateCandidatesFromProducer(produce, operation = "set", options = {}) {
+    return this.mutateEditorState(
+      (state) => state.selectCandidatesFromProducer(produce, operation, options)
     );
   }
   selectAllSplatState(options = {}) {

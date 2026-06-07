@@ -18,6 +18,7 @@ import {
   type SplatEditorSelectionOperation,
   SplatEditorState,
   type SplatEditorStateBits,
+  type SplatEditorStateCandidateProducer,
   type SplatEditorStateChange,
   type SplatEditorStateChangeSet,
   type SplatEditorStateChangeSide,
@@ -1411,6 +1412,16 @@ export class SplatMesh extends SplatGenerator {
   ): SplatEditorStateMutationResult {
     return this.mutateEditorState((state) =>
       state.selectCandidates(indices, operation, options),
+    );
+  }
+
+  selectSplatStateCandidatesFromProducer(
+    produce: SplatEditorStateCandidateProducer,
+    operation: SplatEditorSelectionOperation = "set",
+    options: SplatEditorStateMutationOptions = {},
+  ): SplatEditorStateMutationResult {
+    return this.mutateEditorState((state) =>
+      state.selectCandidatesFromProducer(produce, operation, options),
     );
   }
 

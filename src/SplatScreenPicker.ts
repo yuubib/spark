@@ -3,6 +3,8 @@ import type * as THREE from "three";
 import type {
   SplatEditorSelectionOperation,
   SplatEditorStateFilterMode,
+  SplatEditorStateMutationOptions,
+  SplatEditorStateMutationResult,
 } from "./SplatEditorState";
 import type { SplatGenerator } from "./SplatGenerator";
 
@@ -152,6 +154,20 @@ export type SplatScreenPickOptions = {
 export type SplatScreenPickIndexOptions = SplatScreenPickOptions & {
   target: SplatGenerator;
   indexBuffer?: SplatScreenPickIndexBuffer;
+};
+
+export type SplatScreenPickStateSelectionOptions =
+  SplatScreenPickIndexOptions & {
+    mutationOptions?: SplatEditorStateMutationOptions;
+    shouldMutate?: () => boolean;
+  };
+
+export type SplatScreenPickStateSelectionResult = {
+  applied: boolean;
+  canceled?: boolean;
+  candidateCount: number;
+  pickStats?: SplatScreenPickStats;
+  mutation?: SplatEditorStateMutationResult;
 };
 
 export type SplatScreenPickIndexBuffer = {

@@ -57,6 +57,8 @@ export {
   type SplatScreenPickRenderLayout,
   type SplatScreenPickRenderMode,
   type SplatScreenPickShape,
+  type SplatScreenPickStateSelectionOptions,
+  type SplatScreenPickStateSelectionResult,
   type SplatScreenPickStats,
   type SplatScreenPickViewOffset,
   type SplatScreenRgba8RowOrder,

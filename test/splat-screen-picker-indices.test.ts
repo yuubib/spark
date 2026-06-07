@@ -3,6 +3,8 @@ import assert from "node:assert";
 import * as THREE from "three";
 
 import {
+  SPLAT_EDITOR_STATE_NONE,
+  SPLAT_EDITOR_STATE_SELECTED,
   SparkRenderer,
   SplatMesh,
   type SplatScreenPickStats,
@@ -139,6 +141,137 @@ assert.strictEqual(
   cpuProcessorStats?.centerCollect?.fallbackReason,
   "requested-cpu",
 );
+
+mesh.clearSplatStateSelection();
+let directSelectionCallbackStats: SplatScreenPickStats | null = null;
+const directSelection = await sparkRenderer.selectSplatStateFromScreenPick({
+  target: mesh,
+  scene,
+  camera,
+  candidateMode: "centers",
+  centerProcessor: "cpu",
+  shape: { kind: "rect", x: 0, y: 0, width: 1, height: 1 },
+  width: 100,
+  height: 100,
+  operation: "set",
+  mutationOptions: {
+    recordChanges: true,
+    changeFormat: "packed",
+  },
+  onStats: (nextStats) => {
+    directSelectionCallbackStats = nextStats;
+  },
+});
+
+assert.ok(directSelection);
+assert.strictEqual(directSelection.applied, true);
+assert.strictEqual(directSelection.candidateCount, 2);
+assert.strictEqual(directSelection.pickStats, directSelectionCallbackStats);
+assert.strictEqual(directSelection.pickStats?.mappedHitCount, 2);
+assert.deepStrictEqual(mesh.listSplatStateIndices("selected"), [0, 1]);
+assert.ok(directSelection.mutation);
+assert.strictEqual(directSelection.mutation.changed, 2);
+assert.strictEqual(directSelection.mutation.changeSet?.kind, "packed-list");
+assert.ok(
+  directSelection.mutation.changeSet &&
+    directSelection.mutation.changeSet.kind === "packed-list",
+);
+assert.deepStrictEqual(
+  Array.from(directSelection.mutation.changeSet.indices),
+  [0, 1],
+);
+assert.deepStrictEqual(
+  Array.from(directSelection.mutation.changeSet.previous),
+  [SPLAT_EDITOR_STATE_NONE, SPLAT_EDITOR_STATE_NONE],
+);
+assert.deepStrictEqual(Array.from(directSelection.mutation.changeSet.next), [
+  SPLAT_EDITOR_STATE_SELECTED,
+  SPLAT_EDITOR_STATE_SELECTED,
+]);
+
+const directRemove = await sparkRenderer.selectSplatStateFromScreenPick({
+  target: mesh,
+  scene,
+  camera,
+  candidateMode: "centers",
+  centerProcessor: "cpu",
+  shape: { kind: "rect", x: 0, y: 0, width: 1, height: 1 },
+  width: 100,
+  height: 100,
+  operation: "remove",
+  mutationOptions: {
+    recordChanges: true,
+    changeFormat: "packed",
+  },
+});
+
+assert.ok(directRemove);
+assert.strictEqual(directRemove.applied, true);
+assert.strictEqual(directRemove.candidateCount, 2);
+assert.deepStrictEqual(mesh.listSplatStateIndices("selected"), []);
+assert.ok(directRemove.mutation);
+assert.strictEqual(directRemove.mutation.changed, 2);
+
+mesh.selectSplatStateCandidates([1], "set");
+const emptySetSelection = await sparkRenderer.selectSplatStateFromScreenPick({
+  target: mesh,
+  scene,
+  camera,
+  candidateMode: "centers",
+  centerProcessor: "cpu",
+  shape: { kind: "rect", x: 0, y: 0, width: 0.1, height: 0.1 },
+  width: 100,
+  height: 100,
+  operation: "set",
+  mutationOptions: {
+    recordChanges: true,
+    changeFormat: "packed",
+  },
+});
+
+assert.ok(emptySetSelection);
+assert.strictEqual(emptySetSelection.applied, true);
+assert.strictEqual(emptySetSelection.candidateCount, 0);
+assert.deepStrictEqual(mesh.listSplatStateIndices("selected"), []);
+assert.ok(emptySetSelection.mutation);
+assert.strictEqual(emptySetSelection.mutation.changed, 1);
+
+mesh.selectSplatStateCandidates([1], "set");
+const canceledSelection = await sparkRenderer.selectSplatStateFromScreenPick({
+  target: mesh,
+  scene,
+  camera,
+  candidateMode: "centers",
+  centerProcessor: "cpu",
+  shape: { kind: "rect", x: 0, y: 0, width: 1, height: 1 },
+  width: 100,
+  height: 100,
+  operation: "set",
+  shouldMutate: () => false,
+});
+
+assert.ok(canceledSelection);
+assert.strictEqual(canceledSelection.applied, false);
+assert.strictEqual(canceledSelection.canceled, true);
+assert.strictEqual(canceledSelection.candidateCount, 2);
+assert.strictEqual(canceledSelection.mutation, undefined);
+assert.deepStrictEqual(mesh.listSplatStateIndices("selected"), [1]);
+mesh.clearSplatStateSelection();
+
+const unsupportedSelection = await sparkRenderer.selectSplatStateFromScreenPick(
+  {
+    target: {} as SplatMesh,
+    scene,
+    camera,
+    candidateMode: "centers",
+    shape: { kind: "rect", x: 0, y: 0, width: 1, height: 1 },
+    width: 100,
+    height: 100,
+    operation: "set",
+  },
+);
+
+assert.strictEqual(unsupportedSelection, null);
 
 const originalAutoNumSplats = mesh.numSplats;
 const originalAutoCapabilities = sparkRenderer.renderer.capabilities;
