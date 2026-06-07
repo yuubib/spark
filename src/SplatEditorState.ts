@@ -117,7 +117,7 @@ export interface SplatEditorStateColors {
 }
 
 const DEFAULT_SELECTED_COLOR = new THREE.Vector4(0.38, 0.62, 1.0, 0.42);
-const DEFAULT_LOCKED_COLOR = new THREE.Vector4(0.58, 0.64, 0.72, 1.0);
+const DEFAULT_LOCKED_COLOR = new THREE.Vector4(0.0, 0.0, 0.0, 0.05);
 const MAX_DIRTY_UPLOAD_SPANS = 512;
 const SPARSE_SELECTION_SET_THRESHOLD_RATIO = 0.25;
 

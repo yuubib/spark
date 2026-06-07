@@ -10,6 +10,7 @@ import {
 {
   const mesh = new SplatMesh();
   const state = mesh.ensureEditorState(6);
+  assert.deepStrictEqual(state.lockedColor.toArray(), [0, 0, 0, 0.05]);
   state.replace(
     new Uint8Array([
       SPLAT_EDITOR_STATE_SELECTED,
