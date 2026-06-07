@@ -162,6 +162,26 @@ const makePositionPly = (rows: readonly (readonly number[])[]) => {
     z: -3.5,
   });
 
+  const texture = packed.getCenterMatchTexture();
+  assert.ok(texture);
+  assert.strictEqual(texture.format, THREE.RGBAFormat);
+  assert.strictEqual(texture.type, THREE.FloatType);
+  assert.strictEqual(texture.internalFormat, "RGBA32F");
+  assert.strictEqual(texture.magFilter, THREE.NearestFilter);
+  assert.strictEqual(texture.minFilter, THREE.NearestFilter);
+  assert.strictEqual(texture.generateMipmaps, false);
+  assert.strictEqual(
+    texture.image.width * texture.image.height * texture.image.depth,
+    packed.maxSplats,
+  );
+  assert.ok(texture.image.data instanceof Float32Array);
+  const textureData = texture.image.data as Float32Array;
+  assert.deepStrictEqual(
+    Array.from(textureData.slice(0, 8)),
+    [0.3333333432674408, 2.25, -3.5, 1, -4.75, 5.125, 6.875, 1],
+  );
+  assert.strictEqual(packed.getCenterMatchTexture(), texture);
+
   packed.setSplat(
     1,
     new THREE.Vector3(9.25, -8.5, 7.75),
@@ -172,10 +192,30 @@ const makePositionPly = (rows: readonly (readonly number[])[]) => {
   );
   assert.strictEqual(packed.getSplatCenterRaw(1, center), true);
   assert.deepStrictEqual(center, { x: 9.25, y: -8.5, z: 7.75 });
+  assert.strictEqual(packed.getCenterMatchTexture(), texture);
+  assert.deepStrictEqual(
+    Array.from(textureData.slice(4, 8)),
+    [9.25, -8.5, 7.75, 1],
+  );
 
   splat(packed, new THREE.Vector3(1.125, 2.375, 3.625));
   assert.strictEqual(packed.getSplatCenterRaw(2, center), true);
   assert.deepStrictEqual(center, { x: 1.125, y: 2.375, z: 3.625 });
+  assert.strictEqual(packed.getCenterMatchTexture(), texture);
+  assert.deepStrictEqual(
+    Array.from(textureData.slice(8, 12)),
+    [1.125, 2.375, 3.625, 1],
+  );
+
+  packed.markCenterMatchTextureDirty();
+  const centers = packed.centerMatchXyz;
+  assert.ok(centers);
+  centers[0] = 4.5;
+  assert.strictEqual(packed.getCenterMatchTexture(), texture);
+  assert.strictEqual(textureData[0], 4.5);
+
+  packed.dispose();
+  assert.strictEqual(packed.getCenterMatchTexture(), null);
 }
 
 {

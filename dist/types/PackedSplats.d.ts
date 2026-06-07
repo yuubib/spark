@@ -44,6 +44,9 @@ export declare class PackedSplats implements SplatSource {
     target: THREE.WebGLArrayRenderTarget | null;
     source: THREE.DataArrayTexture | null;
     needsUpdate: boolean;
+    private centerMatchTexture;
+    private centerMatchTextureData;
+    private centerMatchTextureNeedsUpdate;
     dyno: DynoUniform<typeof TPackedSplats, "packedSplats">;
     dynoRgbMinMaxLnScaleMinMax: DynoUniform<"vec4", "rgbMinMaxLnScaleMinMax">;
     dynoNumSh: DynoInt<"numSh">;
@@ -85,6 +88,8 @@ export declare class PackedSplats implements SplatSource {
     getSplatCenterRaw(index: number, target: SplatCenterRaw): boolean;
     getSplatColorRaw(index: number, target: SplatColorRaw): boolean;
     getSplatColorMatchRaw(index: number, target: SplatColorRaw): boolean;
+    markCenterMatchTextureDirty(): void;
+    getCenterMatchTexture(): THREE.DataArrayTexture | null;
     ensureGenerate(maxSplats: number): boolean;
     generateMapping(splatCounts: number[]): {
         maxSplats: number;
@@ -95,6 +100,7 @@ export declare class PackedSplats implements SplatSource {
     };
     getTexture(): THREE.DataArrayTexture;
     private maybeUpdateSource;
+    private disposeCenterMatchTexture;
     static getEmptyArray: THREE.DataArrayTexture;
     prepareProgramMaterial(generator: GsplatGenerator): {
         program: DynoProgram;

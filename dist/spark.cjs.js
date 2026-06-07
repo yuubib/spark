@@ -19417,6 +19417,9 @@ const _PackedSplats = class _PackedSplats {
     this.target = null;
     this.source = null;
     this.needsUpdate = true;
+    this.centerMatchTexture = null;
+    this.centerMatchTextureData = null;
+    this.centerMatchTextureNeedsUpdate = true;
     this.extra = {};
     this.dyno = new DynoPackedSplats({ packedSplats: this });
     this.dynoRgbMinMaxLnScaleMinMax = new DynoVec4({
@@ -19459,6 +19462,7 @@ const _PackedSplats = class _PackedSplats {
   reinitialize(options) {
     this.isInitialized = false;
     this.clearEditorState();
+    this.disposeCenterMatchTexture();
     this.extra = {};
     this.colorMatchRgb = null;
     this.centerMatchXyz = null;
@@ -19496,6 +19500,7 @@ const _PackedSplats = class _PackedSplats {
     }
     this.colorMatchRgb = readColorMatchRgbExtra(this.extra, this.numSplats);
     this.centerMatchXyz = readCenterMatchXyzExtra(this.extra, this.numSplats);
+    this.markCenterMatchTextureDirty();
   }
   async asyncInitialize(options) {
     const {
@@ -19547,6 +19552,7 @@ const _PackedSplats = class _PackedSplats {
       this.source.source.data = null;
       this.source = null;
     }
+    this.disposeCenterMatchTexture();
     this.packedArray = null;
     this.colorMatchRgb = null;
     this.centerMatchXyz = null;
@@ -19733,6 +19739,7 @@ const _PackedSplats = class _PackedSplats {
     next.set(centers);
     this.centerMatchXyz = next;
     this.extra.centerMatchXyz = next;
+    this.markCenterMatchTextureDirty();
     return next;
   }
   writeCenterMatchXyz(index, center) {
@@ -19744,6 +19751,7 @@ const _PackedSplats = class _PackedSplats {
     centers[offset] = center.x;
     centers[offset + 1] = center.y;
     centers[offset + 2] = center.z;
+    this.markCenterMatchTextureDirty();
   }
   // Ensure the extra array for the given level is large enough to hold numSplats
   ensureSplatsSh(level, numSplats) {
@@ -19939,6 +19947,68 @@ const _PackedSplats = class _PackedSplats {
     target.b = colors[offset + 2];
     return true;
   }
+  markCenterMatchTextureDirty() {
+    this.centerMatchTextureNeedsUpdate = true;
+  }
+  getCenterMatchTexture() {
+    const centers = this.centerMatchXyz;
+    if (!centers || this.numSplats <= 0) {
+      this.disposeCenterMatchTexture();
+      return null;
+    }
+    const { width, height, depth, maxSplats } = getTextureSize(
+      Math.max(1, this.maxSplats, this.numSplats)
+    );
+    let refreshData = this.centerMatchTextureNeedsUpdate;
+    if (this.centerMatchTexture) {
+      const image = this.centerMatchTexture.image;
+      if (image.width !== width || image.height !== height || image.depth !== depth) {
+        this.disposeCenterMatchTexture();
+        refreshData = true;
+      }
+    }
+    if (!this.centerMatchTextureData || this.centerMatchTextureData.length !== maxSplats * 4) {
+      this.centerMatchTextureData = new Float32Array(maxSplats * 4);
+      refreshData = true;
+    }
+    if (!this.centerMatchTexture) {
+      this.centerMatchTexture = new THREE__namespace.DataArrayTexture(
+        this.centerMatchTextureData,
+        width,
+        height,
+        depth
+      );
+      this.centerMatchTexture.format = THREE__namespace.RGBAFormat;
+      this.centerMatchTexture.type = THREE__namespace.FloatType;
+      this.centerMatchTexture.internalFormat = "RGBA32F";
+      this.centerMatchTexture.magFilter = THREE__namespace.NearestFilter;
+      this.centerMatchTexture.minFilter = THREE__namespace.NearestFilter;
+      this.centerMatchTexture.generateMipmaps = false;
+      refreshData = true;
+    } else if (this.centerMatchTexture.image.data !== this.centerMatchTextureData) {
+      this.centerMatchTexture.image.data = this.centerMatchTextureData;
+      refreshData = true;
+    }
+    if (refreshData) {
+      this.centerMatchTextureData.fill(0);
+      const splatCount = Math.min(
+        this.numSplats,
+        Math.floor(centers.length / 3),
+        maxSplats
+      );
+      for (let i = 0; i < splatCount; i++) {
+        const centerOffset = i * 3;
+        const textureOffset = i * 4;
+        this.centerMatchTextureData[textureOffset] = centers[centerOffset];
+        this.centerMatchTextureData[textureOffset + 1] = centers[centerOffset + 1];
+        this.centerMatchTextureData[textureOffset + 2] = centers[centerOffset + 2];
+        this.centerMatchTextureData[textureOffset + 3] = 1;
+      }
+      this.centerMatchTexture.needsUpdate = true;
+      this.centerMatchTextureNeedsUpdate = false;
+    }
+    return this.centerMatchTexture;
+  }
   // Ensures our PackedSplats.target render target has enough space to generate
   // maxSplats total Gsplats, and reallocate if not large enough.
   ensureGenerate(maxSplats) {
@@ -20021,6 +20091,15 @@ const _PackedSplats = class _PackedSplats {
       this.source.needsUpdate = true;
     }
     return this.source;
+  }
+  disposeCenterMatchTexture() {
+    if (this.centerMatchTexture) {
+      this.centerMatchTexture.dispose();
+      this.centerMatchTexture.source.data = null;
+      this.centerMatchTexture = null;
+    }
+    this.centerMatchTextureData = null;
+    this.centerMatchTextureNeedsUpdate = true;
   }
   // Get a program and THREE.RawShaderMaterial for a given GsplatGenerator,
   // generating it if necessary and caching the result.
