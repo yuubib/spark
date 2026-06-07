@@ -176,11 +176,11 @@ function assertColorClose(
   const rawCenter = { x: 0, y: 0, z: 0 };
   assert.strictEqual(mesh.getSplatCenterRaw(1, rawCenter), true);
   assert.deepStrictEqual(rawCenter, { x: 11.25, y: -2, z: 2.75 });
-  assert.strictEqual(source.getCenterMatchTexture(), texture);
   assert.deepStrictEqual(
     Array.from(textureData.slice(4, 8)),
     [11.25, -2, 2.75, 1],
   );
+  assert.strictEqual(source.getCenterMatchTexture(), texture);
 
   mesh.dispose();
 }

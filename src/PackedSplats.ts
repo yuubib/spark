@@ -582,7 +582,39 @@ export class PackedSplats implements SplatSource {
     centers[offset] = center.x;
     centers[offset + 1] = center.y;
     centers[offset + 2] = center.z;
-    this.markCenterMatchTextureDirty();
+    if (!this.writeCenterMatchTextureData(index, center)) {
+      this.markCenterMatchTextureDirty();
+    }
+  }
+
+  private writeCenterMatchTextureData(
+    index: number,
+    center: THREE.Vector3,
+  ): boolean {
+    const texture = this.centerMatchTexture;
+    const data = this.centerMatchTextureData;
+    if (
+      !texture ||
+      !data ||
+      this.centerMatchTextureNeedsUpdate ||
+      texture.image.data !== data ||
+      !Number.isInteger(index) ||
+      index < 0
+    ) {
+      return false;
+    }
+
+    const offset = index * 4;
+    if (offset + 3 >= data.length) {
+      return false;
+    }
+
+    data[offset] = center.x;
+    data[offset + 1] = center.y;
+    data[offset + 2] = center.z;
+    data[offset + 3] = 1;
+    texture.needsUpdate = true;
+    return true;
   }
 
   // Ensure the extra array for the given level is large enough to hold numSplats

@@ -20475,7 +20475,26 @@ const _PackedSplats = class _PackedSplats {
     centers[offset] = center.x;
     centers[offset + 1] = center.y;
     centers[offset + 2] = center.z;
-    this.markCenterMatchTextureDirty();
+    if (!this.writeCenterMatchTextureData(index, center)) {
+      this.markCenterMatchTextureDirty();
+    }
+  }
+  writeCenterMatchTextureData(index, center) {
+    const texture2 = this.centerMatchTexture;
+    const data = this.centerMatchTextureData;
+    if (!texture2 || !data || this.centerMatchTextureNeedsUpdate || texture2.image.data !== data || !Number.isInteger(index) || index < 0) {
+      return false;
+    }
+    const offset = index * 4;
+    if (offset + 3 >= data.length) {
+      return false;
+    }
+    data[offset] = center.x;
+    data[offset + 1] = center.y;
+    data[offset + 2] = center.z;
+    data[offset + 3] = 1;
+    texture2.needsUpdate = true;
+    return true;
   }
   // Ensure the extra array for the given level is large enough to hold numSplats
   ensureSplatsSh(level, numSplats) {

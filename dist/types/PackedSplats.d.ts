@@ -78,6 +78,7 @@ export declare class PackedSplats implements SplatSource {
     ensureSplats(numSplats: number): Uint32Array;
     private ensureCenterMatchXyzCapacity;
     private writeCenterMatchXyz;
+    private writeCenterMatchTextureData;
     ensureSplatsSh(level: number, numSplats: number): Uint32Array;
     getSplat(index: number): {
         center: THREE.Vector3;

@@ -162,6 +162,7 @@ const makePositionPly = (rows: readonly (readonly number[])[]) => {
     z: -3.5,
   });
 
+  packed.ensureSplats(packed.maxSplats);
   const texture = packed.getCenterMatchTexture();
   assert.ok(texture);
   assert.strictEqual(texture.format, THREE.RGBAFormat);
@@ -192,20 +193,20 @@ const makePositionPly = (rows: readonly (readonly number[])[]) => {
   );
   assert.strictEqual(packed.getSplatCenterRaw(1, center), true);
   assert.deepStrictEqual(center, { x: 9.25, y: -8.5, z: 7.75 });
-  assert.strictEqual(packed.getCenterMatchTexture(), texture);
   assert.deepStrictEqual(
     Array.from(textureData.slice(4, 8)),
     [9.25, -8.5, 7.75, 1],
   );
+  assert.strictEqual(packed.getCenterMatchTexture(), texture);
 
   splat(packed, new THREE.Vector3(1.125, 2.375, 3.625));
   assert.strictEqual(packed.getSplatCenterRaw(2, center), true);
   assert.deepStrictEqual(center, { x: 1.125, y: 2.375, z: 3.625 });
-  assert.strictEqual(packed.getCenterMatchTexture(), texture);
   assert.deepStrictEqual(
     Array.from(textureData.slice(8, 12)),
     [1.125, 2.375, 3.625, 1],
   );
+  assert.strictEqual(packed.getCenterMatchTexture(), texture);
 
   packed.markCenterMatchTextureDirty();
   const centers = packed.centerMatchXyz;
