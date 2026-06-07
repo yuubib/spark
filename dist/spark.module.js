@@ -13058,13 +13058,16 @@ function nearlyEqual(a, b) {
 function canUseSelectedSplatCenterIndexMode(editorStateMode) {
   return editorStateMode === "selected" || editorStateMode === "pick-remove";
 }
-function canSkipSplatScreenPickEditorStateFilter(editorState, editorStateMode) {
+function canSkipSplatScreenPickEditorStateFilter(editorState, editorStateMode, numSplats = (editorState == null ? void 0 : editorState.numSplats) ?? 0) {
   switch (editorStateMode) {
     case "all":
       return true;
     case "selected":
     case "pick-remove":
-      return false;
+      if (!editorState) {
+        return false;
+      }
+      return editorState.getUniformStateBits(normalizeSplatCount(numSplats)) === SPLAT_EDITOR_STATE_SELECTED;
   }
   if (!editorState) {
     return true;
@@ -13081,6 +13084,36 @@ function canSkipSplatScreenPickEditorStateFilter(editorState, editorStateMode) {
     default:
       return false;
   }
+}
+function canRejectSplatScreenPickEditorStateFilter(editorState, editorStateMode, numSplats) {
+  const safeNumSplats = normalizeSplatCount(numSplats);
+  if (safeNumSplats <= 0) {
+    return true;
+  }
+  if (!editorState) {
+    return editorStateMode === "selected" || editorStateMode === "pick-remove";
+  }
+  const counts = editorState.getCounts();
+  const uniformBits = editorState.getUniformStateBits(safeNumSplats);
+  switch (editorStateMode) {
+    case "all":
+      return false;
+    case "visible":
+      return (uniformBits ?? 0) !== 0 && ((uniformBits ?? 0) & SPLAT_EDITOR_STATE_DELETED) !== 0;
+    case "selected":
+    case "pick-remove":
+      return counts.selected <= 0;
+    case "editable":
+    case "pick-set":
+      return ((uniformBits ?? 0) & (SPLAT_EDITOR_STATE_LOCKED | SPLAT_EDITOR_STATE_DELETED)) !== 0;
+    case "pick-add":
+      return (uniformBits ?? 0) !== 0 || editorState.numSplats === safeNumSplats && safeNumSplats - counts.selected - counts.locked - counts.deleted <= 0;
+    default:
+      return false;
+  }
+}
+function normalizeSplatCount(numSplats) {
+  return Number.isFinite(numSplats) ? Math.max(0, Math.floor(numSplats)) : 0;
 }
 function applySelectedTransformToRawCenter(center, x, y, z, { pivot, translate, rotate, scale }) {
   center.set(x, y, z);
@@ -14892,8 +14925,22 @@ const _SparkRenderer = class _SparkRenderer extends THREE.Mesh {
       const mapping = mappings.get(object);
       const editorState = object.getEditorState();
       const selectedTransform = object.getSelectedSplatTransform();
+      const objectSplatCount = normalizeSplatCount(object.numSplats);
+      if (canRejectSplatScreenPickEditorStateFilter(
+        editorState,
+        editorStateMode,
+        objectSplatCount
+      )) {
+        stats.centerCount += objectSplatCount;
+        stats.stateRejectedCenterCount += objectSplatCount;
+        return;
+      }
       const transformedCenter = new THREE.Vector3();
-      const skipEditorStateFilter = selectedTransform == null && canSkipSplatScreenPickEditorStateFilter(editorState, editorStateMode);
+      const skipEditorStateFilter = selectedTransform == null && canSkipSplatScreenPickEditorStateFilter(
+        editorState,
+        editorStateMode,
+        objectSplatCount
+      );
       const sourceIndexStable = object.context.enableLod.value === false && !object.paged;
       object.updateMatrixWorld(true);
       objectToClip.multiplyMatrices(viewProjection, object.matrixWorld);
@@ -14981,8 +15028,22 @@ const _SparkRenderer = class _SparkRenderer extends THREE.Mesh {
   }) {
     const editorState = target.getEditorState();
     const selectedTransform = target.getSelectedSplatTransform();
+    const targetSplatCount = normalizeSplatCount(target.numSplats);
+    if (canRejectSplatScreenPickEditorStateFilter(
+      editorState,
+      editorStateMode,
+      targetSplatCount
+    )) {
+      stats.centerCount += targetSplatCount;
+      stats.stateRejectedCenterCount += targetSplatCount;
+      return;
+    }
     const transformedCenter = new THREE.Vector3();
-    const skipEditorStateFilter = selectedTransform == null && canSkipSplatScreenPickEditorStateFilter(editorState, editorStateMode);
+    const skipEditorStateFilter = selectedTransform == null && canSkipSplatScreenPickEditorStateFilter(
+      editorState,
+      editorStateMode,
+      targetSplatCount
+    );
     const emitCenter = (index, centerX, centerY, centerZ, bits2) => {
       if (selectedTransform && bits2 === SPLAT_EDITOR_STATE_SELECTED) {
         const center = applySelectedTransformToRawCenter(
@@ -14996,7 +15057,7 @@ const _SparkRenderer = class _SparkRenderer extends THREE.Mesh {
       }
       return callback(index, centerX, centerY, centerZ, bits2);
     };
-    if (editorState && target.hasIndexedSplatCenters() && canUseSelectedSplatCenterIndexMode(editorStateMode)) {
+    if (editorState && !skipEditorStateFilter && target.hasIndexedSplatCenters() && canUseSelectedSplatCenterIndexMode(editorStateMode)) {
       const center = { x: 0, y: 0, z: 0 };
       editorState.forEachSelectedIndex((index, bits2) => {
         stats.centerCount += 1;
@@ -15188,10 +15249,26 @@ const _SparkRenderer = class _SparkRenderer extends THREE.Mesh {
     const editorState = target.getEditorState();
     const selectedTransform = target.getSelectedSplatTransform();
     const selectedTransformEnabled = selectedTransform != null && editorState != null;
-    const skipEditorStateFilter = canSkipSplatScreenPickEditorStateFilter(
+    if (canRejectSplatScreenPickEditorStateFilter(
       editorState,
-      editorStateMode
+      editorStateMode,
+      numSplats
+    )) {
+      stats.stateRejectedCenterCount = numSplats;
+      stats.uniqueHitCount = 0;
+      return {
+        indices: new Uint32Array(),
+        renderMs: 0,
+        readbackMs: 0,
+        compactMs: 0
+      };
+    }
+    const skipEditorStateFilter = !selectedTransformEnabled && canSkipSplatScreenPickEditorStateFilter(
+      editorState,
+      editorStateMode,
+      numSplats
     );
+    const effectiveEditorStateMode = skipEditorStateFilter ? "all" : editorStateMode;
     const skipEditorStateUpload = !selectedTransformEnabled && skipEditorStateFilter;
     const editorStateTexture = !skipEditorStateUpload && editorState ? editorState.uploadDirtyWithResult(this.renderer).texture : SplatEditorState.emptyTexture;
     const editorStateMaxSplats = !skipEditorStateUpload && editorState ? editorState.maxSplats : 0;
@@ -15230,7 +15307,7 @@ const _SparkRenderer = class _SparkRenderer extends THREE.Mesh {
       editorStateMaxSplats
     );
     uniforms.editorStateEnabled.value = !skipEditorStateUpload && editorState != null;
-    uniforms.editorStateFilterMode.value = splatEditorStateFilterModeToPickUniform(editorStateMode);
+    uniforms.editorStateFilterMode.value = splatEditorStateFilterModeToPickUniform(effectiveEditorStateMode);
     uniforms.selectedTransformEnabled.value = selectedTransformEnabled;
     if (selectedTransform) {
       uniforms.selectedTransformPivot.value.copy(selectedTransform.pivot);

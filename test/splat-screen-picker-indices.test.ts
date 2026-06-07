@@ -952,6 +952,78 @@ const maskedNearest = await sparkRenderer.pickNearestSplatCenterIndex({
 
 assert.strictEqual(maskedNearest?.index, 0);
 
+mesh.clearSplatStateSelection();
+const selectedShortcutRawIterator = mesh.forEachSplatCenterRaw;
+let emptySelectedRawIterated = false;
+mesh.forEachSplatCenterRaw = () => {
+  emptySelectedRawIterated = true;
+  throw new Error("empty selected center picking should skip raw iteration");
+};
+let emptySelectedStats: SplatScreenPickStats | null = null;
+const emptySelectedCandidates = await sparkRenderer.pickSplatCandidateIndices({
+  target: mesh,
+  scene,
+  camera,
+  candidateMode: "centers",
+  shape: { kind: "rect", x: 0, y: 0, width: 1, height: 1 },
+  width: 100,
+  height: 100,
+  operation: "remove",
+  onStats: (nextStats) => {
+    emptySelectedStats = nextStats;
+  },
+});
+mesh.forEachSplatCenterRaw = selectedShortcutRawIterator;
+
+assert.deepStrictEqual([...(emptySelectedCandidates ?? [])], []);
+assert.strictEqual(emptySelectedRawIterated, false);
+assert.strictEqual(emptySelectedStats?.centerCollect?.centerCount, 3);
+assert.strictEqual(
+  emptySelectedStats?.centerCollect?.stateRejectedCenterCount,
+  3,
+);
+assert.strictEqual(emptySelectedStats?.centerCollect?.candidateCenterCount, 0);
+
+mesh.selectAllSplatState();
+const allSelectedState = mesh.getEditorState();
+assert.ok(allSelectedState);
+const originalAllSelectedIndexIterator =
+  allSelectedState.forEachSelectedIndex.bind(allSelectedState);
+allSelectedState.forEachSelectedIndex = () => {
+  throw new Error("all-selected picking should skip selected-index streaming");
+};
+const originalAllSelectedIndexedCenter = mesh.getSplatCenterRaw.bind(mesh);
+mesh.getSplatCenterRaw = () => {
+  throw new Error("all-selected picking should use raw center iteration");
+};
+rawCenterIteratorUsed = false;
+let allSelectedStats: SplatScreenPickStats | null = null;
+const allSelectedCandidates = await sparkRenderer.pickSplatCandidateIndices({
+  target: mesh,
+  scene,
+  camera,
+  candidateMode: "centers",
+  shape: { kind: "rect", x: 0, y: 0, width: 1, height: 1 },
+  width: 100,
+  height: 100,
+  operation: "remove",
+  onStats: (nextStats) => {
+    allSelectedStats = nextStats;
+  },
+});
+allSelectedState.forEachSelectedIndex = originalAllSelectedIndexIterator;
+mesh.getSplatCenterRaw = originalAllSelectedIndexedCenter;
+mesh.clearSplatStateSelection();
+
+assert.deepStrictEqual([...(allSelectedCandidates ?? [])], [0, 1]);
+assert.strictEqual(rawCenterIteratorUsed, true);
+assert.strictEqual(allSelectedStats?.centerCollect?.centerCount, 3);
+assert.strictEqual(
+  allSelectedStats?.centerCollect?.stateRejectedCenterCount,
+  0,
+);
+assert.strictEqual(allSelectedStats?.centerCollect?.candidateCenterCount, 2);
+
 mesh.selectSplatStateCandidates([1], "set");
 
 let replaceSelectedStats: SplatScreenPickStats | null = null;

@@ -12,6 +12,8 @@ import {
 } from ".";
 import { SplatAccumulator } from "./SplatAccumulator";
 import {
+  SPLAT_EDITOR_STATE_DELETED,
+  SPLAT_EDITOR_STATE_LOCKED,
   SPLAT_EDITOR_STATE_SELECTED,
   SplatEditorState,
   matchesSplatEditorStateBits,
@@ -214,13 +216,20 @@ function canUseSelectedSplatCenterIndexMode(
 function canSkipSplatScreenPickEditorStateFilter(
   editorState: SplatEditorState | null | undefined,
   editorStateMode: NonNullable<SplatScreenPickOptions["editorStateMode"]>,
+  numSplats = editorState?.numSplats ?? 0,
 ): boolean {
   switch (editorStateMode) {
     case "all":
       return true;
     case "selected":
     case "pick-remove":
-      return false;
+      if (!editorState) {
+        return false;
+      }
+      return (
+        editorState.getUniformStateBits(normalizeSplatCount(numSplats)) ===
+        SPLAT_EDITOR_STATE_SELECTED
+      );
     default:
       break;
   }
@@ -243,6 +252,55 @@ function canSkipSplatScreenPickEditorStateFilter(
     default:
       return false;
   }
+}
+
+function canRejectSplatScreenPickEditorStateFilter(
+  editorState: SplatEditorState | null | undefined,
+  editorStateMode: NonNullable<SplatScreenPickOptions["editorStateMode"]>,
+  numSplats: number,
+): boolean {
+  const safeNumSplats = normalizeSplatCount(numSplats);
+  if (safeNumSplats <= 0) {
+    return true;
+  }
+
+  if (!editorState) {
+    return editorStateMode === "selected" || editorStateMode === "pick-remove";
+  }
+
+  const counts = editorState.getCounts();
+  const uniformBits = editorState.getUniformStateBits(safeNumSplats);
+  switch (editorStateMode) {
+    case "all":
+      return false;
+    case "visible":
+      return (
+        (uniformBits ?? 0) !== 0 &&
+        ((uniformBits ?? 0) & SPLAT_EDITOR_STATE_DELETED) !== 0
+      );
+    case "selected":
+    case "pick-remove":
+      return counts.selected <= 0;
+    case "editable":
+    case "pick-set":
+      return (
+        ((uniformBits ?? 0) &
+          (SPLAT_EDITOR_STATE_LOCKED | SPLAT_EDITOR_STATE_DELETED)) !==
+        0
+      );
+    case "pick-add":
+      return (
+        (uniformBits ?? 0) !== 0 ||
+        (editorState.numSplats === safeNumSplats &&
+          safeNumSplats - counts.selected - counts.locked - counts.deleted <= 0)
+      );
+    default:
+      return false;
+  }
+}
+
+function normalizeSplatCount(numSplats: number): number {
+  return Number.isFinite(numSplats) ? Math.max(0, Math.floor(numSplats)) : 0;
 }
 
 function applySelectedTransformToRawCenter(
@@ -2949,10 +3007,26 @@ export class SparkRenderer extends THREE.Mesh {
       const mapping = mappings.get(object);
       const editorState = object.getEditorState();
       const selectedTransform = object.getSelectedSplatTransform();
+      const objectSplatCount = normalizeSplatCount(object.numSplats);
+      if (
+        canRejectSplatScreenPickEditorStateFilter(
+          editorState,
+          editorStateMode,
+          objectSplatCount,
+        )
+      ) {
+        stats.centerCount += objectSplatCount;
+        stats.stateRejectedCenterCount += objectSplatCount;
+        return;
+      }
       const transformedCenter = new THREE.Vector3();
       const skipEditorStateFilter =
         selectedTransform == null &&
-        canSkipSplatScreenPickEditorStateFilter(editorState, editorStateMode);
+        canSkipSplatScreenPickEditorStateFilter(
+          editorState,
+          editorStateMode,
+          objectSplatCount,
+        );
       const sourceIndexStable =
         object.context.enableLod.value === false && !object.paged;
       object.updateMatrixWorld(true);
@@ -3074,10 +3148,26 @@ export class SparkRenderer extends THREE.Mesh {
   }): void {
     const editorState = target.getEditorState();
     const selectedTransform = target.getSelectedSplatTransform();
+    const targetSplatCount = normalizeSplatCount(target.numSplats);
+    if (
+      canRejectSplatScreenPickEditorStateFilter(
+        editorState,
+        editorStateMode,
+        targetSplatCount,
+      )
+    ) {
+      stats.centerCount += targetSplatCount;
+      stats.stateRejectedCenterCount += targetSplatCount;
+      return;
+    }
     const transformedCenter = new THREE.Vector3();
     const skipEditorStateFilter =
       selectedTransform == null &&
-      canSkipSplatScreenPickEditorStateFilter(editorState, editorStateMode);
+      canSkipSplatScreenPickEditorStateFilter(
+        editorState,
+        editorStateMode,
+        targetSplatCount,
+      );
     const emitCenter = (
       index: number,
       centerX: number,
@@ -3099,6 +3189,7 @@ export class SparkRenderer extends THREE.Mesh {
     };
     if (
       editorState &&
+      !skipEditorStateFilter &&
       target.hasIndexedSplatCenters() &&
       canUseSelectedSplatCenterIndexMode(editorStateMode)
     ) {
@@ -3360,10 +3451,32 @@ export class SparkRenderer extends THREE.Mesh {
     const selectedTransform = target.getSelectedSplatTransform();
     const selectedTransformEnabled =
       selectedTransform != null && editorState != null;
-    const skipEditorStateFilter = canSkipSplatScreenPickEditorStateFilter(
-      editorState,
-      editorStateMode,
-    );
+    if (
+      canRejectSplatScreenPickEditorStateFilter(
+        editorState,
+        editorStateMode,
+        numSplats,
+      )
+    ) {
+      stats.stateRejectedCenterCount = numSplats;
+      stats.uniqueHitCount = 0;
+      return {
+        indices: new Uint32Array(),
+        renderMs: 0,
+        readbackMs: 0,
+        compactMs: 0,
+      };
+    }
+    const skipEditorStateFilter =
+      !selectedTransformEnabled &&
+      canSkipSplatScreenPickEditorStateFilter(
+        editorState,
+        editorStateMode,
+        numSplats,
+      );
+    const effectiveEditorStateMode = skipEditorStateFilter
+      ? "all"
+      : editorStateMode;
     const skipEditorStateUpload =
       !selectedTransformEnabled && skipEditorStateFilter;
     const editorStateTexture =
@@ -3414,7 +3527,7 @@ export class SparkRenderer extends THREE.Mesh {
     uniforms.editorStateEnabled.value =
       !skipEditorStateUpload && editorState != null;
     uniforms.editorStateFilterMode.value =
-      splatEditorStateFilterModeToPickUniform(editorStateMode);
+      splatEditorStateFilterModeToPickUniform(effectiveEditorStateMode);
     uniforms.selectedTransformEnabled.value = selectedTransformEnabled;
     if (selectedTransform) {
       uniforms.selectedTransformPivot.value.copy(selectedTransform.pivot);
