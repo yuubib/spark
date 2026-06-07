@@ -11278,6 +11278,7 @@ const _SplatAccumulator = class _SplatAccumulator {
     this.mapping = [];
     this.numSplats = 0;
     baseCounts.forEach(({ base, count }, index) => {
+      var _a3;
       const node = visibleGenerators[index];
       const previousNode = previousMappings.get(node);
       if (previousNode && previousNode.count !== node.numSplats) {
@@ -11286,6 +11287,7 @@ const _SplatAccumulator = class _SplatAccumulator {
       const { generator, covGenerator } = node;
       if ((generator || covGenerator) && count > 0) {
         const { version, sortVersion, styleVersion, mappingVersion } = node;
+        const editorStateVisibilityVersion = node instanceof SplatMesh && node.editorStateRenderMode === "accumulator" ? ((_a3 = node.getEditorState()) == null ? void 0 : _a3.visibilityVersion) ?? -1 : void 0;
         this.mapping.push({
           node,
           generator,
@@ -11294,6 +11296,7 @@ const _SplatAccumulator = class _SplatAccumulator {
           sortVersion,
           styleVersion,
           mappingVersion,
+          editorStateVisibilityVersion,
           base,
           count
         });
@@ -11431,7 +11434,8 @@ const _SplatAccumulator = class _SplatAccumulator {
       return item.version !== otherMapping[i].version;
     });
     const sortUpdated = this.mapping.some((item, i) => {
-      return item.sortVersion !== otherMapping[i].sortVersion;
+      const other = otherMapping[i];
+      return item.sortVersion !== other.sortVersion || item.editorStateVisibilityVersion !== other.editorStateVisibilityVersion;
     });
     const styleUpdated = this.mapping.some((item, i) => {
       return item.styleVersion !== otherMapping[i].styleVersion;
@@ -11740,6 +11744,52 @@ function maybeSortPixelHits(hits, sort = true) {
   }
   return hits;
 }
+function compactSplatSortInputForEditorState({
+  numSplats,
+  readback,
+  editorStateData,
+  compactReadback,
+  sourceIndices
+}) {
+  const count = Math.max(0, Math.floor(numSplats));
+  if (!editorStateData || editorStateData.length === 0 || count === 0) {
+    return { numSplats: count, readback, excludedDeleted: 0 };
+  }
+  if (compactReadback.length < count || sourceIndices.length < count) {
+    throw new Error("Compact sort buffers are too small");
+  }
+  let compactCount = 0;
+  let excludedDeleted = 0;
+  const stateCount = Math.min(count, editorStateData.length);
+  for (let index = 0; index < count; index += 1) {
+    const state = index < stateCount ? editorStateData[index] : 0;
+    if ((state & SPLAT_EDITOR_STATE_DELETED) !== 0) {
+      excludedDeleted += 1;
+      continue;
+    }
+    compactReadback[compactCount] = readback[index] ?? 0;
+    sourceIndices[compactCount] = index;
+    compactCount += 1;
+  }
+  if (excludedDeleted === 0) {
+    return { numSplats: count, readback, excludedDeleted: 0 };
+  }
+  return {
+    numSplats: compactCount,
+    readback: compactReadback,
+    sourceIndices,
+    excludedDeleted
+  };
+}
+function remapCompactSplatOrdering(ordering, activeSplats, sourceIndices) {
+  const count = Math.min(
+    Math.max(0, Math.floor(activeSplats)),
+    ordering.length
+  );
+  for (let index = 0; index < count; index += 1) {
+    ordering[index] = sourceIndices[ordering[index]] ?? 0;
+  }
+}
 const _SparkRenderer = class _SparkRenderer extends THREE__namespace.Mesh {
   constructor(options) {
     if (!options) {
@@ -11781,6 +11831,8 @@ const _SparkRenderer = class _SparkRenderer extends THREE__namespace.Mesh {
     this.sortedCenter = new THREE__namespace.Vector3().setScalar(Number.NEGATIVE_INFINITY);
     this.sortedDir = new THREE__namespace.Vector3().setScalar(0);
     this.readback32 = new Uint32Array(0);
+    this.compactReadback32 = new Uint32Array(0);
+    this.compactSortSourceIndices = new Uint32Array(0);
     this.lastLodRaycastTime = 0;
     this.lodWorker = null;
     this.lodMeshes = [];
@@ -12202,6 +12254,11 @@ const _SparkRenderer = class _SparkRenderer extends THREE__namespace.Mesh {
         this.display.styleVersion = styleVersion;
         this.setDirty();
       }
+      if (sortUpdated) {
+        this.current.mapping = next.mapping;
+        this.current.sortVersion = sortVersion;
+        this.sortDirty = true;
+      }
       this.accumulators.push(next);
     } else {
       generate();
@@ -12265,21 +12322,62 @@ const _SparkRenderer = class _SparkRenderer extends THREE__namespace.Mesh {
       numSplats,
       readback
     });
+    let sortInput = {
+      numSplats,
+      readback
+    };
+    if (current.editorStateEnabled) {
+      this.compactReadback32 = Readback.ensureBuffer(
+        maxSplats,
+        this.compactReadback32
+      );
+      this.compactSortSourceIndices = Readback.ensureBuffer(
+        maxSplats,
+        this.compactSortSourceIndices
+      );
+      sortInput = compactSplatSortInputForEditorState({
+        numSplats,
+        readback,
+        editorStateData: current.editorStateData,
+        compactReadback: this.compactReadback32,
+        sourceIndices: this.compactSortSourceIndices
+      });
+    }
     if (this.sortPause > 0) {
       await new Promise((resolve) => setTimeout(resolve, this.sortPause));
     }
-    if (!this.sortWorker) {
-      this.sortWorker = new SplatWorker();
+    let result;
+    if (sortInput.numSplats === 0) {
+      result = {
+        readback: sortInput.readback,
+        ordering,
+        activeSplats: 0
+      };
+    } else {
+      if (!this.sortWorker) {
+        this.sortWorker = new SplatWorker();
+      }
+      result = await this.sortWorker.call("sortSplats32", {
+        numSplats: sortInput.numSplats,
+        readback: sortInput.readback,
+        ordering
+      });
     }
-    const result = await this.sortWorker.call("sortSplats32", {
-      numSplats,
-      readback,
-      ordering
-    });
+    if (sortInput.sourceIndices) {
+      remapCompactSplatOrdering(
+        result.ordering,
+        result.activeSplats,
+        sortInput.sourceIndices
+      );
+    }
     if (this.sortDelay > 0) {
       await new Promise((resolve) => setTimeout(resolve, this.sortDelay));
     }
-    this.readback32 = result.readback;
+    if (sortInput.sourceIndices) {
+      this.compactReadback32 = result.readback;
+    } else {
+      this.readback32 = result.readback;
+    }
     this.activeSplats = result.activeSplats;
     if (this.orderingTexture) {
       if (rows > this.orderingTexture.image.height) {

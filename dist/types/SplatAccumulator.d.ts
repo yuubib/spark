@@ -12,6 +12,7 @@ export type GeneratorMapping = {
     sortVersion?: number;
     styleVersion?: number;
     mappingVersion?: number;
+    editorStateVisibilityVersion?: number;
     base: number;
     count: number;
 };

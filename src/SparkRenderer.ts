@@ -22,6 +22,11 @@ import {
   resolveSplatScreenPickRenderLayout,
   splatEditorStateFilterModeToPickUniform,
 } from "./SplatScreenPicker";
+import {
+  type SplatSortInputForEditorState,
+  compactSplatSortInputForEditorState,
+  remapCompactSplatOrdering,
+} from "./SplatSortInput";
 import { SplatWorker } from "./SplatWorker";
 import { SPLAT_TEX_HEIGHT, SPLAT_TEX_WIDTH } from "./defines";
 import { getShaders } from "./shaders";
@@ -392,6 +397,8 @@ export class SparkRenderer extends THREE.Mesh {
   sortedCenter = new THREE.Vector3().setScalar(Number.NEGATIVE_INFINITY);
   sortedDir = new THREE.Vector3().setScalar(0);
   readback32 = new Uint32Array(0);
+  compactReadback32 = new Uint32Array(0);
+  compactSortSourceIndices = new Uint32Array(0);
 
   enableLod: boolean;
   enableDriveLod: boolean;
@@ -992,6 +999,11 @@ export class SparkRenderer extends THREE.Mesh {
         this.display.styleVersion = styleVersion;
         this.setDirty();
       }
+      if (sortUpdated) {
+        this.current.mapping = next.mapping;
+        this.current.sortVersion = sortVersion;
+        this.sortDirty = true;
+      }
       // Restore unused accumulator to the free list
       this.accumulators.push(next);
     } else {
@@ -1076,28 +1088,75 @@ export class SparkRenderer extends THREE.Mesh {
       readback,
     });
 
+    let sortInput: SplatSortInputForEditorState = {
+      numSplats,
+      readback,
+      excludedDeleted: 0,
+    };
+    if (current.editorStateEnabled) {
+      this.compactReadback32 = Readback.ensureBuffer(
+        maxSplats,
+        this.compactReadback32,
+      );
+      this.compactSortSourceIndices = Readback.ensureBuffer(
+        maxSplats,
+        this.compactSortSourceIndices,
+      );
+      sortInput = compactSplatSortInputForEditorState({
+        numSplats,
+        readback,
+        editorStateData: current.editorStateData,
+        compactReadback: this.compactReadback32,
+        sourceIndices: this.compactSortSourceIndices,
+      });
+    }
+
     if (this.sortPause > 0) {
       await new Promise((resolve) => setTimeout(resolve, this.sortPause));
     }
 
-    if (!this.sortWorker) {
-      this.sortWorker = new SplatWorker();
-    }
-    const result = (await this.sortWorker.call("sortSplats32", {
-      numSplats,
-      readback,
-      ordering,
-    })) as {
+    let result: {
       readback: Uint32Array<ArrayBuffer>;
       ordering: Uint32Array;
       activeSplats: number;
     };
+    if (sortInput.numSplats === 0) {
+      result = {
+        readback: sortInput.readback as Uint32Array<ArrayBuffer>,
+        ordering,
+        activeSplats: 0,
+      };
+    } else {
+      if (!this.sortWorker) {
+        this.sortWorker = new SplatWorker();
+      }
+      result = (await this.sortWorker.call("sortSplats32", {
+        numSplats: sortInput.numSplats,
+        readback: sortInput.readback,
+        ordering,
+      })) as {
+        readback: Uint32Array<ArrayBuffer>;
+        ordering: Uint32Array;
+        activeSplats: number;
+      };
+    }
+    if (sortInput.sourceIndices) {
+      remapCompactSplatOrdering(
+        result.ordering,
+        result.activeSplats,
+        sortInput.sourceIndices,
+      );
+    }
 
     if (this.sortDelay > 0) {
       await new Promise((resolve) => setTimeout(resolve, this.sortDelay));
     }
 
-    this.readback32 = result.readback;
+    if (sortInput.sourceIndices) {
+      this.compactReadback32 = result.readback;
+    } else {
+      this.readback32 = result.readback;
+    }
 
     this.activeSplats = result.activeSplats;
 

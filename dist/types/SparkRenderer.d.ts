@@ -343,6 +343,8 @@ export declare class SparkRenderer extends THREE.Mesh {
     sortedCenter: THREE.Vector3;
     sortedDir: THREE.Vector3;
     readback32: Uint32Array<ArrayBuffer>;
+    compactReadback32: Uint32Array<ArrayBuffer>;
+    compactSortSourceIndices: Uint32Array<ArrayBuffer>;
     enableLod: boolean;
     enableDriveLod: boolean;
     enableLodFetching: boolean;

@@ -57,6 +57,7 @@ export type GeneratorMapping = {
   sortVersion?: number;
   styleVersion?: number;
   mappingVersion?: number;
+  editorStateVisibilityVersion?: number;
   base: number;
   count: number;
 };
@@ -826,6 +827,11 @@ export class SplatAccumulator {
       const { generator, covGenerator } = node;
       if ((generator || covGenerator) && count > 0) {
         const { version, sortVersion, styleVersion, mappingVersion } = node;
+        const editorStateVisibilityVersion =
+          node instanceof SplatMesh &&
+          node.editorStateRenderMode === "accumulator"
+            ? (node.getEditorState()?.visibilityVersion ?? -1)
+            : undefined;
         this.mapping.push({
           node,
           generator,
@@ -834,6 +840,7 @@ export class SplatAccumulator {
           sortVersion,
           styleVersion,
           mappingVersion,
+          editorStateVisibilityVersion,
           base,
           count,
         });
@@ -983,7 +990,11 @@ export class SplatAccumulator {
       return item.version !== otherMapping[i].version;
     });
     const sortUpdated = this.mapping.some((item, i) => {
-      return item.sortVersion !== otherMapping[i].sortVersion;
+      const other = otherMapping[i];
+      return (
+        item.sortVersion !== other.sortVersion ||
+        item.editorStateVisibilityVersion !== other.editorStateVisibilityVersion
+      );
     });
     const styleUpdated = this.mapping.some((item, i) => {
       return item.styleVersion !== otherMapping[i].styleVersion;
