@@ -1958,7 +1958,9 @@ export class SparkRenderer extends THREE.Mesh {
     let updateMs = 0;
     if (options.update !== false) {
       const updateStartedAt = readNowMs();
-      await this.update({ scene: scene as THREE.Scene, camera });
+      if (this.accumulators.length > 0) {
+        await this.update({ scene: scene as THREE.Scene, camera });
+      }
       updateMs = readNowMs() - updateStartedAt;
     }
 

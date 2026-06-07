@@ -9419,6 +9419,10 @@ async function __wbg_init(module_or_path) {
   const { instance, module: module2 } = await __wbg_load(await module_or_path, imports);
   return __wbg_finalize_init(instance);
 }
+const SPLAT_DEFINES_INCLUDE = "#include <splatDefines>";
+function injectSplatDefines(shader, splatDefines) {
+  return shader.includes(SPLAT_DEFINES_INCLUDE) ? shader.split(SPLAT_DEFINES_INCLUDE).join(splatDefines) : shader;
+}
 var computeUvec4_default = "precision highp float;\nprecision highp int;\nprecision highp sampler2D;\nprecision highp usampler2D;\nprecision highp isampler2D;\nprecision highp sampler2DArray;\nprecision highp usampler2DArray;\nprecision highp isampler2DArray;\nprecision highp sampler3D;\nprecision highp usampler3D;\nprecision highp isampler3D;\n\n#include <splatDefines>\n\nuniform uint targetLayer;\nuniform int targetBase;\nuniform int targetCount;\n\nout uvec4 target;\n\n{{ GLOBALS }}\n\nvoid produceSplat(int _index) {\n    {{ STATEMENTS }}\n}\n\nvoid main() {\n    int targetIndex = int(targetLayer << SPLAT_TEX_LAYER_BITS) + int(uint(gl_FragCoord.y) << SPLAT_TEX_WIDTH_BITS) + int(gl_FragCoord.x);\n    int index = targetIndex - targetBase;\n\n    target = uvec4(0u, 0u, 0u, 0u);\n    if ((index >= 0) && (index < targetCount)) {\n        produceSplat(index);\n    }\n}";
 var computeUvec4_Vec4_default = "precision highp float;\nprecision highp int;\nprecision highp sampler2D;\nprecision highp usampler2D;\nprecision highp isampler2D;\nprecision highp sampler2DArray;\nprecision highp usampler2DArray;\nprecision highp isampler2DArray;\nprecision highp sampler3D;\nprecision highp usampler3D;\nprecision highp isampler3D;\n\n#include <splatDefines>\n\nuniform uint targetLayer;\nuniform int targetBase;\nuniform int targetCount;\n\nlayout(location = 0) out uvec4 target;\nlayout(location = 1) out vec4 target3;\n\n{{ GLOBALS }}\n\nvoid produceSplat(int _index) {\n    {{ STATEMENTS }}\n}\n\nvoid main() {\n    int targetIndex = int(targetLayer << SPLAT_TEX_LAYER_BITS) + int(uint(gl_FragCoord.y) << SPLAT_TEX_WIDTH_BITS) + int(gl_FragCoord.x);\n    int index = targetIndex - targetBase;\n\n    \n    target = uvec4(0u, 0u, 0u, 0u);\n\n    \n    target3 = floatToVec4(1.0 / 0.0);\n\n    if ((index >= 0) && (index < targetCount)) {\n        produceSplat(index);\n    }\n}";
 var computeUvec4x2_Vec4_default = "precision highp float;\nprecision highp int;\nprecision highp sampler2D;\nprecision highp usampler2D;\nprecision highp isampler2D;\nprecision highp sampler2DArray;\nprecision highp usampler2DArray;\nprecision highp isampler2DArray;\nprecision highp sampler3D;\nprecision highp usampler3D;\nprecision highp isampler3D;\n\n#include <splatDefines>\n\nuniform uint targetLayer;\nuniform int targetBase;\nuniform int targetCount;\n\nlayout(location = 0) out uvec4 target;\nlayout(location = 1) out uvec4 target2;\nlayout(location = 2) out vec4 target3;\n\n{{ GLOBALS }}\n\nvoid produceSplat(int _index) {\n    {{ STATEMENTS }}\n}\n\nvoid main() {\n    int targetIndex = int(targetLayer << SPLAT_TEX_LAYER_BITS) + int(uint(gl_FragCoord.y) << SPLAT_TEX_WIDTH_BITS) + int(gl_FragCoord.x);\n    int index = targetIndex - targetBase;\n\n    \n    target = uvec4(0u, 0u, 0u, 0u);\n    target2 = uvec4(0u, 0u, 0u, 0u);\n\n    \n    target3 = floatToVec4(1.0 / 0.0);\n\n    if ((index >= 0) && (index < targetCount)) {\n        produceSplat(index);\n    }\n}";
@@ -9433,14 +9437,26 @@ function getShaders() {
   if (!shaders) {
     THREE__namespace.ShaderChunk.splatDefines = splatDefines_default;
     shaders = {
-      oldSplatVertex: oldSplatVertex_default,
-      oldSplatFragment: oldSplatFragment_default,
-      splatVertex: splatVertex_default,
-      splatFragment: splatFragment_default,
-      computeVec4Template: computeVec4_default,
-      computeUvec4Vec4Template: computeUvec4_Vec4_default,
-      computeUvec4x2Vec4Template: computeUvec4x2_Vec4_default,
-      computeUvec4Template: computeUvec4_default
+      oldSplatVertex: injectSplatDefines(oldSplatVertex_default, splatDefines_default),
+      oldSplatFragment: injectSplatDefines(oldSplatFragment_default, splatDefines_default),
+      splatVertex: injectSplatDefines(splatVertex_default, splatDefines_default),
+      splatFragment: injectSplatDefines(splatFragment_default, splatDefines_default),
+      computeVec4Template: injectSplatDefines(
+        computeVec4_default,
+        splatDefines_default
+      ),
+      computeUvec4Vec4Template: injectSplatDefines(
+        computeUvec4_Vec4_default,
+        splatDefines_default
+      ),
+      computeUvec4x2Vec4Template: injectSplatDefines(
+        computeUvec4x2_Vec4_default,
+        splatDefines_default
+      ),
+      computeUvec4Template: injectSplatDefines(
+        computeUvec4_default,
+        splatDefines_default
+      )
     };
   }
   return shaders;
@@ -13112,7 +13128,9 @@ const _SparkRenderer = class _SparkRenderer extends THREE__namespace.Mesh {
     let updateMs = 0;
     if (options.update !== false) {
       const updateStartedAt = readNowMs();
-      await this.update({ scene, camera });
+      if (this.accumulators.length > 0) {
+        await this.update({ scene, camera });
+      }
       updateMs = readNowMs() - updateStartedAt;
     }
     const target = this.ensureScreenPickTarget(

@@ -1,5 +1,6 @@
 import * as THREE from "three";
 
+import { injectSplatDefines } from "./shaderIncludes";
 import computeUvec4Template from "./shaders/computeUvec4.glsl";
 import computeUvec4Vec4Template from "./shaders/computeUvec4_Vec4.glsl";
 import computeUvec4x2Vec4Template from "./shaders/computeUvec4x2_Vec4.glsl";
@@ -17,14 +18,26 @@ export function getShaders(): Record<string, string> {
     // @ts-ignore
     THREE.ShaderChunk.splatDefines = splatDefines;
     shaders = {
-      oldSplatVertex,
-      oldSplatFragment,
-      splatVertex,
-      splatFragment,
-      computeVec4Template,
-      computeUvec4Vec4Template,
-      computeUvec4x2Vec4Template,
-      computeUvec4Template,
+      oldSplatVertex: injectSplatDefines(oldSplatVertex, splatDefines),
+      oldSplatFragment: injectSplatDefines(oldSplatFragment, splatDefines),
+      splatVertex: injectSplatDefines(splatVertex, splatDefines),
+      splatFragment: injectSplatDefines(splatFragment, splatDefines),
+      computeVec4Template: injectSplatDefines(
+        computeVec4Template,
+        splatDefines,
+      ),
+      computeUvec4Vec4Template: injectSplatDefines(
+        computeUvec4Vec4Template,
+        splatDefines,
+      ),
+      computeUvec4x2Vec4Template: injectSplatDefines(
+        computeUvec4x2Vec4Template,
+        splatDefines,
+      ),
+      computeUvec4Template: injectSplatDefines(
+        computeUvec4Template,
+        splatDefines,
+      ),
     };
   }
   return shaders;
