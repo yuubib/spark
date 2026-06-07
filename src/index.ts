@@ -26,6 +26,7 @@ export {
   type SplatScreenFloodMaskRenderStats,
   type SplatScreenFloodMaskResult,
   type SplatScreenFloodMaskShape,
+  type SplatScreenFloodMaskWorkspace,
   type SplatScreenPickCandidateMode,
   type SplatScreenPickCenterCollectStats,
   type SplatScreenPickCollectStats,

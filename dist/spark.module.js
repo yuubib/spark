@@ -12071,6 +12071,7 @@ function createSplatScreenFloodMaskFromRgba8(pixels, options) {
   );
   const maxDelta = sourceThreshold * 255;
   const rowOrder = options.rowOrder ?? "bottom-left";
+  const workspace = options.workspace;
   const seedValue = readRgba8ChannelTopLeft(
     pixels,
     width,
@@ -12080,9 +12081,20 @@ function createSplatScreenFloodMaskFromRgba8(pixels, options) {
     sourceChannel,
     rowOrder
   );
-  const data = new Uint8Array(expectedLength);
-  const visited = new Uint8Array(width * height);
-  const stack = [seedY * width + seedX];
+  const data = ensureFloodUint8Buffer(
+    workspace,
+    "data",
+    expectedLength
+  ).subarray(0, expectedLength);
+  data.fill(0);
+  const visited = ensureFloodUint8Buffer(
+    workspace,
+    "visited",
+    width * height
+  ).subarray(0, width * height);
+  visited.fill(0);
+  const stack = ensureFloodUint32Buffer(workspace, width * height);
+  let stackLength = 0;
   let matchedPixelCount = 0;
   let minX = width;
   let minY = height;
@@ -12094,15 +12106,15 @@ function createSplatScreenFloodMaskFromRgba8(pixels, options) {
     }
     const index = y * width + x;
     if (!visited[index]) {
-      stack.push(index);
+      visited[index] = 1;
+      stack[stackLength] = index;
+      stackLength += 1;
     }
   };
-  while (stack.length > 0) {
-    const index = stack.pop();
-    if (visited[index]) {
-      continue;
-    }
-    visited[index] = 1;
+  push(seedX, seedY);
+  while (stackLength > 0) {
+    stackLength -= 1;
+    const index = stack[stackLength];
     const x = index % width;
     const y = Math.floor(index / width);
     const value = readRgba8ChannelTopLeft(
@@ -12149,7 +12161,7 @@ function createSplatScreenFloodMaskFromRgba8(pixels, options) {
     width: maxX - minX + 1,
     height: maxY - minY + 1
   };
-  const croppedMask = cropRgba8TopLeft(data, width, bounds);
+  const croppedMask = cropRgba8TopLeft(data, width, bounds, workspace);
   const shape = {
     kind: "mask",
     x: bounds.x / width,
@@ -12367,14 +12379,43 @@ function readRgba8ChannelTopLeft(pixels, width, height, x, y, channel, rowOrder)
   const sourceY = rowOrder === "bottom-left" ? height - 1 - y : y;
   return pixels[(sourceY * width + x) * 4 + channel] ?? 0;
 }
-function cropRgba8TopLeft(data, sourceWidth, bounds) {
-  const cropped = new Uint8Array(bounds.width * bounds.height * 4);
+function cropRgba8TopLeft(data, sourceWidth, bounds, workspace) {
+  const length2 = bounds.width * bounds.height * 4;
+  const cropped = ensureFloodUint8Buffer(workspace, "mask", length2).subarray(
+    0,
+    length2
+  );
   for (let y = 0; y < bounds.height; y++) {
     const sourceStart = ((bounds.y + y) * sourceWidth + bounds.x) * 4;
     const sourceEnd = sourceStart + bounds.width * 4;
     cropped.set(data.subarray(sourceStart, sourceEnd), y * bounds.width * 4);
   }
   return cropped;
+}
+function ensureFloodUint8Buffer(workspace, key, length2) {
+  const safeLength = Math.max(0, Math.floor(length2));
+  if (!workspace) {
+    return new Uint8Array(safeLength);
+  }
+  const current = workspace[key];
+  if (current && current.length >= safeLength) {
+    return current;
+  }
+  const next = new Uint8Array(safeLength);
+  workspace[key] = next;
+  return next;
+}
+function ensureFloodUint32Buffer(workspace, length2) {
+  const safeLength = Math.max(0, Math.floor(length2));
+  if (!workspace) {
+    return new Uint32Array(safeLength);
+  }
+  if (workspace.stack && workspace.stack.length >= safeLength) {
+    return workspace.stack;
+  }
+  const next = new Uint32Array(safeLength);
+  workspace.stack = next;
+  return next;
 }
 function maybeSortPixelHits(hits, sort = true) {
   if (sort) {
@@ -14071,6 +14112,10 @@ const _SparkRenderer = class _SparkRenderer extends THREE.Mesh {
       target,
       camera
     });
+    const workspace = options.workspace ?? this.screenFloodWorkspace ?? {};
+    if (!options.workspace && !this.screenFloodWorkspace) {
+      this.screenFloodWorkspace = workspace;
+    }
     const floodStartedAt = readNowMs();
     const floodMask = createSplatScreenFloodMaskFromRgba8(renderPass.pixels, {
       width,
@@ -14079,7 +14124,8 @@ const _SparkRenderer = class _SparkRenderer extends THREE.Mesh {
       seedY: options.seedY,
       threshold: options.threshold,
       channel: options.channel,
-      rowOrder: "bottom-left"
+      rowOrder: "bottom-left",
+      workspace
     });
     const floodMs = readNowMs() - floodStartedAt;
     (_a2 = options.onStats) == null ? void 0 : _a2.call(options, {

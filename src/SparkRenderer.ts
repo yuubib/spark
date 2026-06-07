@@ -17,6 +17,7 @@ import { SplatGeometry } from "./SplatGeometry";
 import {
   type SplatScreenFloodMaskRenderOptions,
   type SplatScreenFloodMaskResult,
+  type SplatScreenFloodMaskWorkspace,
   type SplatScreenPickCenterCollectStats,
   type SplatScreenPickCollectStats,
   type SplatScreenPickHit,
@@ -633,6 +634,7 @@ export class SparkRenderer extends THREE.Mesh {
   private screenPickPixels?: Uint8Array;
   private screenFloodTarget?: THREE.WebGLRenderTarget;
   private screenFloodPixels?: Uint8Array;
+  private screenFloodWorkspace?: SplatScreenFloodMaskWorkspace;
   private screenPickRenderSize?: THREE.Vector2;
 
   flushAfterGenerate = false;
@@ -2528,6 +2530,10 @@ export class SparkRenderer extends THREE.Mesh {
       target,
       camera,
     });
+    const workspace = options.workspace ?? this.screenFloodWorkspace ?? {};
+    if (!options.workspace && !this.screenFloodWorkspace) {
+      this.screenFloodWorkspace = workspace;
+    }
     const floodStartedAt = readNowMs();
     const floodMask = createSplatScreenFloodMaskFromRgba8(renderPass.pixels, {
       width,
@@ -2537,6 +2543,7 @@ export class SparkRenderer extends THREE.Mesh {
       threshold: options.threshold,
       channel: options.channel,
       rowOrder: "bottom-left",
+      workspace,
     });
     const floodMs = readNowMs() - floodStartedAt;
 

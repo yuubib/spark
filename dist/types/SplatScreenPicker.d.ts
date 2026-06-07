@@ -36,6 +36,13 @@ export type SplatScreenFloodMaskOptions = {
     threshold?: number;
     channel?: 0 | 1 | 2 | 3;
     rowOrder?: SplatScreenRgba8RowOrder;
+    workspace?: SplatScreenFloodMaskWorkspace;
+};
+export type SplatScreenFloodMaskWorkspace = {
+    data?: Uint8Array;
+    visited?: Uint8Array;
+    stack?: Uint32Array;
+    mask?: Uint8Array;
 };
 export type SplatScreenFloodMaskResult = {
     data: Uint8Array;
@@ -62,6 +69,7 @@ export type SplatScreenFloodMaskRenderOptions = {
     threshold?: number;
     channel?: 0 | 1 | 2 | 3;
     update?: boolean;
+    workspace?: SplatScreenFloodMaskWorkspace;
     onStats?: (stats: SplatScreenFloodMaskRenderStats) => void;
 };
 export type SplatScreenFloodMaskRenderStats = {

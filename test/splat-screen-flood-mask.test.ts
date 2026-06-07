@@ -5,6 +5,7 @@ import * as THREE from "three";
 import { SparkRenderer } from "../dist/spark.module.js";
 import {
   type SplatScreenFloodMaskRenderStats,
+  type SplatScreenFloodMaskWorkspace,
   type SplatScreenRgba8RowOrder,
   collectSplatScreenPickHitsFromRgba8,
   createSplatScreenFloodMaskFromRgba8,
@@ -110,6 +111,47 @@ assert.deepStrictEqual(
 );
 assert.strictEqual(alphaAt(bottomLeftResult.shape.mask, 3, 0, 0), 255);
 assert.strictEqual(alphaAt(bottomLeftResult.shape.mask, 3, 1, 1), 255);
+
+const workspace: SplatScreenFloodMaskWorkspace = {
+  data: new Uint8Array(5 * 4 * 4),
+  visited: new Uint8Array(5 * 4),
+  stack: new Uint32Array(5 * 4),
+  mask: new Uint8Array(3 * 2 * 4),
+};
+const workspaceResult = createSplatScreenFloodMaskFromRgba8(bottomLeftPixels, {
+  width: 5,
+  height: 4,
+  seedX: 1,
+  seedY: 0,
+  threshold: 0.1,
+  workspace,
+});
+const workspaceDataBuffer = workspace.data?.buffer;
+const workspaceVisitedBuffer = workspace.visited?.buffer;
+const workspaceStackBuffer = workspace.stack?.buffer;
+const workspaceMaskBuffer = workspace.mask?.buffer;
+assert.deepStrictEqual(workspaceResult.data, bottomLeftResult.data);
+assert.strictEqual(workspaceResult.data.buffer, workspaceDataBuffer);
+assert.strictEqual(workspaceResult.shape?.mask.buffer, workspaceMaskBuffer);
+
+const emptyWorkspaceResult = createSplatScreenFloodMaskFromRgba8(
+  bottomLeftPixels,
+  {
+    width: 5,
+    height: 4,
+    seedX: 1,
+    seedY: 0,
+    threshold: 0,
+    workspace,
+  },
+);
+assert.strictEqual(emptyWorkspaceResult.matchedPixelCount, 0);
+assert.strictEqual(emptyWorkspaceResult.shape, null);
+assert.strictEqual(emptyWorkspaceResult.data.buffer, workspaceDataBuffer);
+assert.strictEqual(workspace.visited?.buffer, workspaceVisitedBuffer);
+assert.strictEqual(workspace.stack?.buffer, workspaceStackBuffer);
+assert.strictEqual(alphaAt(emptyWorkspaceResult.data, 5, 1, 0), 0);
+assert.strictEqual(alphaAt(emptyWorkspaceResult.data, 5, 2, 1), 0);
 
 const idPixels = new Uint8Array([
   ...encode(0),
@@ -300,6 +342,7 @@ const sparkRenderer = Object.create(
   autoUpdate: boolean;
   dirty: boolean;
   onDirty: () => void;
+  screenFloodWorkspace?: SplatScreenFloodMaskWorkspace;
 };
 sparkRenderer.renderer = fakeRenderer;
 sparkRenderer.uniforms = {
@@ -353,5 +396,26 @@ assert.strictEqual(floodStats?.targetWidth, 2);
 assert.strictEqual(floodStats?.targetHeight, 2);
 assert.ok(rendererLog.includes("render"));
 assert.ok(rendererLog.includes("read"));
+const rendererFloodWorkspace = sparkRenderer.screenFloodWorkspace;
+assert.ok(rendererFloodWorkspace?.data);
+assert.ok(rendererFloodWorkspace?.visited);
+assert.ok(rendererFloodWorkspace?.stack);
+assert.ok(rendererFloodWorkspace?.mask);
+
+const secondRenderedFlood = await sparkRenderer.createSplatScreenFloodMask({
+  scene: new THREE.Scene(),
+  camera: new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 10),
+  seedX: 1,
+  seedY: 0,
+  threshold: 0.1,
+  update: false,
+});
+
+assert.strictEqual(secondRenderedFlood.matchedPixelCount, 3);
+assert.strictEqual(secondRenderedFlood.data.buffer, renderedFlood.data.buffer);
+assert.strictEqual(
+  secondRenderedFlood.shape?.mask.buffer,
+  renderedFlood.shape?.mask.buffer,
+);
 
 console.log("Splat screen flood mask tests passed");

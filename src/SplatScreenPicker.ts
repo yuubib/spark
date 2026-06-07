@@ -47,6 +47,14 @@ export type SplatScreenFloodMaskOptions = {
   threshold?: number;
   channel?: 0 | 1 | 2 | 3;
   rowOrder?: SplatScreenRgba8RowOrder;
+  workspace?: SplatScreenFloodMaskWorkspace;
+};
+
+export type SplatScreenFloodMaskWorkspace = {
+  data?: Uint8Array;
+  visited?: Uint8Array;
+  stack?: Uint32Array;
+  mask?: Uint8Array;
 };
 
 export type SplatScreenFloodMaskResult = {
@@ -75,6 +83,7 @@ export type SplatScreenFloodMaskRenderOptions = {
   threshold?: number;
   channel?: 0 | 1 | 2 | 3;
   update?: boolean;
+  workspace?: SplatScreenFloodMaskWorkspace;
   onStats?: (stats: SplatScreenFloodMaskRenderStats) => void;
 };
 
@@ -454,6 +463,7 @@ export function createSplatScreenFloodMaskFromRgba8(
   );
   const maxDelta = sourceThreshold * 255;
   const rowOrder = options.rowOrder ?? "bottom-left";
+  const workspace = options.workspace;
   const seedValue = readRgba8ChannelTopLeft(
     pixels,
     width,
@@ -463,9 +473,20 @@ export function createSplatScreenFloodMaskFromRgba8(
     sourceChannel,
     rowOrder,
   );
-  const data = new Uint8Array(expectedLength);
-  const visited = new Uint8Array(width * height);
-  const stack = [seedY * width + seedX];
+  const data = ensureFloodUint8Buffer(
+    workspace,
+    "data",
+    expectedLength,
+  ).subarray(0, expectedLength);
+  data.fill(0);
+  const visited = ensureFloodUint8Buffer(
+    workspace,
+    "visited",
+    width * height,
+  ).subarray(0, width * height);
+  visited.fill(0);
+  const stack = ensureFloodUint32Buffer(workspace, width * height);
+  let stackLength = 0;
   let matchedPixelCount = 0;
   let minX = width;
   let minY = height;
@@ -478,16 +499,17 @@ export function createSplatScreenFloodMaskFromRgba8(
     }
     const index = y * width + x;
     if (!visited[index]) {
-      stack.push(index);
+      visited[index] = 1;
+      stack[stackLength] = index;
+      stackLength += 1;
     }
   };
 
-  while (stack.length > 0) {
-    const index = stack.pop() as number;
-    if (visited[index]) {
-      continue;
-    }
-    visited[index] = 1;
+  push(seedX, seedY);
+
+  while (stackLength > 0) {
+    stackLength -= 1;
+    const index = stack[stackLength] as number;
 
     const x = index % width;
     const y = Math.floor(index / width);
@@ -539,7 +561,7 @@ export function createSplatScreenFloodMaskFromRgba8(
     width: maxX - minX + 1,
     height: maxY - minY + 1,
   };
-  const croppedMask = cropRgba8TopLeft(data, width, bounds);
+  const croppedMask = cropRgba8TopLeft(data, width, bounds, workspace);
   const shape: SplatScreenFloodMaskShape = {
     kind: "mask",
     x: bounds.x / width,
@@ -884,14 +906,53 @@ function cropRgba8TopLeft(
   data: Uint8Array,
   sourceWidth: number,
   bounds: Omit<SplatScreenPickRect, "mask">,
+  workspace?: SplatScreenFloodMaskWorkspace,
 ): Uint8Array {
-  const cropped = new Uint8Array(bounds.width * bounds.height * 4);
+  const length = bounds.width * bounds.height * 4;
+  const cropped = ensureFloodUint8Buffer(workspace, "mask", length).subarray(
+    0,
+    length,
+  );
   for (let y = 0; y < bounds.height; y++) {
     const sourceStart = ((bounds.y + y) * sourceWidth + bounds.x) * 4;
     const sourceEnd = sourceStart + bounds.width * 4;
     cropped.set(data.subarray(sourceStart, sourceEnd), y * bounds.width * 4);
   }
   return cropped;
+}
+
+function ensureFloodUint8Buffer(
+  workspace: SplatScreenFloodMaskWorkspace | undefined,
+  key: "data" | "visited" | "mask",
+  length: number,
+): Uint8Array {
+  const safeLength = Math.max(0, Math.floor(length));
+  if (!workspace) {
+    return new Uint8Array(safeLength);
+  }
+  const current = workspace[key];
+  if (current && current.length >= safeLength) {
+    return current;
+  }
+  const next = new Uint8Array(safeLength);
+  workspace[key] = next;
+  return next;
+}
+
+function ensureFloodUint32Buffer(
+  workspace: SplatScreenFloodMaskWorkspace | undefined,
+  length: number,
+): Uint32Array {
+  const safeLength = Math.max(0, Math.floor(length));
+  if (!workspace) {
+    return new Uint32Array(safeLength);
+  }
+  if (workspace.stack && workspace.stack.length >= safeLength) {
+    return workspace.stack;
+  }
+  const next = new Uint32Array(safeLength);
+  workspace.stack = next;
+  return next;
 }
 
 function maybeSortPixelHits(

@@ -417,6 +417,7 @@ export declare class SparkRenderer extends THREE.Mesh {
     private screenPickPixels?;
     private screenFloodTarget?;
     private screenFloodPixels?;
+    private screenFloodWorkspace?;
     private screenPickRenderSize?;
     flushAfterGenerate: boolean;
     flushAfterRead: boolean;
