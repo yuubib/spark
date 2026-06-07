@@ -547,6 +547,65 @@ import {
 }
 
 {
+  const state = new SplatEditorState(16);
+  state.selectAll();
+  state.setBits(2, SPLAT_EDITOR_STATE_LOCKED);
+  state.setBits(13, SPLAT_EDITOR_STATE_DELETED);
+  state.uploadDirty();
+
+  const firstResult = state.selectCandidates(
+    [1, 3, 5, 7, 9, 20, 5, -1],
+    "set",
+    { recordChanges: true },
+  );
+  assert.strictEqual(firstResult.changed, 9);
+  assert.deepStrictEqual(state.listIndices("selected"), [1, 3, 5, 7, 9]);
+  assert.strictEqual(
+    state.get(2),
+    SPLAT_EDITOR_STATE_SELECTED | SPLAT_EDITOR_STATE_LOCKED,
+  );
+  assert.strictEqual(
+    state.get(13),
+    SPLAT_EDITOR_STATE_SELECTED | SPLAT_EDITOR_STATE_DELETED,
+  );
+  assert.deepStrictEqual(firstResult.counts, {
+    selected: 5,
+    locked: 1,
+    deleted: 1,
+  });
+
+  const secondResult = state.selectCandidates([3], "set", {
+    recordChanges: true,
+  });
+  assert.strictEqual(secondResult.changed, 4);
+  assert.deepStrictEqual(state.listIndices("selected"), [3]);
+  assert.deepStrictEqual(secondResult.counts, {
+    selected: 1,
+    locked: 1,
+    deleted: 1,
+  });
+
+  assert.ok(secondResult.changeSet);
+  const undoSecond = state.applyChangeSet(secondResult.changeSet, "previous");
+  assert.strictEqual(undoSecond.changed, 4);
+  assert.deepStrictEqual(state.listIndices("selected"), [1, 3, 5, 7, 9]);
+  assert.deepStrictEqual(undoSecond.counts, {
+    selected: 5,
+    locked: 1,
+    deleted: 1,
+  });
+
+  const redoSecond = state.applyChangeSet(secondResult.changeSet, "next");
+  assert.strictEqual(redoSecond.changed, 4);
+  assert.deepStrictEqual(state.listIndices("selected"), [3]);
+  assert.deepStrictEqual(redoSecond.counts, {
+    selected: 1,
+    locked: 1,
+    deleted: 1,
+  });
+}
+
+{
   const state = new SplatEditorState(6);
   state.replace(
     new Uint8Array([

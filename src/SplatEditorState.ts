@@ -152,6 +152,11 @@ type SplatEditorStateMutationChangeBuffer =
   | SplatEditorStateChange[]
   | SplatEditorStatePackedChangeBuffer;
 
+interface SplatEditorStateDenseCandidateWorkspace {
+  readonly marks: Uint32Array;
+  readonly generation: number;
+}
+
 export class SplatEditorState {
   states: Uint8Array;
   numSplats: number;
@@ -176,6 +181,8 @@ export class SplatEditorState {
   private dirtyAll = false;
   private renderDirtyAll = false;
   private fullTextureUploadPending = false;
+  private denseCandidateMarks = new Uint32Array(0);
+  private denseCandidateGeneration = 0;
 
   constructor(numSplats = 0, colors: SplatEditorStateColors = {}) {
     this.numSplats = 0;
@@ -210,6 +217,8 @@ export class SplatEditorState {
     this.dirtyAll = false;
     this.renderDirtyAll = false;
     this.fullTextureUploadPending = false;
+    this.denseCandidateMarks = new Uint32Array(0);
+    this.denseCandidateGeneration = 0;
   }
 
   ensureCapacity(numSplats: number): Uint8Array {
@@ -428,7 +437,8 @@ export class SplatEditorState {
       }
 
       let sparseCandidates = new Set<number>();
-      let denseCandidates: Uint8Array | null = null;
+      let denseCandidates: SplatEditorStateDenseCandidateWorkspace | null =
+        null;
       const sparseThreshold = Math.floor(
         this.numSplats * SPARSE_SELECTION_SET_THRESHOLD_RATIO,
       );
@@ -438,14 +448,14 @@ export class SplatEditorState {
           continue;
         }
         if (denseCandidates) {
-          denseCandidates[index] = 1;
+          this.markDenseCandidate(denseCandidates, index);
           continue;
         }
         sparseCandidates.add(index);
         if (sparseCandidates.size > sparseThreshold) {
-          denseCandidates = new Uint8Array(this.numSplats);
+          denseCandidates = this.beginDenseCandidateWorkspace();
           for (const candidate of sparseCandidates) {
-            denseCandidates[candidate] = 1;
+            this.markDenseCandidate(denseCandidates, candidate);
           }
           sparseCandidates = new Set<number>();
         }
@@ -457,9 +467,9 @@ export class SplatEditorState {
         !denseCandidates &&
         sparseCandidates.size + selectedCandidateCount > sparseThreshold
       ) {
-        denseCandidates = new Uint8Array(this.numSplats);
+        denseCandidates = this.beginDenseCandidateWorkspace();
         for (const candidate of sparseCandidates) {
-          denseCandidates[candidate] = 1;
+          this.markDenseCandidate(denseCandidates, candidate);
         }
         sparseCandidates = new Set<number>();
       }
@@ -468,9 +478,9 @@ export class SplatEditorState {
         return this.selectCandidateSetDense(denseCandidates, changes);
       }
       if (!this.ensureSelectedIndicesCompleteForSparse()) {
-        denseCandidates = new Uint8Array(this.numSplats);
+        denseCandidates = this.beginDenseCandidateWorkspace();
         for (const candidate of sparseCandidates) {
-          denseCandidates[candidate] = 1;
+          this.markDenseCandidate(denseCandidates, candidate);
         }
         return this.selectCandidateSetDense(denseCandidates, changes);
       }
@@ -1895,7 +1905,7 @@ export class SplatEditorState {
   }
 
   private selectCandidateSetDense(
-    candidates: Uint8Array,
+    candidates: SplatEditorStateDenseCandidateWorkspace,
     changes?: SplatEditorStateMutationChangeBuffer,
   ): SplatEditorStateMutationResult {
     const dirtyIndices: number[] = [];
@@ -1903,10 +1913,11 @@ export class SplatEditorState {
     let changed = 0;
     for (let index = 0; index < this.numSplats; index++) {
       const previous = this.states[index];
+      const hasCandidate = this.hasDenseCandidate(candidates, index);
       const next =
-        candidates[index] && previous === SPLAT_EDITOR_STATE_NONE
+        hasCandidate && previous === SPLAT_EDITOR_STATE_NONE
           ? SPLAT_EDITOR_STATE_SELECTED
-          : !candidates[index] && previous === SPLAT_EDITOR_STATE_SELECTED
+          : !hasCandidate && previous === SPLAT_EDITOR_STATE_SELECTED
             ? SPLAT_EDITOR_STATE_NONE
             : previous;
       if (this.setMutationUnchecked(index, next, changes)) {
@@ -1915,6 +1926,37 @@ export class SplatEditorState {
       }
     }
     return this.commitMutation(changed, dirtyIndices, fullRange, changes);
+  }
+
+  private beginDenseCandidateWorkspace(): SplatEditorStateDenseCandidateWorkspace {
+    if (this.denseCandidateMarks.length < this.numSplats) {
+      this.denseCandidateMarks = new Uint32Array(this.numSplats);
+      this.denseCandidateGeneration = 0;
+    }
+    if (this.denseCandidateGeneration >= 0xffffffff) {
+      this.denseCandidateMarks.fill(0);
+      this.denseCandidateGeneration = 1;
+    } else {
+      this.denseCandidateGeneration += 1;
+    }
+    return {
+      marks: this.denseCandidateMarks,
+      generation: this.denseCandidateGeneration,
+    };
+  }
+
+  private markDenseCandidate(
+    candidates: SplatEditorStateDenseCandidateWorkspace,
+    index: number,
+  ): void {
+    candidates.marks[index] = candidates.generation;
+  }
+
+  private hasDenseCandidate(
+    candidates: SplatEditorStateDenseCandidateWorkspace,
+    index: number,
+  ): boolean {
+    return candidates.marks[index] === candidates.generation;
   }
 
   private selectCandidateSetSparse(

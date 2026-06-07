@@ -102,6 +102,8 @@ export declare class SplatEditorState {
     private dirtyAll;
     private renderDirtyAll;
     private fullTextureUploadPending;
+    private denseCandidateMarks;
+    private denseCandidateGeneration;
     constructor(numSplats?: number, colors?: SplatEditorStateColors);
     dispose(): void;
     ensureCapacity(numSplats: number): Uint8Array;
@@ -173,6 +175,9 @@ export declare class SplatEditorState {
     private selectCandidateSetFromEmpty;
     private selectCandidateSetFromEmptyPackedArrayLike;
     private selectCandidateSetDense;
+    private beginDenseCandidateWorkspace;
+    private markDenseCandidate;
+    private hasDenseCandidate;
     private selectCandidateSetSparse;
     private commitSparseSelectedMutation;
     private commitSparseDeletedReset;

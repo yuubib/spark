@@ -6860,6 +6860,8 @@ const _SplatEditorState = class _SplatEditorState {
     this.dirtyAll = false;
     this.renderDirtyAll = false;
     this.fullTextureUploadPending = false;
+    this.denseCandidateMarks = new Uint32Array(0);
+    this.denseCandidateGeneration = 0;
     this.numSplats = 0;
     this.maxSplats = 0;
     this.states = new Uint8Array(0);
@@ -6890,6 +6892,8 @@ const _SplatEditorState = class _SplatEditorState {
     this.dirtyAll = false;
     this.renderDirtyAll = false;
     this.fullTextureUploadPending = false;
+    this.denseCandidateMarks = new Uint32Array(0);
+    this.denseCandidateGeneration = 0;
   }
   ensureCapacity(numSplats) {
     const safeNumSplats = Math.max(0, Math.ceil(numSplats));
@@ -7064,23 +7068,23 @@ const _SplatEditorState = class _SplatEditorState {
           continue;
         }
         if (denseCandidates) {
-          denseCandidates[index] = 1;
+          this.markDenseCandidate(denseCandidates, index);
           continue;
         }
         sparseCandidates.add(index);
         if (sparseCandidates.size > sparseThreshold) {
-          denseCandidates = new Uint8Array(this.numSplats);
+          denseCandidates = this.beginDenseCandidateWorkspace();
           for (const candidate of sparseCandidates) {
-            denseCandidates[candidate] = 1;
+            this.markDenseCandidate(denseCandidates, candidate);
           }
           sparseCandidates = /* @__PURE__ */ new Set();
         }
       }
       const selectedCandidateCount = this.selectedIndicesComplete ? this.selectedIndices.size : this.selected;
       if (!denseCandidates && sparseCandidates.size + selectedCandidateCount > sparseThreshold) {
-        denseCandidates = new Uint8Array(this.numSplats);
+        denseCandidates = this.beginDenseCandidateWorkspace();
         for (const candidate of sparseCandidates) {
-          denseCandidates[candidate] = 1;
+          this.markDenseCandidate(denseCandidates, candidate);
         }
         sparseCandidates = /* @__PURE__ */ new Set();
       }
@@ -7088,9 +7092,9 @@ const _SplatEditorState = class _SplatEditorState {
         return this.selectCandidateSetDense(denseCandidates, changes);
       }
       if (!this.ensureSelectedIndicesCompleteForSparse()) {
-        denseCandidates = new Uint8Array(this.numSplats);
+        denseCandidates = this.beginDenseCandidateWorkspace();
         for (const candidate of sparseCandidates) {
-          denseCandidates[candidate] = 1;
+          this.markDenseCandidate(denseCandidates, candidate);
         }
         return this.selectCandidateSetDense(denseCandidates, changes);
       }
@@ -8184,13 +8188,36 @@ const _SplatEditorState = class _SplatEditorState {
     let changed = 0;
     for (let index = 0; index < this.numSplats; index++) {
       const previous = this.states[index];
-      const next = candidates[index] && previous === SPLAT_EDITOR_STATE_NONE ? SPLAT_EDITOR_STATE_SELECTED : !candidates[index] && previous === SPLAT_EDITOR_STATE_SELECTED ? SPLAT_EDITOR_STATE_NONE : previous;
+      const hasCandidate = this.hasDenseCandidate(candidates, index);
+      const next = hasCandidate && previous === SPLAT_EDITOR_STATE_NONE ? SPLAT_EDITOR_STATE_SELECTED : !hasCandidate && previous === SPLAT_EDITOR_STATE_SELECTED ? SPLAT_EDITOR_STATE_NONE : previous;
       if (this.setMutationUnchecked(index, next, changes)) {
         changed++;
         fullRange || (fullRange = this.collectDirtyIndex(dirtyIndices, index));
       }
     }
     return this.commitMutation(changed, dirtyIndices, fullRange, changes);
+  }
+  beginDenseCandidateWorkspace() {
+    if (this.denseCandidateMarks.length < this.numSplats) {
+      this.denseCandidateMarks = new Uint32Array(this.numSplats);
+      this.denseCandidateGeneration = 0;
+    }
+    if (this.denseCandidateGeneration >= 4294967295) {
+      this.denseCandidateMarks.fill(0);
+      this.denseCandidateGeneration = 1;
+    } else {
+      this.denseCandidateGeneration += 1;
+    }
+    return {
+      marks: this.denseCandidateMarks,
+      generation: this.denseCandidateGeneration
+    };
+  }
+  markDenseCandidate(candidates, index) {
+    candidates.marks[index] = candidates.generation;
+  }
+  hasDenseCandidate(candidates, index) {
+    return candidates.marks[index] === candidates.generation;
   }
   selectCandidateSetSparse(candidates, changes) {
     const mutations = [];
