@@ -141,6 +141,132 @@ import {
 }
 
 {
+  const state = new SplatEditorState(8);
+  state.uploadDirty();
+  const visibilityVersion = state.visibilityVersion;
+
+  const selectResult = state.selectAll();
+  assert.strictEqual(selectResult.changed, 8);
+  assert.deepStrictEqual(selectResult.counts, {
+    selected: 8,
+    locked: 0,
+    deleted: 0,
+  });
+  assert.strictEqual(state.get(0), SPLAT_EDITOR_STATE_SELECTED);
+  assert.strictEqual(state.get(7), SPLAT_EDITOR_STATE_SELECTED);
+  assert.deepStrictEqual(state.getDirtyRanges(), [{ start: 0, count: 8 }]);
+
+  state.uploadDirty();
+  const hideResult = state.hideSelected();
+  assert.strictEqual(hideResult.changed, 8);
+  assert.deepStrictEqual(hideResult.counts, {
+    selected: 0,
+    locked: 8,
+    deleted: 0,
+  });
+  assert.strictEqual(
+    state.get(0),
+    SPLAT_EDITOR_STATE_SELECTED | SPLAT_EDITOR_STATE_LOCKED,
+  );
+  assert.strictEqual(state.visibilityVersion, visibilityVersion);
+  assert.deepStrictEqual(state.getDirtyRanges(), [{ start: 0, count: 8 }]);
+
+  state.uploadDirty();
+  const unhideResult = state.unhideAll();
+  assert.strictEqual(unhideResult.changed, 8);
+  assert.deepStrictEqual(unhideResult.counts, {
+    selected: 8,
+    locked: 0,
+    deleted: 0,
+  });
+  assert.strictEqual(state.get(0), SPLAT_EDITOR_STATE_SELECTED);
+  assert.strictEqual(state.visibilityVersion, visibilityVersion);
+
+  state.uploadDirty();
+  const deleteResult = state.deleteSelected();
+  assert.strictEqual(deleteResult.changed, 8);
+  assert.deepStrictEqual(deleteResult.counts, {
+    selected: 0,
+    locked: 0,
+    deleted: 8,
+  });
+  assert.strictEqual(
+    state.get(0),
+    SPLAT_EDITOR_STATE_SELECTED | SPLAT_EDITOR_STATE_DELETED,
+  );
+  assert.strictEqual(state.visibilityVersion, visibilityVersion + 8);
+  assert.deepStrictEqual(state.getDirtyRanges(), [{ start: 0, count: 8 }]);
+}
+
+{
+  const state = new SplatEditorState(4);
+
+  const selectResult = state.selectAll({ recordChanges: true });
+  assert.strictEqual(selectResult.changed, 4);
+  assert.deepStrictEqual(
+    selectResult.changes?.map(({ index, previous, next }) => ({
+      index,
+      previous,
+      next,
+    })),
+    [
+      { index: 0, previous: 0, next: SPLAT_EDITOR_STATE_SELECTED },
+      { index: 1, previous: 0, next: SPLAT_EDITOR_STATE_SELECTED },
+      { index: 2, previous: 0, next: SPLAT_EDITOR_STATE_SELECTED },
+      { index: 3, previous: 0, next: SPLAT_EDITOR_STATE_SELECTED },
+    ],
+  );
+
+  const hideResult = state.hideSelected({ recordChanges: true });
+  assert.strictEqual(hideResult.changed, 4);
+  assert.deepStrictEqual(
+    hideResult.changes?.map(({ index, previous, next }) => ({
+      index,
+      previous,
+      next,
+    })),
+    [
+      {
+        index: 0,
+        previous: SPLAT_EDITOR_STATE_SELECTED,
+        next: SPLAT_EDITOR_STATE_SELECTED | SPLAT_EDITOR_STATE_LOCKED,
+      },
+      {
+        index: 1,
+        previous: SPLAT_EDITOR_STATE_SELECTED,
+        next: SPLAT_EDITOR_STATE_SELECTED | SPLAT_EDITOR_STATE_LOCKED,
+      },
+      {
+        index: 2,
+        previous: SPLAT_EDITOR_STATE_SELECTED,
+        next: SPLAT_EDITOR_STATE_SELECTED | SPLAT_EDITOR_STATE_LOCKED,
+      },
+      {
+        index: 3,
+        previous: SPLAT_EDITOR_STATE_SELECTED,
+        next: SPLAT_EDITOR_STATE_SELECTED | SPLAT_EDITOR_STATE_LOCKED,
+      },
+    ],
+  );
+}
+
+{
+  const state = new SplatEditorState(12);
+  state.selectAll();
+  state.uploadDirty();
+
+  const setResult = state.selectCandidates([2, 3], "set");
+  assert.strictEqual(setResult.changed, 10);
+  assert.deepStrictEqual(state.listIndices("selected"), [2, 3]);
+
+  state.uploadDirty();
+  const narrowResult = state.selectCandidates([3], "set");
+  assert.strictEqual(narrowResult.changed, 1);
+  assert.deepStrictEqual(state.listIndices("selected"), [3]);
+  assert.deepStrictEqual(state.getDirtyRanges(), [{ start: 2, count: 1 }]);
+}
+
+{
   const state = new SplatEditorState(6);
   state.replace(
     new Uint8Array([

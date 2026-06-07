@@ -65,6 +65,7 @@ export declare class SplatEditorState {
     private locked;
     private deleted;
     private selectedIndices;
+    private selectedIndicesComplete;
     private dirtyRanges;
     private renderDirtyRanges;
     private dirtyAll;
@@ -111,8 +112,16 @@ export declare class SplatEditorState {
     private uploadDirtySpans;
     private assertIndex;
     private normalizeIndex;
+    private commitUniformMutation;
+    private createMutationResult;
     private commitMutation;
     private collectDirtyIndex;
+    private getSparseSelectionSetThreshold;
+    private shouldTrackSelectedIndices;
+    private ensureSelectedIndicesCompleteForSparse;
+    private rebuildSelectedIndices;
+    private refreshSelectedIndexTracking;
+    private resetSelectedIndexTrackingForUniform;
     private setUnchecked;
     private selectCandidateSetDense;
     private selectCandidateSetSparse;
