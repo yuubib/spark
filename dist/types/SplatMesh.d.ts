@@ -10,6 +10,17 @@ import { SplatEncoding, SplatFileType } from './defines';
 import { DynoBool, DynoFloat, DynoInt, DynoUsampler2D, DynoUsampler2DArray, DynoVal, DynoVec4, Gsplat } from './dyno';
 import * as THREE from "three";
 export type SplatEditorStateRenderMode = "generator" | "accumulator";
+export type SplatMeshRayPickHit = {
+    index: number;
+    distance: number;
+    point: THREE.Vector3;
+    object: SplatMesh;
+};
+export type SplatMeshRayPickOptions = {
+    editorStateMode?: SplatEditorStateFilterMode;
+    maxHits?: number;
+    sort?: boolean;
+};
 export type SplatMeshOptions = {
     url?: string;
     fileBytes?: Uint8Array | ArrayBuffer;
@@ -217,8 +228,12 @@ export declare class SplatMesh extends SplatGenerator {
         point: THREE.Vector3;
         object: THREE.Object3D;
     }[]): void;
-    static raycastBuffer: Float32Array<ArrayBuffer>;
-    private appendRaycastBuffer;
+    pickSplatRay(raycaster: THREE.Raycaster, options?: SplatMeshRayPickOptions): SplatMeshRayPickHit[];
+    private collectSplatRayHits;
+    private static raycastSourceIndexBuffer;
+    private static raycastDistanceBits;
+    private static raycastDistanceFloat;
+    private appendRaycastHitPairs;
     createLodSplats({ rgbaArray, quality, }?: {
         rgbaArray?: RgbaArray;
         quality?: boolean;

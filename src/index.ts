@@ -65,6 +65,8 @@ export { Readback, type Rgba8Readback, type ReadbackBuffer } from "./Readback";
 export {
   SplatMesh,
   type SplatEditorStateRenderMode,
+  type SplatMeshRayPickHit,
+  type SplatMeshRayPickOptions,
   type SplatMeshOptions,
   type SplatMeshContext,
   type SplatSource,

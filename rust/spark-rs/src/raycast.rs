@@ -1,11 +1,20 @@
 use spark_lib::{
     decoder::SplatEncoding,
-    splat_encode::{decode_ext_splat_center, decode_ext_splat_opacity, decode_ext_splat_quat, decode_ext_splat_scale, decode_packed_splat_center, decode_packed_splat_opacity, decode_packed_splat_quat, decode_packed_splat_scale},
+    splat_encode::{
+        decode_ext_splat_center, decode_ext_splat_opacity, decode_ext_splat_quat,
+        decode_ext_splat_scale, decode_packed_splat_center, decode_packed_splat_opacity,
+        decode_packed_splat_quat, decode_packed_splat_scale,
+    },
 };
 
 pub fn raycast_packed_ellipsoids(
-    buffer: &[u32], distances: &mut Vec<f32>, 
-    origin: [f32; 3], dir: [f32; 3], min_opacity: f32, near: f32, far: f32,
+    buffer: &[u32],
+    distances: &mut Vec<f32>,
+    origin: [f32; 3],
+    dir: [f32; 3],
+    min_opacity: f32,
+    near: f32,
+    far: f32,
     encoding: &SplatEncoding,
 ) {
     for packed in buffer.chunks(4) {
@@ -13,7 +22,7 @@ pub fn raycast_packed_ellipsoids(
         if opacity < min_opacity {
             continue;
         }
-    
+
         let center = decode_packed_splat_center(packed);
         let scale = decode_packed_splat_scale(packed, encoding);
         let quat = decode_packed_splat_quat(packed);
@@ -25,9 +34,43 @@ pub fn raycast_packed_ellipsoids(
     }
 }
 
+pub fn raycast_packed_ellipsoid_hits(
+    buffer: &[u32],
+    hits: &mut Vec<u32>,
+    origin: [f32; 3],
+    dir: [f32; 3],
+    min_opacity: f32,
+    near: f32,
+    far: f32,
+    encoding: &SplatEncoding,
+) {
+    for (index, packed) in buffer.chunks(4).enumerate() {
+        let opacity = decode_packed_splat_opacity(packed, encoding);
+        if opacity < min_opacity {
+            continue;
+        }
+
+        let center = decode_packed_splat_center(packed);
+        let scale = decode_packed_splat_scale(packed, encoding);
+        let quat = decode_packed_splat_quat(packed);
+        if let Some(t) = raycast_ellipsoid(origin, dir, opacity, center, scale, quat) {
+            if t >= near && t <= far {
+                hits.push(index as u32);
+                hits.push(t.to_bits());
+            }
+        }
+    }
+}
+
 pub fn raycast_ext_ellipsoids(
-    buffer: &[u32], buffer2: &[u32], distances: &mut Vec<f32>, 
-    origin: [f32; 3], dir: [f32; 3], min_opacity: f32, near: f32, far: f32,
+    buffer: &[u32],
+    buffer2: &[u32],
+    distances: &mut Vec<f32>,
+    origin: [f32; 3],
+    dir: [f32; 3],
+    min_opacity: f32,
+    near: f32,
+    far: f32,
 ) {
     assert_eq!(buffer.len(), buffer2.len());
     for (ext_a, ext_b) in buffer.chunks(4).zip(buffer2.chunks(4)) {
@@ -35,7 +78,7 @@ pub fn raycast_ext_ellipsoids(
         if opacity < min_opacity {
             continue;
         }
-    
+
         let center = decode_ext_splat_center(ext_a);
         let scale = decode_ext_splat_scale(ext_b);
         let quat = decode_ext_splat_quat(ext_b);
@@ -47,9 +90,42 @@ pub fn raycast_ext_ellipsoids(
     }
 }
 
+pub fn raycast_ext_ellipsoid_hits(
+    buffer: &[u32],
+    buffer2: &[u32],
+    hits: &mut Vec<u32>,
+    origin: [f32; 3],
+    dir: [f32; 3],
+    min_opacity: f32,
+    near: f32,
+    far: f32,
+) {
+    assert_eq!(buffer.len(), buffer2.len());
+    for (index, (ext_a, ext_b)) in buffer.chunks(4).zip(buffer2.chunks(4)).enumerate() {
+        let opacity = decode_ext_splat_opacity(ext_a);
+        if opacity < min_opacity {
+            continue;
+        }
+
+        let center = decode_ext_splat_center(ext_a);
+        let scale = decode_ext_splat_scale(ext_b);
+        let quat = decode_ext_splat_quat(ext_b);
+        if let Some(t) = raycast_ellipsoid(origin, dir, opacity, center, scale, quat) {
+            if t >= near && t <= far {
+                hits.push(index as u32);
+                hits.push(t.to_bits());
+            }
+        }
+    }
+}
+
 fn raycast_ellipsoid(
-    origin: [f32; 3], dir: [f32; 3],
-    opacity: f32, center: [f32; 3], scale: [f32; 3], quat: [f32; 4],
+    origin: [f32; 3],
+    dir: [f32; 3],
+    opacity: f32,
+    center: [f32; 3],
+    scale: [f32; 3],
+    quat: [f32; 4],
 ) -> Option<f32> {
     let origin = vec3_sub(origin, center);
     let inv_quat = [-quat[0], -quat[1], -quat[2], quat[3]];

@@ -3,8 +3,8 @@ import * as THREE from "three";
 import init_wasm, {
   get_raycast_buffer,
   get_raycast_buffer2,
-  raycast_ext_buffers,
-  raycast_packed_buffer,
+  raycast_ext_buffer_hits,
+  raycast_packed_buffer_hits,
 } from "spark-rs";
 import { ExtSplats } from "./ExtSplats";
 import { OldSparkRenderer } from "./OldSparkRenderer";
@@ -72,6 +72,19 @@ import {
 } from "./dyno";
 
 export type SplatEditorStateRenderMode = "generator" | "accumulator";
+
+export type SplatMeshRayPickHit = {
+  index: number;
+  distance: number;
+  point: THREE.Vector3;
+  object: SplatMesh;
+};
+
+export type SplatMeshRayPickOptions = {
+  editorStateMode?: SplatEditorStateFilterMode;
+  maxHits?: number;
+  sort?: boolean;
+};
 
 export type SplatMeshOptions = {
   // URL to fetch a Gaussian splat file from(supports .ply, .splat, .ksplat,
@@ -1558,12 +1571,41 @@ export class SplatMesh extends SplatGenerator {
       object: THREE.Object3D;
     }[],
   ) {
+    for (const hit of this.collectSplatRayHits(raycaster, {
+      editorStateMode: this.raycastEditorStateMode,
+      sort: false,
+    })) {
+      intersects.push({
+        distance: hit.distance,
+        point: hit.point,
+        object: this,
+      });
+    }
+  }
+
+  pickSplatRay(
+    raycaster: THREE.Raycaster,
+    options: SplatMeshRayPickOptions = {},
+  ): SplatMeshRayPickHit[] {
+    const hits = this.collectSplatRayHits(raycaster, options);
+    if (options.sort ?? true) {
+      hits.sort((a, b) => a.distance - b.distance);
+    }
+    const maxHits = normalizeMaxPickHits(options.maxHits);
+    return maxHits === null ? hits : hits.slice(0, maxHits);
+  }
+
+  private collectSplatRayHits(
+    raycaster: THREE.Raycaster,
+    options: SplatMeshRayPickOptions,
+  ): SplatMeshRayPickHit[] {
+    const hits: SplatMeshRayPickHit[] = [];
     if (
       !SplatMesh.isStaticInitialized ||
       !this.raycastable ||
       (!this.packedSplats && !this.extSplats && !this.paged)
     ) {
-      return;
+      return hits;
     }
     const paged = this.paged != null;
     const ext = paged
@@ -1578,12 +1620,14 @@ export class SplatMesh extends SplatGenerator {
 
     const buffer = get_raycast_buffer();
     const bufferSize = buffer.length / 4;
-    let intersections = 0;
 
-    const numSplats =
-      this.raycastIndices?.numSplats ??
-      (paged ? this.paged?.numSplats : this.context.numSplats.value) ??
-      0;
+    const contextNumSplats = this.context.numSplats.value;
+    const activeNumSplats = paged
+      ? this.paged?.numSplats
+      : contextNumSplats > 0
+        ? contextNumSplats
+        : this.numSplats;
+    const numSplats = this.raycastIndices?.numSplats ?? activeNumSplats ?? 0;
     const indices =
       this.raycastIndices?.indices ??
       (paged
@@ -1592,11 +1636,14 @@ export class SplatMesh extends SplatGenerator {
           ? (this.context.lodIndices.value.image.data as Uint32Array)
           : null) ??
       null;
+    const editorStateMode =
+      options.editorStateMode ?? this.raycastEditorStateMode;
     const editorState =
-      this.raycastEditorStateMode === "all"
+      editorStateMode === "all"
         ? null
         : (this.context.splats.getEditorState?.() ?? this.getEditorState());
     const filterEditorState = editorState != null;
+    const sourceIndices = SplatMesh.raycastSourceIndexBuffer;
 
     if (!ext) {
       const packed = paged
@@ -1605,7 +1652,7 @@ export class SplatMesh extends SplatGenerator {
           ? this.packedSplats?.lodSplats?.packedArray
           : this.packedSplats?.packedArray;
       if (!packed) {
-        return;
+        return hits;
       }
       const splatEncoding = paged
         ? this.paged?.splatEncoding
@@ -1613,11 +1660,13 @@ export class SplatMesh extends SplatGenerator {
       for (let base = 0; base < numSplats; base += bufferSize) {
         const count = Math.min(bufferSize, numSplats - base);
         let filteredCount = count;
+        let mappedSourceIndices = Boolean(indices);
         if (!filterEditorState && !indices) {
           buffer.set(packed.subarray(base * 4, (base + count) * 4));
         } else if (!filterEditorState && indices) {
           for (let i = 0; i < count; ++i) {
             const index = indices[base + i];
+            sourceIndices[i] = index;
             const i4 = i * 4;
             const index4 = index * 4;
             buffer[i4] = packed[index4];
@@ -1627,17 +1676,15 @@ export class SplatMesh extends SplatGenerator {
           }
         } else {
           filteredCount = 0;
+          mappedSourceIndices = true;
           for (let i = 0; i < count; ++i) {
             const index = indices ? indices[base + i] : base + i;
             if (
-              !this.matchesEditorStateMode(
-                editorState,
-                index,
-                this.raycastEditorStateMode,
-              )
+              !this.matchesEditorStateMode(editorState, index, editorStateMode)
             ) {
               continue;
             }
+            sourceIndices[filteredCount] = index;
             const i4 = filteredCount * 4;
             const index4 = index * 4;
             buffer[i4] = packed[index4];
@@ -1651,7 +1698,7 @@ export class SplatMesh extends SplatGenerator {
           }
         }
 
-        const newIntersections = raycast_packed_buffer(
+        const newHits = raycast_packed_buffer_hits(
           origin.x,
           origin.y,
           origin.z,
@@ -1666,9 +1713,12 @@ export class SplatMesh extends SplatGenerator {
           splatEncoding?.lnScaleMax ?? LN_SCALE_MAX,
           splatEncoding?.lodOpacity ?? false,
         );
-        intersections = this.appendRaycastBuffer(
-          intersections,
-          newIntersections,
+        this.appendRaycastHitPairs(
+          hits,
+          newHits,
+          ray,
+          mappedSourceIndices ? sourceIndices : null,
+          base,
         );
       }
     } else {
@@ -1684,17 +1734,19 @@ export class SplatMesh extends SplatGenerator {
           ? this.extSplats?.lodSplats?.extArrays[1]
           : this.extSplats?.extArrays[1];
       if (!ext1 || !ext2) {
-        return;
+        return hits;
       }
       for (let base = 0; base < numSplats; base += bufferSize) {
         const count = Math.min(bufferSize, numSplats - base);
         let filteredCount = count;
+        let mappedSourceIndices = Boolean(indices);
         if (!filterEditorState && !indices) {
           buffer.set(ext1.subarray(base * 4, (base + count) * 4));
           buffer2.set(ext2.subarray(base * 4, (base + count) * 4));
         } else if (!filterEditorState && indices) {
           for (let i = 0; i < count; ++i) {
             const index = indices[base + i];
+            sourceIndices[i] = index;
             const i4 = i * 4;
             const index4 = index * 4;
             buffer[i4] = ext1[index4];
@@ -1708,17 +1760,15 @@ export class SplatMesh extends SplatGenerator {
           }
         } else {
           filteredCount = 0;
+          mappedSourceIndices = true;
           for (let i = 0; i < count; ++i) {
             const index = indices ? indices[base + i] : base + i;
             if (
-              !this.matchesEditorStateMode(
-                editorState,
-                index,
-                this.raycastEditorStateMode,
-              )
+              !this.matchesEditorStateMode(editorState, index, editorStateMode)
             ) {
               continue;
             }
+            sourceIndices[filteredCount] = index;
             const i4 = filteredCount * 4;
             const index4 = index * 4;
             buffer[i4] = ext1[index4];
@@ -1736,7 +1786,7 @@ export class SplatMesh extends SplatGenerator {
           }
         }
 
-        const newIntersections = raycast_ext_buffers(
+        const newHits = raycast_ext_buffer_hits(
           origin.x,
           origin.y,
           origin.z,
@@ -1748,43 +1798,50 @@ export class SplatMesh extends SplatGenerator {
           far,
           filteredCount,
         );
-        intersections = this.appendRaycastBuffer(
-          intersections,
-          newIntersections,
+        this.appendRaycastHitPairs(
+          hits,
+          newHits,
+          ray,
+          mappedSourceIndices ? sourceIndices : null,
+          base,
         );
       }
     }
 
-    for (const distance of SplatMesh.raycastBuffer.subarray(0, intersections)) {
+    return hits;
+  }
+
+  private static raycastSourceIndexBuffer = new Uint32Array(65536);
+  private static raycastDistanceBits = new Uint32Array(1);
+  private static raycastDistanceFloat = new Float32Array(
+    SplatMesh.raycastDistanceBits.buffer,
+  );
+
+  private appendRaycastHitPairs(
+    hits: SplatMeshRayPickHit[],
+    hitPairs: Uint32Array,
+    ray: THREE.Ray,
+    sourceIndices: Uint32Array | null,
+    base: number,
+  ): void {
+    for (let i = 0; i + 1 < hitPairs.length; i += 2) {
+      const localIndex = hitPairs[i];
+      SplatMesh.raycastDistanceBits[0] = hitPairs[i + 1];
+      const distance = SplatMesh.raycastDistanceFloat[0];
+      const index = sourceIndices
+        ? sourceIndices[localIndex]
+        : base + localIndex;
       const point = ray.direction
         .clone()
         .multiplyScalar(distance)
         .add(ray.origin);
-      intersects.push({
+      hits.push({
+        index,
         distance,
         point,
         object: this,
       });
     }
-  }
-
-  static raycastBuffer = new Float32Array(1024);
-
-  private appendRaycastBuffer(count: number, additional: Float32Array) {
-    const total = count + additional.length;
-    let capacity = SplatMesh.raycastBuffer.length;
-
-    if (total > capacity) {
-      while (capacity < total) {
-        capacity *= 2;
-      }
-      const newBuffer = new Float32Array(capacity);
-      newBuffer.set(SplatMesh.raycastBuffer.subarray(0, count));
-      SplatMesh.raycastBuffer = newBuffer;
-    }
-
-    SplatMesh.raycastBuffer.set(additional, count);
-    return count + additional.length;
   }
 
   async createLodSplats({
@@ -1889,6 +1946,13 @@ export const emptyLodIndices = (() => {
 
 const EMPTY_GEOMETRY = new THREE.BufferGeometry();
 const EMPTY_MATERIAL = new THREE.ShaderMaterial();
+
+function normalizeMaxPickHits(maxHits: number | undefined): number | null {
+  if (maxHits === undefined || !Number.isFinite(maxHits)) {
+    return null;
+  }
+  return Math.max(0, Math.floor(maxHits));
+}
 
 // Creates an empty mesh to hook into Three.js rendering.
 // This is used to detect if a SparkRenderer is present in the scene.
