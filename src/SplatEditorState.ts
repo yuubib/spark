@@ -337,6 +337,10 @@ export class SplatEditorState {
   ): SplatEditorStateMutationResult {
     const changes = createMutationChanges(options);
     if (operation === "set") {
+      if (this.selected === 0) {
+        return this.selectCandidateSetFromEmpty(indices, changes);
+      }
+
       let sparseCandidates = new Set<number>();
       let denseCandidates: Uint8Array | null = null;
       const sparseThreshold = Math.floor(
@@ -1485,6 +1489,28 @@ export class SplatEditorState {
       this.version++;
     }
     return true;
+  }
+
+  private selectCandidateSetFromEmpty(
+    indices: Iterable<number>,
+    changes?: SplatEditorStateChange[],
+  ): SplatEditorStateMutationResult {
+    const dirtyIndices: number[] = [];
+    let fullRange = false;
+    let changed = 0;
+    for (const rawIndex of indices) {
+      const index = this.normalizeIndex(rawIndex);
+      if (index === null || this.states[index] !== SPLAT_EDITOR_STATE_NONE) {
+        continue;
+      }
+      if (
+        this.setMutationUnchecked(index, SPLAT_EDITOR_STATE_SELECTED, changes)
+      ) {
+        changed++;
+        fullRange ||= this.collectDirtyIndex(dirtyIndices, index);
+      }
+    }
+    return this.commitMutation(changed, dirtyIndices, fullRange, changes);
   }
 
   private selectCandidateSetDense(
