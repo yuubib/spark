@@ -5,6 +5,7 @@ import * as THREE from "three";
 import {
   ExtSplats,
   PackedSplats,
+  SPLAT_EDITOR_STATE_DELETED,
   SplatMesh,
   type SplatSource,
 } from "../dist/spark.module.js";
@@ -126,6 +127,46 @@ const collectRawCenters = (
   );
   assert.strictEqual(rawCenterCount, 1);
   assert.strictEqual(fullDecodeCount, 1);
+}
+
+await SplatMesh.staticInitialized;
+
+{
+  const mesh = new SplatMesh({
+    constructSplats: (splats) => {
+      splat(splats, new THREE.Vector3(1, 2, 3));
+      splat(splats, new THREE.Vector3(-2, -3, -4));
+      splat(splats, new THREE.Vector3(5, 6, 7));
+    },
+  });
+  await mesh.initialized;
+
+  let rawCenterIteratorCount = 0;
+  const originalRawCenterIterator = mesh.forEachSplatCenterRaw.bind(mesh);
+  mesh.forEachSplatCenterRaw = (callback) => {
+    rawCenterIteratorCount += 1;
+    originalRawCenterIterator(callback);
+  };
+  mesh.forEachSplatCenter = () => {
+    throw new Error("center-only bounds should use raw center iteration");
+  };
+
+  const allBounds = mesh.getBoundingBox(true);
+  assert.deepStrictEqual(allBounds.min.toArray(), [-2, -3, -4]);
+  assert.deepStrictEqual(allBounds.max.toArray(), [5, 6, 7]);
+
+  mesh
+    .ensureEditorState()
+    .replace(new Uint8Array([0, SPLAT_EDITOR_STATE_DELETED, 0]), 3);
+  const visibleBounds = mesh.getSplatStateBoundingBox({
+    centersOnly: true,
+    mode: "visible",
+  });
+  assert.deepStrictEqual(visibleBounds.min.toArray(), [1, 2, 3]);
+  assert.deepStrictEqual(visibleBounds.max.toArray(), [5, 6, 7]);
+  assert.strictEqual(rawCenterIteratorCount, 2);
+
+  mesh.dispose();
 }
 
 console.log("Splat source center iteration tests passed");

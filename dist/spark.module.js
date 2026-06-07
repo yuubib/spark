@@ -15965,11 +15965,19 @@ const _SplatMesh = class _SplatMesh extends SplatGenerator {
     );
     const corners = new THREE.Vector3();
     const signs = [-1, 1];
-    function callback(_index, center, scales, quaternion, _opacity, _color) {
-      if (centers_only) {
-        minVec.min(center);
-        maxVec.max(center);
-      } else {
+    if (centers_only) {
+      this.forEachSplatCenterRaw((_index, x, y, z) => {
+        minVec.x = Math.min(minVec.x, x);
+        minVec.y = Math.min(minVec.y, y);
+        minVec.z = Math.min(minVec.z, z);
+        maxVec.x = Math.max(maxVec.x, x);
+        maxVec.y = Math.max(maxVec.y, y);
+        maxVec.z = Math.max(maxVec.z, z);
+      });
+      return new THREE.Box3(minVec, maxVec);
+    }
+    (_a2 = this.splats) == null ? void 0 : _a2.forEachSplat(
+      (_index, center, scales, quaternion, _opacity, _color) => {
         for (const x of signs) {
           for (const y of signs) {
             for (const z of signs) {
@@ -15982,10 +15990,8 @@ const _SplatMesh = class _SplatMesh extends SplatGenerator {
           }
         }
       }
-    }
-    (_a2 = this.splats) == null ? void 0 : _a2.forEachSplat(callback);
-    const box = new THREE.Box3(minVec, maxVec);
-    return box;
+    );
+    return new THREE.Box3(minVec, maxVec);
   }
   getSplatStateBoundingBox({
     centersOnly = true,
@@ -16004,14 +16010,19 @@ const _SplatMesh = class _SplatMesh extends SplatGenerator {
     const corners = new THREE.Vector3();
     const signs = [-1, 1];
     if (centersOnly) {
-      this.forEachSplatCenter((index, center) => {
+      this.forEachSplatCenterRaw((index, x, y, z) => {
         if (!matchesSplatEditorStateBits(
           this.getEditorStateBits(editorState, index),
           mode
         )) {
           return;
         }
-        box.expandByPoint(center);
+        box.min.x = Math.min(box.min.x, x);
+        box.min.y = Math.min(box.min.y, y);
+        box.min.z = Math.min(box.min.z, z);
+        box.max.x = Math.max(box.max.x, x);
+        box.max.y = Math.max(box.max.y, y);
+        box.max.z = Math.max(box.max.z, z);
       });
       return box;
     }
