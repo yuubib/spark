@@ -313,6 +313,63 @@ assert.deepStrictEqual(scaledMaskStats, {
   earlyExit: false,
 });
 
+const fullViewportMask = new Uint8Array(4 * 4 * 4);
+fullViewportMask[(2 * 4 + 2) * 4 + 3] = 255;
+const fullViewportMaskStats = emptyCollectStats();
+assert.deepStrictEqual(
+  normalizeSplatScreenPickShape(
+    {
+      kind: "mask",
+      x: 0.25,
+      y: 0.25,
+      width: 0.5,
+      height: 0.5,
+      mask: fullViewportMask,
+      maskWidth: 4,
+      maskHeight: 4,
+      maskRect: { x: 0, y: 0, width: 1, height: 1 },
+    },
+    4,
+    4,
+  ).mask?.sourceRect,
+  { x: 0, y: 0, width: 4, height: 4 },
+);
+assert.deepStrictEqual(
+  collectSplatScreenPickHitsFromRgba8(
+    new Uint8Array([
+      ...encode(10),
+      ...encode(11),
+      ...encode(12),
+      ...encode(13),
+    ]),
+    {
+      x: 1,
+      y: 1,
+      width: 2,
+      height: 2,
+      mask: {
+        data: fullViewportMask,
+        width: 4,
+        height: 4,
+        channel: 3,
+        threshold: 0,
+        sourceRect: { x: 0, y: 0, width: 4, height: 4 },
+      },
+    },
+    { stats: fullViewportMaskStats },
+  ),
+  [{ accumulatorIndex: 11, pixel: { x: 2, y: 2 } }],
+);
+assert.deepStrictEqual(fullViewportMaskStats, {
+  pixelCount: 4,
+  candidatePixelCount: 1,
+  maskTestedPixelCount: 4,
+  encodedPixelCount: 1,
+  duplicatePixelHitCount: 0,
+  uniqueHitCount: 1,
+  earlyExit: false,
+});
+
 const centerStats = createSplatScreenPickCenterCollectStats();
 assert.strictEqual(
   testSplatScreenPickCenter(
@@ -424,6 +481,54 @@ assert.strictEqual(
 );
 assert.strictEqual(centerMaskStats.maskTestedCenterCount, 2);
 assert.strictEqual(centerMaskStats.viewRejectedCenterCount, 1);
+
+const centerFullViewportMaskStats = createSplatScreenPickCenterCollectStats();
+assert.strictEqual(
+  testSplatScreenPickCenter(
+    {
+      x: 1,
+      y: 1,
+      width: 2,
+      height: 2,
+      mask: {
+        data: fullViewportMask,
+        width: 4,
+        height: 4,
+        channel: 3,
+        threshold: 0,
+        sourceRect: { x: 0, y: 0, width: 4, height: 4 },
+      },
+    },
+    2.2,
+    2.2,
+    centerFullViewportMaskStats,
+  ),
+  true,
+);
+assert.strictEqual(
+  testSplatScreenPickCenter(
+    {
+      x: 1,
+      y: 1,
+      width: 2,
+      height: 2,
+      mask: {
+        data: fullViewportMask,
+        width: 4,
+        height: 4,
+        channel: 3,
+        threshold: 0,
+        sourceRect: { x: 0, y: 0, width: 4, height: 4 },
+      },
+    },
+    1.2,
+    2.2,
+    centerFullViewportMaskStats,
+  ),
+  false,
+);
+assert.strictEqual(centerFullViewportMaskStats.maskTestedCenterCount, 2);
+assert.strictEqual(centerFullViewportMaskStats.viewRejectedCenterCount, 1);
 
 const centerBoundsStats = createSplatScreenPickCenterCollectStats();
 recordSplatScreenPickProjectedCenter(centerBoundsStats, {

@@ -31,6 +31,7 @@ export type SplatScreenPickShape =
       maskHeight: number;
       maskChannel?: 0 | 1 | 2 | 3;
       maskThreshold?: number;
+      maskRect?: SplatScreenPickMaskRect;
     };
 
 export type SplatScreenRgba8RowOrder = "bottom-left" | "top-left";
@@ -189,12 +190,20 @@ export type SplatScreenPickRect = {
   mask?: SplatScreenPickMask;
 };
 
+export type SplatScreenPickMaskRect = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
 export type SplatScreenPickMask = {
   data: ArrayLike<number>;
   width: number;
   height: number;
   channel: 0 | 1 | 2 | 3;
   threshold: number;
+  sourceRect?: SplatScreenPickMaskRect;
 };
 
 export type SplatScreenPickPixelHit = {
@@ -384,6 +393,15 @@ export function normalizeSplatScreenPickShape(
       height: shape.maskHeight,
       channel: shape.maskChannel ?? 3,
       threshold: shape.maskThreshold ?? 0,
+      ...(shape.maskRect
+        ? {
+            sourceRect: normalizeSplatScreenPickMaskRect(
+              shape.maskRect,
+              targetWidth,
+              targetHeight,
+            ),
+          }
+        : {}),
     },
   };
 }
@@ -453,6 +471,25 @@ export function resolveSplatScreenPickRenderLayout(
     readRect: { x, y, width, height },
     viewOffset: null,
   };
+}
+
+function normalizeSplatScreenPickMaskRect(
+  rect: SplatScreenPickMaskRect,
+  targetWidth: number,
+  targetHeight: number,
+): SplatScreenPickMaskRect {
+  const rawX = rect.width < 0 ? rect.x + rect.width : rect.x;
+  const rawY = rect.height < 0 ? rect.y + rect.height : rect.y;
+  return clipPickRect(
+    {
+      x: rawX * targetWidth,
+      y: rawY * targetHeight,
+      width: Math.abs(rect.width) * targetWidth,
+      height: Math.abs(rect.height) * targetHeight,
+    },
+    targetWidth,
+    targetHeight,
+  );
 }
 
 export function createSplatScreenFloodMaskFromRgba8(
@@ -640,7 +677,10 @@ export function collectSplatScreenPickHitsFromRgba8(
       : Number.POSITIVE_INFINITY;
   const mask = rect.mask;
   const directMask =
-    mask && mask.width === rect.width && mask.height === rect.height
+    mask &&
+    !mask.sourceRect &&
+    mask.width === rect.width &&
+    mask.height === rect.height
       ? mask
       : null;
   const stats = {
@@ -668,7 +708,12 @@ export function collectSplatScreenPickHitsFromRgba8(
         if (
           directMask
             ? !isPickMaskPixelEnabledAt(directMask, x, topY)
-            : !isPickMaskPixelEnabled(mask, x, topY, rect)
+            : !isPickMaskScreenPixelEnabled(
+                mask,
+                rect.x + x,
+                rect.y + topY,
+                rect,
+              )
         ) {
           continue;
         }
@@ -854,9 +899,11 @@ export function testSplatScreenPickCenter(
     const localX = Math.floor(x - rect.x);
     const localY = Math.floor(y - rect.y);
     if (
-      mask.width === rect.width && mask.height === rect.height
+      !mask.sourceRect &&
+      mask.width === rect.width &&
+      mask.height === rect.height
         ? !isPickMaskPixelEnabledAt(mask, localX, localY)
-        : !isPickMaskPixelEnabled(mask, localX, localY, rect)
+        : !isPickMaskScreenPixelEnabled(mask, x, y, rect)
     ) {
       if (stats) {
         stats.viewRejectedCenterCount += 1;
@@ -894,22 +941,31 @@ function isPickMaskPixelEnabledAt(
   return value > mask.threshold;
 }
 
-function isPickMaskPixelEnabled(
+function isPickMaskScreenPixelEnabled(
   mask: SplatScreenPickMask,
-  x: number,
-  y: number,
+  screenX: number,
+  screenY: number,
   rect: SplatScreenPickRect,
 ): boolean {
   if (mask.width <= 0 || mask.height <= 0) {
     return false;
   }
+  const sourceRect = mask.sourceRect ?? rect;
+  if (sourceRect.width <= 0 || sourceRect.height <= 0) {
+    return false;
+  }
+  const x = screenX - sourceRect.x;
+  const y = screenY - sourceRect.y;
   const maskX = Math.max(
     0,
-    Math.min(mask.width - 1, Math.floor((x / rect.width) * mask.width)),
+    Math.min(mask.width - 1, Math.floor((x / sourceRect.width) * mask.width)),
   );
   const maskY = Math.max(
     0,
-    Math.min(mask.height - 1, Math.floor((y / rect.height) * mask.height)),
+    Math.min(
+      mask.height - 1,
+      Math.floor((y / sourceRect.height) * mask.height),
+    ),
   );
   return isPickMaskPixelEnabledAt(mask, maskX, maskY);
 }

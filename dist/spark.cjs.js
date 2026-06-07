@@ -12052,7 +12052,14 @@ function normalizeSplatScreenPickShape(shape, targetWidth, targetHeight) {
       width: shape.maskWidth,
       height: shape.maskHeight,
       channel: shape.maskChannel ?? 3,
-      threshold: shape.maskThreshold ?? 0
+      threshold: shape.maskThreshold ?? 0,
+      ...shape.maskRect ? {
+        sourceRect: normalizeSplatScreenPickMaskRect(
+          shape.maskRect,
+          targetWidth,
+          targetHeight
+        )
+      } : {}
     }
   };
 }
@@ -12107,6 +12114,20 @@ function resolveSplatScreenPickRenderLayout(rect, viewportWidth, viewportHeight,
     readRect: { x, y, width, height },
     viewOffset: null
   };
+}
+function normalizeSplatScreenPickMaskRect(rect, targetWidth, targetHeight) {
+  const rawX = rect.width < 0 ? rect.x + rect.width : rect.x;
+  const rawY = rect.height < 0 ? rect.y + rect.height : rect.y;
+  return clipPickRect(
+    {
+      x: rawX * targetWidth,
+      y: rawY * targetHeight,
+      width: Math.abs(rect.width) * targetWidth,
+      height: Math.abs(rect.height) * targetHeight
+    },
+    targetWidth,
+    targetHeight
+  );
 }
 function createSplatScreenFloodMaskFromRgba8(pixels, options) {
   const width = Math.floor(options.width);
@@ -12257,7 +12278,7 @@ function collectSplatScreenPickHitsFromRgba8(pixels, rect, options = {}) {
   const hits = [];
   const maxCandidates = options.maxCandidates != null ? Math.max(0, Math.floor(options.maxCandidates)) : Number.POSITIVE_INFINITY;
   const mask = rect.mask;
-  const directMask = mask && mask.width === rect.width && mask.height === rect.height ? mask : null;
+  const directMask = mask && !mask.sourceRect && mask.width === rect.width && mask.height === rect.height ? mask : null;
   const stats = {
     pixelCount: rect.width * rect.height,
     candidatePixelCount: 0,
@@ -12279,7 +12300,12 @@ function collectSplatScreenPickHitsFromRgba8(pixels, rect, options = {}) {
     for (let x = 0; x < rect.width; x++) {
       if (mask) {
         stats.maskTestedPixelCount += 1;
-        if (directMask ? !isPickMaskPixelEnabledAt(directMask, x, topY) : !isPickMaskPixelEnabled(mask, x, topY, rect)) {
+        if (directMask ? !isPickMaskPixelEnabledAt(directMask, x, topY) : !isPickMaskScreenPixelEnabled(
+          mask,
+          rect.x + x,
+          rect.y + topY,
+          rect
+        )) {
           continue;
         }
       }
@@ -12391,7 +12417,7 @@ function testSplatScreenPickCenter(rect, x, y, stats, boundsMode = "half-open") 
     }
     const localX = Math.floor(x - rect.x);
     const localY = Math.floor(y - rect.y);
-    if (mask.width === rect.width && mask.height === rect.height ? !isPickMaskPixelEnabledAt(mask, localX, localY) : !isPickMaskPixelEnabled(mask, localX, localY, rect)) {
+    if (!mask.sourceRect && mask.width === rect.width && mask.height === rect.height ? !isPickMaskPixelEnabledAt(mask, localX, localY) : !isPickMaskScreenPixelEnabled(mask, x, y, rect)) {
       if (stats) {
         stats.viewRejectedCenterCount += 1;
       }
@@ -12416,17 +12442,26 @@ function isPickMaskPixelEnabledAt(mask, x, y) {
   const value = mask.data[(y * mask.width + x) * 4 + mask.channel] ?? 0;
   return value > mask.threshold;
 }
-function isPickMaskPixelEnabled(mask, x, y, rect) {
+function isPickMaskScreenPixelEnabled(mask, screenX, screenY, rect) {
   if (mask.width <= 0 || mask.height <= 0) {
     return false;
   }
+  const sourceRect = mask.sourceRect ?? rect;
+  if (sourceRect.width <= 0 || sourceRect.height <= 0) {
+    return false;
+  }
+  const x = screenX - sourceRect.x;
+  const y = screenY - sourceRect.y;
   const maskX = Math.max(
     0,
-    Math.min(mask.width - 1, Math.floor(x / rect.width * mask.width))
+    Math.min(mask.width - 1, Math.floor(x / sourceRect.width * mask.width))
   );
   const maskY = Math.max(
     0,
-    Math.min(mask.height - 1, Math.floor(y / rect.height * mask.height))
+    Math.min(
+      mask.height - 1,
+      Math.floor(y / sourceRect.height * mask.height)
+    )
   );
   return isPickMaskPixelEnabledAt(mask, maskX, maskY);
 }

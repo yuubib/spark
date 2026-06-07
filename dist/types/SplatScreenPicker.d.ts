@@ -23,6 +23,7 @@ export type SplatScreenPickShape = {
     maskHeight: number;
     maskChannel?: 0 | 1 | 2 | 3;
     maskThreshold?: number;
+    maskRect?: SplatScreenPickMaskRect;
 };
 export type SplatScreenRgba8RowOrder = "bottom-left" | "top-left";
 export type SplatScreenFloodMaskShape = Extract<SplatScreenPickShape, {
@@ -155,12 +156,19 @@ export type SplatScreenPickRect = {
     height: number;
     mask?: SplatScreenPickMask;
 };
+export type SplatScreenPickMaskRect = {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+};
 export type SplatScreenPickMask = {
     data: ArrayLike<number>;
     width: number;
     height: number;
     channel: 0 | 1 | 2 | 3;
     threshold: number;
+    sourceRect?: SplatScreenPickMaskRect;
 };
 export type SplatScreenPickPixelHit = {
     accumulatorIndex: number;

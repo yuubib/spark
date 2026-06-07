@@ -232,6 +232,31 @@ const fullMaskBoundary = await sparkRenderer.pickSplatCandidateIndices({
 
 assert.deepStrictEqual([...(fullMaskBoundary ?? [])], [0]);
 
+const fullViewportMask = new Uint8Array(100 * 100 * 4);
+fullViewportMask[(50 * 100 + 75) * 4 + 3] = 255;
+const fullViewportMaskPick = await sparkRenderer.pickSplatCandidateIndices({
+  target: mesh,
+  scene,
+  camera,
+  candidateMode: "centers",
+  shape: {
+    kind: "mask",
+    x: 0,
+    y: 0,
+    width: 1,
+    height: 1,
+    mask: fullViewportMask,
+    maskWidth: 100,
+    maskHeight: 100,
+    maskRect: { x: 0, y: 0, width: 1, height: 1 },
+  },
+  width: 100,
+  height: 100,
+  operation: "set",
+});
+
+assert.deepStrictEqual([...(fullViewportMaskPick ?? [])], [1]);
+
 const originalPickSplatCandidates =
   sparkRenderer.pickSplatCandidates.bind(sparkRenderer);
 let renderedSeedOptions: unknown = null;
