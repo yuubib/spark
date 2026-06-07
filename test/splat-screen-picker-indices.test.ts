@@ -696,6 +696,105 @@ assert.deepStrictEqual([...(cappedReuse ?? [])], [0]);
 assert.strictEqual(cappedReuse?.buffer, cappedIndexBuffer.buffer.buffer);
 assert.strictEqual(cappedIndexBuffer.buffer[1], 999);
 
+const projectionCacheMesh = new SplatMesh({
+  constructSplats: (splats) => {
+    splats.pushSplat(
+      new THREE.Vector3(-0.5, 0, 0),
+      new THREE.Vector3(0.1, 0.1, 0.1),
+      new THREE.Quaternion(),
+      1,
+      new THREE.Color(1, 0, 0),
+    );
+    splats.pushSplat(
+      new THREE.Vector3(0.5, 0, 0),
+      new THREE.Vector3(0.1, 0.1, 0.1),
+      new THREE.Quaternion(),
+      1,
+      new THREE.Color(0, 1, 0),
+    );
+    splats.pushSplat(
+      new THREE.Vector3(2, 0, 0),
+      new THREE.Vector3(0.1, 0.1, 0.1),
+      new THREE.Quaternion(),
+      1,
+      new THREE.Color(0, 0, 1),
+    );
+  },
+});
+await projectionCacheMesh.initialized;
+scene.add(projectionCacheMesh);
+let projectionCacheRawIterations = 0;
+const originalProjectionCacheRawIterator =
+  projectionCacheMesh.forEachSplatCenterRaw.bind(projectionCacheMesh);
+projectionCacheMesh.forEachSplatCenterRaw = (callback) => {
+  projectionCacheRawIterations += 1;
+  originalProjectionCacheRawIterator(callback);
+};
+
+let projectionCacheFirstStats: SplatScreenPickStats | null = null;
+const projectionCacheFirst = await sparkRenderer.pickSplatCandidateIndices({
+  target: projectionCacheMesh,
+  scene,
+  camera,
+  candidateMode: "centers",
+  shape: { kind: "rect", x: 0, y: 0, width: 1, height: 1 },
+  width: 100,
+  height: 100,
+  operation: "set",
+  onStats: (nextStats) => {
+    projectionCacheFirstStats = nextStats;
+  },
+});
+let projectionCacheSecondStats: SplatScreenPickStats | null = null;
+const projectionCacheSecond = await sparkRenderer.pickSplatCandidateIndices({
+  target: projectionCacheMesh,
+  scene,
+  camera,
+  candidateMode: "centers",
+  shape: { kind: "rect", x: 0, y: 0, width: 1, height: 1 },
+  width: 100,
+  height: 100,
+  operation: "set",
+  onStats: (nextStats) => {
+    projectionCacheSecondStats = nextStats;
+  },
+});
+
+assert.deepStrictEqual([...(projectionCacheFirst ?? [])], [0, 1]);
+assert.deepStrictEqual([...(projectionCacheSecond ?? [])], [0, 1]);
+assert.strictEqual(projectionCacheRawIterations, 1);
+assert.strictEqual(projectionCacheFirstStats?.centerCollect?.centerCount, 3);
+assert.strictEqual(projectionCacheSecondStats?.centerCollect?.centerCount, 3);
+
+const projectionCacheViewportMiss =
+  await sparkRenderer.pickSplatCandidateIndices({
+    target: projectionCacheMesh,
+    scene,
+    camera,
+    candidateMode: "centers",
+    shape: { kind: "rect", x: 0, y: 0, width: 1, height: 1 },
+    width: 101,
+    height: 100,
+    operation: "set",
+  });
+const projectionCacheViewportHit =
+  await sparkRenderer.pickSplatCandidateIndices({
+    target: projectionCacheMesh,
+    scene,
+    camera,
+    candidateMode: "centers",
+    shape: { kind: "rect", x: 0, y: 0, width: 1, height: 1 },
+    width: 101,
+    height: 100,
+    operation: "set",
+  });
+
+assert.deepStrictEqual([...(projectionCacheViewportMiss ?? [])], [0, 1]);
+assert.deepStrictEqual([...(projectionCacheViewportHit ?? [])], [0, 1]);
+assert.strictEqual(projectionCacheRawIterations, 2);
+scene.remove(projectionCacheMesh);
+projectionCacheMesh.dispose();
+
 const strictRectBoundary = await sparkRenderer.pickSplatCandidateIndices({
   target: mesh,
   scene,

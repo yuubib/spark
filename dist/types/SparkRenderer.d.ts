@@ -345,6 +345,7 @@ export declare class SparkRenderer extends THREE.Mesh {
     readback32: Uint32Array<ArrayBuffer>;
     compactReadback32: Uint32Array<ArrayBuffer>;
     compactSortSourceIndices: Uint32Array<ArrayBuffer>;
+    private centerProjectionCache;
     enableLod: boolean;
     enableDriveLod: boolean;
     enableLodFetching: boolean;
@@ -593,6 +594,7 @@ export declare class SparkRenderer extends THREE.Mesh {
     createSplatScreenFloodMask(options: SplatScreenFloodMaskRenderOptions): Promise<SplatScreenFloodMaskResult>;
     private collectSplatScreenPickCenterHits;
     private forEachSplatScreenPickTargetCenterRaw;
+    private getSplatScreenPickProjectionCache;
     private collectSplatScreenPickCenterIndices;
     private tryCollectSplatScreenPickCenterIndicesGpu;
     private ensureSplatCenterIntersectionTarget;

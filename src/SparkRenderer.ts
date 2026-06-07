@@ -128,6 +128,15 @@ function ensureSplatScreenPickIndexBuffer(
   return next;
 }
 
+interface SplatScreenPickProjectionCache {
+  readonly numSplats: number;
+  readonly targetVersion: number;
+  readonly viewportWidth: number;
+  readonly viewportHeight: number;
+  readonly objectToClipElements: readonly number[];
+  readonly projectedCenters: Float64Array;
+}
+
 function resolveSplatScreenPickRankPoint(
   shape: SplatScreenPickOptions["shape"],
   rect: SplatScreenPickRect,
@@ -301,6 +310,25 @@ function canRejectSplatScreenPickEditorStateFilter(
 
 function normalizeSplatCount(numSplats: number): number {
   return Number.isFinite(numSplats) ? Math.max(0, Math.floor(numSplats)) : 0;
+}
+
+function copyMatrixElements(elements: readonly number[]): number[] {
+  return Array.from(elements);
+}
+
+function matrixElementsEqual(
+  a: readonly number[],
+  b: readonly number[],
+): boolean {
+  if (a.length !== b.length) {
+    return false;
+  }
+  for (let index = 0; index < a.length; index += 1) {
+    if (a[index] !== b[index]) {
+      return false;
+    }
+  }
+  return true;
 }
 
 function applySelectedTransformToRawCenter(
@@ -771,6 +799,10 @@ export class SparkRenderer extends THREE.Mesh {
   readback32 = new Uint32Array(0);
   compactReadback32 = new Uint32Array(0);
   compactSortSourceIndices = new Uint32Array(0);
+  private centerProjectionCache = new WeakMap<
+    SplatMesh,
+    SplatScreenPickProjectionCache
+  >();
 
   enableLod: boolean;
   enableDriveLod: boolean;
@@ -3228,6 +3260,81 @@ export class SparkRenderer extends THREE.Mesh {
     });
   }
 
+  private getSplatScreenPickProjectionCache({
+    target,
+    objectToClip,
+    viewportWidth,
+    viewportHeight,
+  }: {
+    target: SplatMesh;
+    objectToClip: THREE.Matrix4;
+    viewportWidth: number;
+    viewportHeight: number;
+  }): SplatScreenPickProjectionCache {
+    const numSplats = normalizeSplatCount(target.numSplats);
+    const objectToClipElements = objectToClip.elements;
+    this.centerProjectionCache ??= new WeakMap<
+      SplatMesh,
+      SplatScreenPickProjectionCache
+    >();
+    const cached = this.centerProjectionCache.get(target);
+    if (
+      cached &&
+      cached.numSplats === numSplats &&
+      cached.targetVersion === target.version &&
+      cached.viewportWidth === viewportWidth &&
+      cached.viewportHeight === viewportHeight &&
+      matrixElementsEqual(cached.objectToClipElements, objectToClipElements)
+    ) {
+      return cached;
+    }
+
+    const projectedCenters =
+      cached && cached.projectedCenters.length >= numSplats * 3
+        ? cached.projectedCenters
+        : new Float64Array(numSplats * 3);
+    projectedCenters.fill(Number.NaN, 0, numSplats * 3);
+
+    const projectedCenter: SplatScreenPickProjectedCenter = {
+      x: 0,
+      y: 0,
+      ndcZ: 0,
+    };
+    target.forEachSplatCenterRaw((index, centerX, centerY, centerZ) => {
+      if (!Number.isInteger(index) || index < 0 || index >= numSplats) {
+        return;
+      }
+      const offset = index * 3;
+      if (
+        !projectSplatScreenPickCenter(
+          objectToClipElements,
+          centerX,
+          centerY,
+          centerZ,
+          viewportWidth,
+          viewportHeight,
+          projectedCenter,
+        )
+      ) {
+        return;
+      }
+      projectedCenters[offset] = projectedCenter.x;
+      projectedCenters[offset + 1] = projectedCenter.y;
+      projectedCenters[offset + 2] = projectedCenter.ndcZ;
+    });
+
+    const nextCache: SplatScreenPickProjectionCache = {
+      numSplats,
+      targetVersion: target.version,
+      viewportWidth,
+      viewportHeight,
+      objectToClipElements: copyMatrixElements(objectToClipElements),
+      projectedCenters,
+    };
+    this.centerProjectionCache.set(target, nextCache);
+    return nextCache;
+  }
+
   private collectSplatScreenPickCenterIndices({
     scene,
     camera,
@@ -3315,6 +3422,101 @@ export class SparkRenderer extends THREE.Mesh {
       target.updateMatrixWorld(true);
       objectToClip.multiplyMatrices(viewProjection, target.matrixWorld);
       const objectToClipElements = objectToClip.elements;
+      const editorState = target.getEditorState();
+      const selectedTransform = target.getSelectedSplatTransform();
+      const targetSplatCount = normalizeSplatCount(target.numSplats);
+      if (
+        canRejectSplatScreenPickEditorStateFilter(
+          editorState,
+          editorStateMode,
+          targetSplatCount,
+        )
+      ) {
+        stats.centerCount += targetSplatCount;
+        stats.stateRejectedCenterCount += targetSplatCount;
+        return;
+      }
+      const skipEditorStateFilter =
+        selectedTransform == null &&
+        canSkipSplatScreenPickEditorStateFilter(
+          editorState,
+          editorStateMode,
+          targetSplatCount,
+        );
+      const shouldUseSelectedIndexPath =
+        editorState &&
+        !skipEditorStateFilter &&
+        target.hasIndexedSplatCenters() &&
+        canUseSelectedSplatCenterIndexMode(editorStateMode);
+      const sourceSplatCount = target.splats?.getNumSplats?.();
+      const sourceCountMatches =
+        sourceSplatCount == null || sourceSplatCount === targetSplatCount;
+
+      if (
+        !selectedTransform &&
+        !shouldUseSelectedIndexPath &&
+        !Number.isFinite(max) &&
+        sourceCountMatches
+      ) {
+        const projectionCache = this.getSplatScreenPickProjectionCache({
+          target,
+          objectToClip,
+          viewportWidth,
+          viewportHeight,
+        });
+        const projectedCenters = projectionCache.projectedCenters;
+        for (let index = 0; index < targetSplatCount; index += 1) {
+          if (indexCount >= max) {
+            stats.earlyExit = true;
+            break;
+          }
+          stats.centerCount += 1;
+          const bits =
+            !skipEditorStateFilter &&
+            editorState &&
+            index < editorState.maxSplats
+              ? (editorState.states[index] ?? 0)
+              : 0;
+          if (
+            !skipEditorStateFilter &&
+            !matchesSplatEditorStateBits(bits, editorStateMode)
+          ) {
+            stats.stateRejectedCenterCount += 1;
+            continue;
+          }
+
+          const offset = index * 3;
+          projectedCenter.x = projectedCenters[offset];
+          projectedCenter.y = projectedCenters[offset + 1];
+          projectedCenter.ndcZ = projectedCenters[offset + 2];
+          if (
+            !Number.isFinite(projectedCenter.x) ||
+            !Number.isFinite(projectedCenter.y) ||
+            !Number.isFinite(projectedCenter.ndcZ)
+          ) {
+            stats.viewRejectedCenterCount += 1;
+            continue;
+          }
+          recordSplatScreenPickProjectedCenter(stats, projectedCenter);
+
+          if (
+            !testSplatScreenPickCenter(
+              rect,
+              projectedCenter.x,
+              projectedCenter.y,
+              stats,
+              boundsMode,
+            )
+          ) {
+            continue;
+          }
+
+          stats.candidateCenterCount += 1;
+          recordSplatScreenPickCandidateCenter(stats, projectedCenter);
+          pushIndex(index);
+        }
+        return;
+      }
 
       this.forEachSplatScreenPickTargetCenterRaw({
         target,
