@@ -13410,6 +13410,8 @@ const _SparkRenderer = class _SparkRenderer extends THREE.Mesh {
       mappings.set(mapping.node, { base: mapping.base, count: mapping.count });
     }
     const hits = [];
+    let lastAccumulatorIndex = -1;
+    let orderedAccumulatorHits = true;
     scene.traverseVisible((object) => {
       if (hits.length >= max2 || !(object instanceof SplatMesh)) {
         return;
@@ -13455,10 +13457,15 @@ const _SparkRenderer = class _SparkRenderer extends THREE.Mesh {
           return;
         }
         stats.candidateCenterCount += 1;
+        const accumulatorIndex = mapping && index < mapping.count ? mapping.base + index : index;
+        if (accumulatorIndex < lastAccumulatorIndex) {
+          orderedAccumulatorHits = false;
+        }
+        lastAccumulatorIndex = accumulatorIndex;
         hits.push({
           object,
           index,
-          accumulatorIndex: mapping && index < mapping.count ? mapping.base + index : index,
+          accumulatorIndex,
           sourceIndexStable,
           pixel: {
             x: Math.floor(projectedCenter.x),
@@ -13468,7 +13475,7 @@ const _SparkRenderer = class _SparkRenderer extends THREE.Mesh {
       });
     });
     stats.uniqueHitCount = hits.length;
-    if (sort !== false) {
+    if (sort !== false && !orderedAccumulatorHits) {
       hits.sort(
         (a, b) => a.accumulatorIndex - b.accumulatorIndex || a.object.uuid.localeCompare(b.object.uuid) || a.index - b.index
       );

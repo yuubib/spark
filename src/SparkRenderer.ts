@@ -2160,6 +2160,8 @@ export class SparkRenderer extends THREE.Mesh {
     }
 
     const hits: SplatScreenPickHit[] = [];
+    let lastAccumulatorIndex = -1;
+    let orderedAccumulatorHits = true;
 
     scene.traverseVisible((object) => {
       if (hits.length >= max || !(object instanceof SplatMesh)) {
@@ -2220,11 +2222,16 @@ export class SparkRenderer extends THREE.Mesh {
         }
 
         stats.candidateCenterCount += 1;
+        const accumulatorIndex =
+          mapping && index < mapping.count ? mapping.base + index : index;
+        if (accumulatorIndex < lastAccumulatorIndex) {
+          orderedAccumulatorHits = false;
+        }
+        lastAccumulatorIndex = accumulatorIndex;
         hits.push({
           object,
           index,
-          accumulatorIndex:
-            mapping && index < mapping.count ? mapping.base + index : index,
+          accumulatorIndex,
           sourceIndexStable,
           pixel: {
             x: Math.floor(projectedCenter.x),
@@ -2235,7 +2242,7 @@ export class SparkRenderer extends THREE.Mesh {
     });
 
     stats.uniqueHitCount = hits.length;
-    if (sort !== false) {
+    if (sort !== false && !orderedAccumulatorHits) {
       hits.sort(
         (a, b) =>
           a.accumulatorIndex - b.accumulatorIndex ||
