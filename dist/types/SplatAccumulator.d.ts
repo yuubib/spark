@@ -40,6 +40,7 @@ export declare class SplatAccumulator {
     editorStateData: Uint8Array<ArrayBuffer>;
     editorStateTexture: THREE.DataArrayTexture | null;
     editorStateEnabled: boolean;
+    editorStateVisibleCount: number | null;
     editorStateSelectedColor: THREE.Vector4;
     editorStateLockedColor: THREE.Vector4;
     private editorStateMappingKey;

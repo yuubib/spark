@@ -4,9 +4,10 @@ export type SplatSortInputForEditorState = {
     sourceIndices?: Uint32Array;
     excludedDeleted: number;
 };
-export declare function shouldSkipSplatSortReadbackForEditorState({ numSplats, editorStateData, }: {
+export declare function shouldSkipSplatSortReadbackForEditorState({ numSplats, editorStateData, editorStateVisibleCount, }: {
     numSplats: number;
     editorStateData?: Uint8Array | null;
+    editorStateVisibleCount?: number | null;
 }): boolean;
 export declare function compactSplatSortInputForEditorState({ numSplats, readback, editorStateData, compactReadback, sourceIndices, }: {
     numSplats: number;

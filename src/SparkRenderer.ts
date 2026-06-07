@@ -1080,6 +1080,9 @@ export class SparkRenderer extends THREE.Mesh {
         editorStateData: current.editorStateEnabled
           ? current.editorStateData
           : null,
+        editorStateVisibleCount: current.editorStateEnabled
+          ? current.editorStateVisibleCount
+          : null,
       })
     ) {
       this.activeSplats = 0;

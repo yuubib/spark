@@ -72,6 +72,7 @@ function createMockRenderer() {
   assert.ok(state.getRenderDirtyRanges().length > 0);
 
   assert.strictEqual(accumulator.updateEditorStateTexture({ mapping }), true);
+  assert.strictEqual(accumulator.editorStateVisibleCount, 5000);
   assert.strictEqual(accumulator.editorStateData[2], 1);
   assert.strictEqual(accumulator.editorStateData[4099], 1);
   assert.deepStrictEqual(state.getRenderDirtyRanges(), []);
@@ -92,6 +93,7 @@ function createMockRenderer() {
   assert.strictEqual(accumulator.editorStateData[7], 1);
   assert.strictEqual(accumulator.editorStateData[2], 0);
   assert.strictEqual(accumulator.editorStateData[4099], 0);
+  assert.strictEqual(accumulator.editorStateVisibleCount, 5000);
   assert.deepStrictEqual(state.getRenderDirtyRanges(), []);
   assert.strictEqual(texSubImageCalls.length, 2);
   assert.deepStrictEqual(
@@ -106,6 +108,57 @@ function createMockRenderer() {
   assert.strictEqual((texSubImageCalls[1][10] as Uint8Array).length, 2048);
 
   accumulator.dispose();
+  mesh.dispose();
+}
+
+{
+  const mesh = new SplatMesh({ editorStateRenderMode: "accumulator" });
+  const plainMesh = new SplatMesh();
+  const state = mesh.ensureEditorState(3);
+  const accumulator = new SplatAccumulator();
+  const mapping = [
+    {
+      node: plainMesh,
+      version: 0,
+      sortVersion: 0,
+      styleVersion: 0,
+      mappingVersion: 0,
+      base: 0,
+      count: 1,
+    },
+    {
+      node: mesh,
+      version: 0,
+      sortVersion: 0,
+      styleVersion: 0,
+      mappingVersion: 0,
+      base: 1,
+      count: 3,
+    },
+    {
+      node: plainMesh,
+      version: 0,
+      sortVersion: 0,
+      styleVersion: 0,
+      mappingVersion: 0,
+      base: 4,
+      count: 1,
+    },
+  ];
+
+  state.selectAll();
+  state.deleteSelected();
+
+  assert.strictEqual(accumulator.updateEditorStateTexture({ mapping }), true);
+  assert.strictEqual(accumulator.editorStateVisibleCount, 2);
+
+  state.resetDeleted();
+
+  assert.strictEqual(accumulator.updateEditorStateTexture({ mapping }), true);
+  assert.strictEqual(accumulator.editorStateVisibleCount, 5);
+
+  accumulator.dispose();
+  plainMesh.dispose();
   mesh.dispose();
 }
 

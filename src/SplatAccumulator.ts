@@ -3,6 +3,7 @@ import { FullScreenQuad } from "three/addons/postprocessing/Pass.js";
 import { Readback } from "./Readback";
 import { SplatEdit } from "./SplatEdit";
 import {
+  SPLAT_EDITOR_STATE_DELETED,
   SplatEditorState,
   type SplatEditorStateDirtyRange,
 } from "./SplatEditorState";
@@ -108,6 +109,7 @@ export class SplatAccumulator {
   editorStateData = new Uint8Array(0);
   editorStateTexture: THREE.DataArrayTexture | null = null;
   editorStateEnabled = false;
+  editorStateVisibleCount: number | null = null;
   editorStateSelectedColor = new THREE.Vector4(0.38, 0.62, 1.0, 0.42);
   editorStateLockedColor = new THREE.Vector4(0.58, 0.64, 0.72, 1.0);
   private editorStateMappingKey = "";
@@ -135,6 +137,7 @@ export class SplatAccumulator {
     }
     this.editorStateData = new Uint8Array(0);
     this.editorStateEnabled = false;
+    this.editorStateVisibleCount = null;
     this.editorStateMappingKey = "";
   }
 
@@ -163,7 +166,9 @@ export class SplatAccumulator {
       state: SplatEditorState;
     }[] = [];
     let requiredSplats = 0;
+    let totalSplats = 0;
     for (const item of mapping) {
+      totalSplats = Math.max(totalSplats, item.base + item.count);
       const node = item.node;
       if (
         !(node instanceof SplatMesh) ||
@@ -184,6 +189,7 @@ export class SplatAccumulator {
     if (stateMappings.length === 0 || requiredSplats <= 0) {
       const wasEnabled = this.editorStateEnabled;
       this.editorStateEnabled = false;
+      this.editorStateVisibleCount = null;
       this.editorStateMappingKey = "";
       return wasEnabled;
     }
@@ -201,8 +207,10 @@ export class SplatAccumulator {
 
     let enabled = false;
     let colorsCopied = false;
+    let deletedSplats = 0;
     for (const { item, state } of stateMappings) {
       enabled = true;
+      deletedSplats += countDeletedSplatsForMapping(state, item.count);
       if (!colorsCopied) {
         this.editorStateSelectedColor.copy(state.selectedColor);
         this.editorStateLockedColor.copy(state.lockedColor);
@@ -238,6 +246,9 @@ export class SplatAccumulator {
     }
 
     this.editorStateEnabled = enabled;
+    this.editorStateVisibleCount = enabled
+      ? Math.max(0, Math.max(this.numSplats, totalSplats) - deletedSplats)
+      : null;
     this.editorStateMappingKey = mappingKey;
     if (
       this.editorStateTexture &&
@@ -1020,6 +1031,29 @@ function createEditorStateMappingKey(
       ].join(":"),
     )
     .join("|");
+}
+
+function countDeletedSplatsForMapping(
+  state: SplatEditorState,
+  count: number,
+): number {
+  const safeCount = Math.max(0, Math.floor(count));
+  if (safeCount === 0) {
+    return 0;
+  }
+
+  if (safeCount >= state.numSplats) {
+    return state.getSummary().deleted;
+  }
+
+  let deleted = 0;
+  const limit = Math.min(safeCount, state.states.length);
+  for (let index = 0; index < limit; index += 1) {
+    if ((state.states[index] & SPLAT_EDITOR_STATE_DELETED) !== 0) {
+      deleted += 1;
+    }
+  }
+  return deleted;
 }
 
 function createEditorStateUploadSpans(

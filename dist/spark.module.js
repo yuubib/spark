@@ -10720,6 +10720,7 @@ const _SplatAccumulator = class _SplatAccumulator {
     this.editorStateData = new Uint8Array(0);
     this.editorStateTexture = null;
     this.editorStateEnabled = false;
+    this.editorStateVisibleCount = null;
     this.editorStateSelectedColor = new THREE.Vector4(0.38, 0.62, 1, 0.42);
     this.editorStateLockedColor = new THREE.Vector4(0.58, 0.64, 0.72, 1);
     this.editorStateMappingKey = "";
@@ -10741,6 +10742,7 @@ const _SplatAccumulator = class _SplatAccumulator {
     }
     this.editorStateData = new Uint8Array(0);
     this.editorStateEnabled = false;
+    this.editorStateVisibleCount = null;
     this.editorStateMappingKey = "";
   }
   // Returns a THREE.DataArrayTexture representing the NewSplatAccumulator
@@ -10760,7 +10762,9 @@ const _SplatAccumulator = class _SplatAccumulator {
   } = {}) {
     const stateMappings = [];
     let requiredSplats = 0;
+    let totalSplats = 0;
     for (const item of mapping) {
+      totalSplats = Math.max(totalSplats, item.base + item.count);
       const node = item.node;
       if (!(node instanceof SplatMesh) || node.editorStateRenderMode !== "accumulator") {
         continue;
@@ -10775,6 +10779,7 @@ const _SplatAccumulator = class _SplatAccumulator {
     if (stateMappings.length === 0 || requiredSplats <= 0) {
       const wasEnabled = this.editorStateEnabled;
       this.editorStateEnabled = false;
+      this.editorStateVisibleCount = null;
       this.editorStateMappingKey = "";
       return wasEnabled;
     }
@@ -10787,8 +10792,10 @@ const _SplatAccumulator = class _SplatAccumulator {
     }
     let enabled = false;
     let colorsCopied = false;
+    let deletedSplats = 0;
     for (const { item, state } of stateMappings) {
       enabled = true;
+      deletedSplats += countDeletedSplatsForMapping(state, item.count);
       if (!colorsCopied) {
         this.editorStateSelectedColor.copy(state.selectedColor);
         this.editorStateLockedColor.copy(state.lockedColor);
@@ -10821,6 +10828,7 @@ const _SplatAccumulator = class _SplatAccumulator {
       state.clearRenderDirtyRanges();
     }
     this.editorStateEnabled = enabled;
+    this.editorStateVisibleCount = enabled ? Math.max(0, Math.max(this.numSplats, totalSplats) - deletedSplats) : null;
     this.editorStateMappingKey = mappingKey;
     if (this.editorStateTexture && this.editorStateTexture.image.data !== this.editorStateData) {
       this.editorStateTexture.image.data = this.editorStateData;
@@ -11477,6 +11485,23 @@ function createEditorStateMappingKey(stateMappings) {
     ].join(":")
   ).join("|");
 }
+function countDeletedSplatsForMapping(state, count) {
+  const safeCount = Math.max(0, Math.floor(count));
+  if (safeCount === 0) {
+    return 0;
+  }
+  if (safeCount >= state.numSplats) {
+    return state.getSummary().deleted;
+  }
+  let deleted = 0;
+  const limit = Math.min(safeCount, state.states.length);
+  for (let index = 0; index < limit; index += 1) {
+    if ((state.states[index] & SPLAT_EDITOR_STATE_DELETED) !== 0) {
+      deleted += 1;
+    }
+  }
+  return deleted;
+}
 function createEditorStateUploadSpans(ranges, width, height, maxSplats) {
   if (width <= 0 || height <= 0 || maxSplats <= 0) {
     return [];
@@ -11737,11 +11762,15 @@ function maybeSortPixelHits(hits, sort = true) {
 }
 function shouldSkipSplatSortReadbackForEditorState({
   numSplats,
-  editorStateData
+  editorStateData,
+  editorStateVisibleCount
 }) {
   const count = Math.max(0, Math.floor(numSplats));
   if (count === 0) {
     return true;
+  }
+  if (editorStateVisibleCount != null) {
+    return Math.max(0, Math.floor(editorStateVisibleCount)) === 0;
   }
   if (!editorStateData || editorStateData.length < count) {
     return false;
@@ -12321,7 +12350,8 @@ const _SparkRenderer = class _SparkRenderer extends THREE.Mesh {
     const { numSplats, maxSplats } = current;
     if (shouldSkipSplatSortReadbackForEditorState({
       numSplats,
-      editorStateData: current.editorStateEnabled ? current.editorStateData : null
+      editorStateData: current.editorStateEnabled ? current.editorStateData : null,
+      editorStateVisibleCount: current.editorStateEnabled ? current.editorStateVisibleCount : null
     })) {
       this.activeSplats = 0;
       this.finishDriveSort(current);

@@ -27,6 +27,28 @@ assert.strictEqual(
 assert.strictEqual(
   shouldSkipSplatSortReadbackForEditorState({
     numSplats: 3,
+    editorStateData: null,
+    editorStateVisibleCount: 0,
+  }),
+  true,
+);
+
+assert.strictEqual(
+  shouldSkipSplatSortReadbackForEditorState({
+    numSplats: 3,
+    editorStateData: new Uint8Array([
+      SPLAT_EDITOR_STATE_DELETED,
+      SPLAT_EDITOR_STATE_DELETED,
+      SPLAT_EDITOR_STATE_DELETED,
+    ]),
+    editorStateVisibleCount: 1,
+  }),
+  false,
+);
+
+assert.strictEqual(
+  shouldSkipSplatSortReadbackForEditorState({
+    numSplats: 3,
     editorStateData: new Uint8Array([
       SPLAT_EDITOR_STATE_DELETED,
       SPLAT_EDITOR_STATE_DELETED,

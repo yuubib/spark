@@ -10,13 +10,18 @@ export type SplatSortInputForEditorState = {
 export function shouldSkipSplatSortReadbackForEditorState({
   numSplats,
   editorStateData,
+  editorStateVisibleCount,
 }: {
   numSplats: number;
   editorStateData?: Uint8Array | null;
+  editorStateVisibleCount?: number | null;
 }): boolean {
   const count = Math.max(0, Math.floor(numSplats));
   if (count === 0) {
     return true;
+  }
+  if (editorStateVisibleCount != null) {
+    return Math.max(0, Math.floor(editorStateVisibleCount)) === 0;
   }
   if (!editorStateData || editorStateData.length < count) {
     return false;
