@@ -590,6 +590,7 @@ export declare class SparkRenderer extends THREE.Mesh {
     pickSplatCandidates(options: SplatScreenPickOptions): Promise<SplatScreenPickHit[]>;
     pickSplatCandidateIndices(options: SplatScreenPickIndexOptions): Promise<Uint32Array | null>;
     selectSplatStateFromScreenPick(options: SplatScreenPickStateSelectionOptions): Promise<SplatScreenPickStateSelectionResult | null>;
+    private selectSplatStateFromScreenPickCpuProducer;
     pickRenderedSplatIndex(options: SplatScreenPickRenderedIndexOptions): Promise<SplatScreenPickRenderedIndexResult | null>;
     pickNearestSplatCenterIndex(options: SplatScreenPickNearestCenterOptions): Promise<SplatScreenPickNearestCenterResult | null>;
     createSplatScreenFloodMask(options: SplatScreenFloodMaskRenderOptions): Promise<SplatScreenFloodMaskResult>;

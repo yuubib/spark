@@ -189,6 +189,59 @@ assert.deepStrictEqual(Array.from(directSelection.mutation.changeSet.next), [
   SPLAT_EDITOR_STATE_SELECTED,
 ]);
 
+mesh.clearSplatStateSelection();
+let producerFastPathStats: SplatScreenPickStats | null = null;
+let pickIndexCallCount = 0;
+const originalPickSplatCandidateIndices =
+  sparkRenderer.pickSplatCandidateIndices.bind(sparkRenderer);
+sparkRenderer.pickSplatCandidateIndices = async () => {
+  pickIndexCallCount++;
+  throw new Error("direct producer fast path should not compact indices");
+};
+try {
+  const producerFastPathSelection =
+    await sparkRenderer.selectSplatStateFromScreenPick({
+      target: mesh,
+      scene,
+      camera,
+      candidateMode: "centers",
+      centerProcessor: "cpu",
+      shape: { kind: "rect", x: 0, y: 0, width: 1, height: 1 },
+      width: 100,
+      height: 100,
+      operation: "set",
+      mutationOptions: {
+        recordChanges: true,
+        changeFormat: "packed",
+      },
+      onStats: (nextStats) => {
+        producerFastPathStats = nextStats;
+      },
+    });
+
+  assert.ok(producerFastPathSelection);
+  assert.strictEqual(producerFastPathSelection.applied, true);
+  assert.strictEqual(producerFastPathSelection.candidateCount, 2);
+  assert.strictEqual(pickIndexCallCount, 0);
+  assert.strictEqual(
+    producerFastPathSelection.pickStats,
+    producerFastPathStats,
+  );
+  assert.strictEqual(
+    producerFastPathSelection.pickStats?.centerCollect?.processor,
+    "cpu",
+  );
+  assert.deepStrictEqual(mesh.listSplatStateIndices("selected"), [0, 1]);
+  assert.ok(producerFastPathSelection.mutation);
+  assert.strictEqual(producerFastPathSelection.mutation.changed, 2);
+  assert.strictEqual(
+    producerFastPathSelection.mutation.changeSet?.kind,
+    "packed-list",
+  );
+} finally {
+  sparkRenderer.pickSplatCandidateIndices = originalPickSplatCandidateIndices;
+}
+
 const directRemove = await sparkRenderer.selectSplatStateFromScreenPick({
   target: mesh,
   scene,

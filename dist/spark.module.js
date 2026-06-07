@@ -14796,6 +14796,12 @@ const _SparkRenderer = class _SparkRenderer extends THREE.Mesh {
       mutationOptions = {},
       shouldMutate
     } = options;
+    if (!shouldMutate) {
+      const cpuProducerResult = this.selectSplatStateFromScreenPickCpuProducer(options);
+      if (cpuProducerResult) {
+        return cpuProducerResult;
+      }
+    }
     if (!(target instanceof SplatMesh) || !target.isInitialized) {
       return null;
     }
@@ -14836,6 +14842,149 @@ const _SparkRenderer = class _SparkRenderer extends THREE.Mesh {
       applied: true,
       candidateCount: indices.length,
       ...pickStats ? { pickStats } : {},
+      mutation
+    };
+  }
+  selectSplatStateFromScreenPickCpuProducer(options) {
+    var _a2;
+    const totalStartedAt = readNowMs();
+    const {
+      scene,
+      camera,
+      target,
+      operation = "set",
+      mutationOptions = {}
+    } = options;
+    if (operation !== "set") {
+      return null;
+    }
+    const size = this.renderer.getDrawingBufferSize(new THREE.Vector2());
+    const width = Math.max(1, Math.floor(options.width ?? size.x));
+    const height = Math.max(1, Math.floor(options.height ?? size.y));
+    const renderMode = options.renderMode ?? "viewport";
+    const renderRect = normalizeSplatScreenPickShape(
+      options.shape,
+      width,
+      height
+    );
+    const layout = resolveSplatScreenPickRenderLayout(
+      renderRect,
+      width,
+      height,
+      renderMode
+    );
+    const rect = normalizeSplatScreenPickCenterShape(
+      options.shape,
+      width,
+      height
+    );
+    const candidateMode = options.candidateMode ?? "centers";
+    if (candidateMode !== "centers") {
+      return null;
+    }
+    if (!(target instanceof SplatMesh) || !target.isInitialized) {
+      return null;
+    }
+    if (target.context.enableLod.value !== false || target.paged) {
+      return null;
+    }
+    const editorStateMode = options.editorStateMode ?? editorSelectionOperationToPickFilterMode(operation);
+    const collectStats = createSplatScreenPickCenterCollectStats();
+    const requestedProcessor = options.centerProcessor ?? "auto";
+    const editorState = target.getEditorState();
+    const shouldUseCpuAuto = requestedProcessor === "auto" && shouldPreferCpuSplatCenterProcessor(target.numSplats) && !shouldPreferGpuSplatCenterProcessorForSelectedFilter(
+      target.numSplats,
+      editorState,
+      editorStateMode
+    );
+    if (!shouldUseCpuAuto && requestedProcessor !== "cpu") {
+      return null;
+    }
+    if (shouldUseCpuAuto) {
+      setSplatScreenPickCenterProcessorStats(
+        collectStats,
+        requestedProcessor,
+        "cpu",
+        "auto-cpu-estimated-faster"
+      );
+    } else {
+      setSplatScreenPickCenterProcessorStats(
+        collectStats,
+        requestedProcessor,
+        "cpu",
+        "requested-cpu"
+      );
+    }
+    let updateMs = 0;
+    if (options.update !== false) {
+      const updateStartedAt = readNowMs();
+      scene.updateMatrixWorld(true);
+      camera.updateMatrixWorld(true);
+      updateMs = readNowMs() - updateStartedAt;
+    }
+    const collectStartedAt = readNowMs();
+    const mutation = target.selectSplatStateCandidatesFromProducer(
+      (consume) => {
+        this.collectSplatScreenPickCenterIndices({
+          scene,
+          camera,
+          target,
+          rect,
+          boundsMode: resolveSplatScreenPickCenterBoundsMode(options.shape),
+          viewportWidth: width,
+          viewportHeight: height,
+          editorStateMode,
+          maxCandidates: options.maxCandidates,
+          sort: false,
+          stats: collectStats,
+          consumeIndex: consume
+        });
+      },
+      operation,
+      mutationOptions
+    );
+    const collectMs = readNowMs() - collectStartedAt;
+    const pickStats = {
+      shapeKind: options.shape.kind,
+      candidateMode,
+      renderMode,
+      viewportWidth: width,
+      viewportHeight: height,
+      targetWidth: layout.targetWidth,
+      targetHeight: layout.targetHeight,
+      normalizedRect: {
+        x: rect.x,
+        y: rect.y,
+        width: rect.width,
+        height: rect.height
+      },
+      readRect: layout.readRect,
+      pixelHitCount: 0,
+      mappedHitCount: collectStats.uniqueHitCount,
+      sourceStableHitCount: collectStats.uniqueHitCount,
+      collect: {
+        pixelCount: 0,
+        candidatePixelCount: 0,
+        maskTestedPixelCount: 0,
+        encodedPixelCount: 0,
+        duplicatePixelHitCount: 0,
+        uniqueHitCount: 0,
+        earlyExit: collectStats.earlyExit
+      },
+      centerCollect: collectStats,
+      timingsMs: {
+        update: updateMs,
+        renderReadback: 0,
+        decode: 0,
+        map: collectMs,
+        total: readNowMs() - totalStartedAt
+      }
+    };
+    (_a2 = options.onStats) == null ? void 0 : _a2.call(options, pickStats);
+    return {
+      applied: true,
+      candidateCount: collectStats.uniqueHitCount,
+      pickStats,
       mutation
     };
   }
@@ -15353,7 +15502,8 @@ const _SparkRenderer = class _SparkRenderer extends THREE.Mesh {
     maxCandidates,
     sort,
     stats,
-    indexBuffer
+    indexBuffer,
+    consumeIndex
   }) {
     const max2 = maxCandidates != null ? Math.max(0, Math.floor(maxCandidates)) : Number.POSITIVE_INFINITY;
     if (max2 <= 0) {
@@ -15370,7 +15520,7 @@ const _SparkRenderer = class _SparkRenderer extends THREE.Mesh {
       y: 0,
       ndcZ: 0
     };
-    let indices = (indexBuffer == null ? void 0 : indexBuffer.buffer) ?? new Uint32Array(Math.min(Number.isFinite(max2) ? max2 : 1024, 1024));
+    let indices = consumeIndex ? new Uint32Array() : (indexBuffer == null ? void 0 : indexBuffer.buffer) ?? new Uint32Array(Math.min(Number.isFinite(max2) ? max2 : 1024, 1024));
     let indexCount = 0;
     let lastIndex = -1;
     let orderedIndices = true;
@@ -15378,6 +15528,10 @@ const _SparkRenderer = class _SparkRenderer extends THREE.Mesh {
       if (indexCount >= max2) {
         stats.earlyExit = true;
         return false;
+      }
+      if (consumeIndex) {
+        indexCount += 1;
+        return consumeIndex(index) !== false;
       }
       if (indexCount >= indices.length) {
         const nextCapacity = Math.min(
@@ -15554,6 +15708,9 @@ const _SparkRenderer = class _SparkRenderer extends THREE.Mesh {
       });
     });
     stats.uniqueHitCount = indexCount;
+    if (consumeIndex) {
+      return indices;
+    }
     const result = indices.subarray(0, indexCount);
     if (sort !== false && !orderedIndices) {
       result.sort();
