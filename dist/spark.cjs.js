@@ -11938,6 +11938,26 @@ function createSplatScreenPickCenterCollectStats() {
     earlyExit: false
   };
 }
+function projectSplatScreenPickCenter(objectToClipElements, centerX, centerY, centerZ, viewportWidth, viewportHeight, target) {
+  const clipX = objectToClipElements[0] * centerX + objectToClipElements[4] * centerY + objectToClipElements[8] * centerZ + objectToClipElements[12];
+  const clipY = objectToClipElements[1] * centerX + objectToClipElements[5] * centerY + objectToClipElements[9] * centerZ + objectToClipElements[13];
+  const clipZ = objectToClipElements[2] * centerX + objectToClipElements[6] * centerY + objectToClipElements[10] * centerZ + objectToClipElements[14];
+  const clipW = objectToClipElements[3] * centerX + objectToClipElements[7] * centerY + objectToClipElements[11] * centerZ + objectToClipElements[15];
+  if (!Number.isFinite(clipW) || clipW === 0) {
+    return false;
+  }
+  const invW = 1 / clipW;
+  const ndcX = clipX * invW;
+  const ndcY = clipY * invW;
+  const ndcZ = clipZ * invW;
+  if (!Number.isFinite(ndcX) || !Number.isFinite(ndcY) || !Number.isFinite(ndcZ) || Math.abs(ndcX) > 1 || Math.abs(ndcY) > 1 || Math.abs(ndcZ) > 1) {
+    return false;
+  }
+  target.x = (ndcX * 0.5 + 0.5) * viewportWidth;
+  target.y = (-ndcY * 0.5 + 0.5) * viewportHeight;
+  target.ndcZ = ndcZ;
+  return true;
+}
 function testSplatScreenPickCenter(rect, x, y, stats) {
   if (!Number.isFinite(x) || !Number.isFinite(y) || x < rect.x || y < rect.y || x >= rect.x + rect.width || y >= rect.y + rect.height) {
     if (stats) {
@@ -13398,12 +13418,16 @@ const _SparkRenderer = class _SparkRenderer extends THREE__namespace.Mesh {
       camera.projectionMatrix,
       camera.matrixWorldInverse
     );
-    const clip = new THREE__namespace.Vector4();
+    const objectToClip = new THREE__namespace.Matrix4();
+    const projectedCenter = {
+      x: 0,
+      y: 0,
+      ndcZ: 0
+    };
     const mappings = /* @__PURE__ */ new Map();
     for (const mapping of this.display.mapping) {
       mappings.set(mapping.node, { base: mapping.base, count: mapping.count });
     }
-    const seen = /* @__PURE__ */ new Set();
     const hits = [];
     scene.traverseVisible((object) => {
       if (hits.length >= max2 || !(object instanceof SplatMesh)) {
@@ -13416,7 +13440,8 @@ const _SparkRenderer = class _SparkRenderer extends THREE__namespace.Mesh {
       const editorState = object.getEditorState();
       const sourceIndexStable = object.context.enableLod.value === false && !object.paged;
       object.updateMatrixWorld(true);
-      const matrixWorld = object.matrixWorld;
+      objectToClip.multiplyMatrices(viewProjection, object.matrixWorld);
+      const objectToClipElements = objectToClip.elements;
       object.forEachSplatCenter((index, center) => {
         if (hits.length >= max2) {
           stats.earlyExit = true;
@@ -13428,34 +13453,35 @@ const _SparkRenderer = class _SparkRenderer extends THREE__namespace.Mesh {
           stats.stateRejectedCenterCount += 1;
           return;
         }
-        clip.set(center.x, center.y, center.z, 1).applyMatrix4(matrixWorld).applyMatrix4(viewProjection);
-        const ndcX = clip.x / clip.w;
-        const ndcY = clip.y / clip.w;
-        const ndcZ = clip.z / clip.w;
-        if (!Number.isFinite(ndcX) || !Number.isFinite(ndcY) || !Number.isFinite(ndcZ) || Math.abs(ndcX) > 1 || Math.abs(ndcY) > 1 || Math.abs(ndcZ) > 1) {
+        if (!projectSplatScreenPickCenter(
+          objectToClipElements,
+          center.x,
+          center.y,
+          center.z,
+          viewportWidth,
+          viewportHeight,
+          projectedCenter
+        )) {
           stats.viewRejectedCenterCount += 1;
           return;
         }
-        const x = (ndcX * 0.5 + 0.5) * viewportWidth;
-        const y = (-ndcY * 0.5 + 0.5) * viewportHeight;
-        if (!testSplatScreenPickCenter(rect, x, y, stats)) {
+        if (!testSplatScreenPickCenter(
+          rect,
+          projectedCenter.x,
+          projectedCenter.y,
+          stats
+        )) {
           return;
         }
         stats.candidateCenterCount += 1;
-        const key = `${object.uuid}:${index}`;
-        if (seen.has(key)) {
-          stats.duplicateCenterHitCount += 1;
-          return;
-        }
-        seen.add(key);
         hits.push({
           object,
           index,
           accumulatorIndex: mapping && index < mapping.count ? mapping.base + index : index,
           sourceIndexStable,
           pixel: {
-            x: Math.floor(x),
-            y: Math.floor(y)
+            x: Math.floor(projectedCenter.x),
+            y: Math.floor(projectedCenter.y)
           }
         });
       });
@@ -24151,6 +24177,7 @@ exports.matchesSplatEditorStateIndexMode = matchesSplatEditorStateIndexMode;
 exports.modifiers = modifiers;
 exports.normalizeSplatScreenPickShape = normalizeSplatScreenPickShape;
 exports.pixelsToPngUrl = pixelsToPngUrl;
+exports.projectSplatScreenPickCenter = projectSplatScreenPickCenter;
 exports.readRgbaArray = readRgbaArray;
 exports.resolveSplatScreenPickRenderLayout = resolveSplatScreenPickRenderLayout;
 exports.setPackedSplat = setPackedSplat;

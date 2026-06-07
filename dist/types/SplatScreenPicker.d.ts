@@ -72,6 +72,11 @@ export type SplatScreenPickPixelHit = {
         y: number;
     };
 };
+export type SplatScreenPickProjectedCenter = {
+    x: number;
+    y: number;
+    ndcZ: number;
+};
 export type SplatScreenPickViewOffset = {
     fullWidth: number;
     fullHeight: number;
@@ -147,4 +152,5 @@ export declare function collectSplatScreenPickHitsFromRgba8(pixels: ArrayLike<nu
     stats?: SplatScreenPickCollectStats;
 }): SplatScreenPickPixelHit[];
 export declare function createSplatScreenPickCenterCollectStats(): SplatScreenPickCenterCollectStats;
+export declare function projectSplatScreenPickCenter(objectToClipElements: ArrayLike<number>, centerX: number, centerY: number, centerZ: number, viewportWidth: number, viewportHeight: number, target: SplatScreenPickProjectedCenter): boolean;
 export declare function testSplatScreenPickCenter(rect: SplatScreenPickRect, x: number, y: number, stats?: SplatScreenPickCenterCollectStats): boolean;

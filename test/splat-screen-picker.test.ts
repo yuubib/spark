@@ -6,6 +6,7 @@ import {
   createSplatScreenPickCenterCollectStats,
   editorSelectionOperationToPickFilterMode,
   normalizeSplatScreenPickShape,
+  projectSplatScreenPickCenter,
   resolveSplatScreenPickRenderLayout,
   splatEditorStateFilterModeToPickUniform,
   testSplatScreenPickCenter,
@@ -25,6 +26,47 @@ assert.strictEqual(splatEditorStateFilterModeToPickUniform("editable"), 4);
 assert.strictEqual(splatEditorStateFilterModeToPickUniform("pick-set"), 4);
 assert.strictEqual(splatEditorStateFilterModeToPickUniform("pick-add"), 5);
 assert.strictEqual(splatEditorStateFilterModeToPickUniform("pick-remove"), 6);
+
+const identityMatrixElements = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
+const projectedCenter = { x: 0, y: 0, ndcZ: 0 };
+assert.strictEqual(
+  projectSplatScreenPickCenter(
+    identityMatrixElements,
+    0,
+    0,
+    0,
+    100,
+    50,
+    projectedCenter,
+  ),
+  true,
+);
+assert.deepStrictEqual(projectedCenter, { x: 50, y: 25, ndcZ: 0 });
+assert.strictEqual(
+  projectSplatScreenPickCenter(
+    identityMatrixElements,
+    0.5,
+    -0.5,
+    0.25,
+    200,
+    100,
+    projectedCenter,
+  ),
+  true,
+);
+assert.deepStrictEqual(projectedCenter, { x: 150, y: 75, ndcZ: 0.25 });
+assert.strictEqual(
+  projectSplatScreenPickCenter(
+    identityMatrixElements,
+    2,
+    0,
+    0,
+    100,
+    50,
+    projectedCenter,
+  ),
+  false,
+);
 
 assert.deepStrictEqual(
   normalizeSplatScreenPickShape(

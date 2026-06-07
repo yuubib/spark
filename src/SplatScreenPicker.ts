@@ -87,6 +87,12 @@ export type SplatScreenPickPixelHit = {
   };
 };
 
+export type SplatScreenPickProjectedCenter = {
+  x: number;
+  y: number;
+  ndcZ: number;
+};
+
 export type SplatScreenPickViewOffset = {
   fullWidth: number;
   fullHeight: number;
@@ -395,6 +401,60 @@ export function createSplatScreenPickCenterCollectStats(): SplatScreenPickCenter
     uniqueHitCount: 0,
     earlyExit: false,
   };
+}
+
+export function projectSplatScreenPickCenter(
+  objectToClipElements: ArrayLike<number>,
+  centerX: number,
+  centerY: number,
+  centerZ: number,
+  viewportWidth: number,
+  viewportHeight: number,
+  target: SplatScreenPickProjectedCenter,
+): boolean {
+  const clipX =
+    objectToClipElements[0] * centerX +
+    objectToClipElements[4] * centerY +
+    objectToClipElements[8] * centerZ +
+    objectToClipElements[12];
+  const clipY =
+    objectToClipElements[1] * centerX +
+    objectToClipElements[5] * centerY +
+    objectToClipElements[9] * centerZ +
+    objectToClipElements[13];
+  const clipZ =
+    objectToClipElements[2] * centerX +
+    objectToClipElements[6] * centerY +
+    objectToClipElements[10] * centerZ +
+    objectToClipElements[14];
+  const clipW =
+    objectToClipElements[3] * centerX +
+    objectToClipElements[7] * centerY +
+    objectToClipElements[11] * centerZ +
+    objectToClipElements[15];
+
+  if (!Number.isFinite(clipW) || clipW === 0) {
+    return false;
+  }
+  const invW = 1 / clipW;
+  const ndcX = clipX * invW;
+  const ndcY = clipY * invW;
+  const ndcZ = clipZ * invW;
+  if (
+    !Number.isFinite(ndcX) ||
+    !Number.isFinite(ndcY) ||
+    !Number.isFinite(ndcZ) ||
+    Math.abs(ndcX) > 1 ||
+    Math.abs(ndcY) > 1 ||
+    Math.abs(ndcZ) > 1
+  ) {
+    return false;
+  }
+
+  target.x = (ndcX * 0.5 + 0.5) * viewportWidth;
+  target.y = (-ndcY * 0.5 + 0.5) * viewportHeight;
+  target.ndcZ = ndcZ;
+  return true;
 }
 
 export function testSplatScreenPickCenter(

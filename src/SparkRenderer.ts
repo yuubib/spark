@@ -19,12 +19,14 @@ import {
   type SplatScreenPickCollectStats,
   type SplatScreenPickHit,
   type SplatScreenPickOptions,
+  type SplatScreenPickProjectedCenter,
   type SplatScreenPickRect,
   type SplatScreenPickViewOffset,
   collectSplatScreenPickHitsFromRgba8,
   createSplatScreenPickCenterCollectStats,
   editorSelectionOperationToPickFilterMode,
   normalizeSplatScreenPickShape,
+  projectSplatScreenPickCenter,
   resolveSplatScreenPickRenderLayout,
   splatEditorStateFilterModeToPickUniform,
   testSplatScreenPickCenter,
@@ -2146,13 +2148,17 @@ export class SparkRenderer extends THREE.Mesh {
       camera.projectionMatrix,
       camera.matrixWorldInverse,
     );
-    const clip = new THREE.Vector4();
+    const objectToClip = new THREE.Matrix4();
+    const projectedCenter: SplatScreenPickProjectedCenter = {
+      x: 0,
+      y: 0,
+      ndcZ: 0,
+    };
     const mappings = new Map<SplatGenerator, { base: number; count: number }>();
     for (const mapping of this.display.mapping) {
       mappings.set(mapping.node, { base: mapping.base, count: mapping.count });
     }
 
-    const seen = new Set<string>();
     const hits: SplatScreenPickHit[] = [];
 
     scene.traverseVisible((object) => {
@@ -2168,7 +2174,8 @@ export class SparkRenderer extends THREE.Mesh {
       const sourceIndexStable =
         object.context.enableLod.value === false && !object.paged;
       object.updateMatrixWorld(true);
-      const matrixWorld = object.matrixWorld;
+      objectToClip.multiplyMatrices(viewProjection, object.matrixWorld);
+      const objectToClipElements = objectToClip.elements;
 
       object.forEachSplatCenter((index, center) => {
         if (hits.length >= max) {
@@ -2186,38 +2193,33 @@ export class SparkRenderer extends THREE.Mesh {
           return;
         }
 
-        clip
-          .set(center.x, center.y, center.z, 1)
-          .applyMatrix4(matrixWorld)
-          .applyMatrix4(viewProjection);
-        const ndcX = clip.x / clip.w;
-        const ndcY = clip.y / clip.w;
-        const ndcZ = clip.z / clip.w;
         if (
-          !Number.isFinite(ndcX) ||
-          !Number.isFinite(ndcY) ||
-          !Number.isFinite(ndcZ) ||
-          Math.abs(ndcX) > 1 ||
-          Math.abs(ndcY) > 1 ||
-          Math.abs(ndcZ) > 1
+          !projectSplatScreenPickCenter(
+            objectToClipElements,
+            center.x,
+            center.y,
+            center.z,
+            viewportWidth,
+            viewportHeight,
+            projectedCenter,
+          )
         ) {
           stats.viewRejectedCenterCount += 1;
           return;
         }
 
-        const x = (ndcX * 0.5 + 0.5) * viewportWidth;
-        const y = (-ndcY * 0.5 + 0.5) * viewportHeight;
-        if (!testSplatScreenPickCenter(rect, x, y, stats)) {
+        if (
+          !testSplatScreenPickCenter(
+            rect,
+            projectedCenter.x,
+            projectedCenter.y,
+            stats,
+          )
+        ) {
           return;
         }
 
         stats.candidateCenterCount += 1;
-        const key = `${object.uuid}:${index}`;
-        if (seen.has(key)) {
-          stats.duplicateCenterHitCount += 1;
-          return;
-        }
-        seen.add(key);
         hits.push({
           object,
           index,
@@ -2225,8 +2227,8 @@ export class SparkRenderer extends THREE.Mesh {
             mapping && index < mapping.count ? mapping.base + index : index,
           sourceIndexStable,
           pixel: {
-            x: Math.floor(x),
-            y: Math.floor(y),
+            x: Math.floor(projectedCenter.x),
+            y: Math.floor(projectedCenter.y),
           },
         });
       });
