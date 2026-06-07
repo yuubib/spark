@@ -7,7 +7,7 @@ import { CovSplatModifier, CovSplatTransformer, FrameUpdateContext, GsplatModifi
 import { PagedSplats, SplatPager } from './SplatPager';
 import { SplatSkinning } from './SplatSkinning';
 import { SplatEncoding, SplatFileType } from './defines';
-import { DynoBool, DynoFloat, DynoInt, DynoUsampler2D, DynoUsampler2DArray, DynoVal, DynoVec4, Gsplat } from './dyno';
+import { DynoBool, DynoFloat, DynoInt, DynoUsampler2D, DynoUsampler2DArray, DynoVal, DynoVec3, DynoVec4, Gsplat } from './dyno';
 import * as THREE from "three";
 export type SplatEditorStateRenderMode = "generator" | "accumulator";
 export type SplatMeshRayPickHit = {
@@ -20,6 +20,18 @@ export type SplatMeshRayPickOptions = {
     editorStateMode?: SplatEditorStateFilterMode;
     maxHits?: number;
     sort?: boolean;
+};
+export type SplatMeshSelectedTransformOptions = {
+    pivot?: THREE.Vector3;
+    translate?: THREE.Vector3;
+    rotate?: THREE.Quaternion;
+    scale?: number;
+};
+export type SplatMeshSelectedTransformSnapshot = {
+    pivot: THREE.Vector3;
+    translate: THREE.Vector3;
+    rotate: THREE.Quaternion;
+    scale: number;
 };
 export type SplatMeshOptions = {
     url?: string;
@@ -82,6 +94,11 @@ export type SplatMeshContext = {
     editorStateTexture: DynoUsampler2DArray<"splatEditorStateTexture", THREE.DataArrayTexture>;
     editorSelectedColor: DynoVec4<THREE.Vector4, "splatEditorSelectedColor">;
     editorLockedColor: DynoVec4<THREE.Vector4, "splatEditorLockedColor">;
+    editorSelectedTransformEnabled: DynoBool<"splatEditorSelectedTransformEnabled">;
+    editorSelectedTransformPivot: DynoVec3<THREE.Vector3, "splatEditorSelectedTransformPivot">;
+    editorSelectedTransformTranslate: DynoVec3<THREE.Vector3, "splatEditorSelectedTransformTranslate">;
+    editorSelectedTransformRotate: DynoVec4<THREE.Quaternion, "splatEditorSelectedTransformRotate">;
+    editorSelectedTransformScale: DynoFloat<"splatEditorSelectedTransformScale">;
     enableLod: DynoBool<string>;
     lodIndices: DynoUsampler2D<"lodIndices", THREE.DataTexture>;
 };
@@ -202,6 +219,9 @@ export declare class SplatMesh extends SplatGenerator {
     resetDeletedSplatState(options?: SplatEditorStateMutationOptions): SplatEditorStateMutationResult;
     cropSplatStateToSelection(options?: SplatEditorStateMutationOptions): SplatEditorStateMutationResult;
     applySplatStateChanges(changes: Iterable<SplatEditorStateChange>, side?: SplatEditorStateChangeSide): SplatEditorStateMutationResult;
+    setSelectedSplatTransform({ pivot, translate, rotate, scale, }?: SplatMeshSelectedTransformOptions): boolean;
+    clearSelectedSplatTransform(): boolean;
+    getSelectedSplatTransform(): SplatMeshSelectedTransformSnapshot | null;
     getSplatStateCounts(): SplatEditorStateCounts;
     listSplatStateIndices(mode: SplatEditorStateIndexMode): number[];
     uploadDirtySplatState(renderer?: THREE.WebGLRenderer): THREE.DataArrayTexture;

@@ -7533,6 +7533,18 @@ function applySplatEditorStateColor(gsplat, stateTexture, enabled, selectedColor
     lockedColor
   }).outputs.gsplat;
 }
+function applySplatEditorStateTransform(gsplat, stateTexture, stateEnabled, transformEnabled, pivot, translate, rotate, scale) {
+  return new ApplySplatEditorStateTransform({
+    gsplat,
+    stateTexture,
+    stateEnabled,
+    transformEnabled,
+    pivot,
+    translate,
+    rotate,
+    scale
+  }).outputs.gsplat;
+}
 function applyCovSplatEditorStateColor(covsplat, stateTexture, enabled, selectedColor, lockedColor) {
   return new ApplyCovSplatEditorStateColor({
     covsplat,
@@ -7727,6 +7739,74 @@ class ApplySplatEditorStateColor extends Dyno {
               ${outGsplat}.rgba *= ${lockedColor2};
             } else if ((splatEditorState & ${SPLAT_EDITOR_STATE_SELECTED}u) != 0u) {
               ${outGsplat}.rgba.rgb = mix(${outGsplat}.rgba.rgb, ${selectedColor2}.rgb, ${selectedColor2}.a);
+            }
+          }
+        `);
+      }
+    });
+  }
+}
+class ApplySplatEditorStateTransform extends Dyno {
+  constructor({
+    gsplat,
+    stateTexture,
+    stateEnabled,
+    transformEnabled,
+    pivot,
+    translate,
+    rotate,
+    scale
+  }) {
+    super({
+      inTypes: {
+        gsplat: Gsplat,
+        stateTexture: "usampler2DArray",
+        stateEnabled: "bool",
+        transformEnabled: "bool",
+        pivot: "vec3",
+        translate: "vec3",
+        rotate: "vec4",
+        scale: "float"
+      },
+      outTypes: { gsplat: Gsplat },
+      inputs: {
+        gsplat,
+        stateTexture,
+        stateEnabled,
+        transformEnabled,
+        pivot,
+        translate,
+        rotate,
+        scale
+      },
+      globals: () => [defineGsplat],
+      statements: ({ inputs, outputs }) => {
+        const {
+          gsplat: gsplat2,
+          stateTexture: stateTexture2,
+          stateEnabled: stateEnabled2,
+          transformEnabled: transformEnabled2,
+          pivot: pivot2,
+          translate: translate2,
+          rotate: rotate2,
+          scale: scale2
+        } = inputs;
+        const { gsplat: outGsplat } = outputs;
+        if (!outGsplat) {
+          return [];
+        }
+        if (!gsplat2 || !stateTexture2 || !stateEnabled2 || !transformEnabled2 || !pivot2 || !translate2 || !rotate2 || !scale2) {
+          return [`${outGsplat}.flags = 0u;`];
+        }
+        return unindentLines(`
+          ${outGsplat} = ${gsplat2};
+          if (${stateEnabled2} && ${transformEnabled2} && isGsplatActive(${gsplat2}.flags)) {
+            uint splatEditorState = texelFetch(${stateTexture2}, splatTexCoord(${gsplat2}.index), 0).r;
+            if (splatEditorState == ${SPLAT_EDITOR_STATE_SELECTED}u) {
+              vec3 selectedTransformOffset = (${outGsplat}.center - ${pivot2}) * ${scale2};
+              ${outGsplat}.center = ${pivot2} + quatVec(${rotate2}, selectedTransformOffset) + ${translate2};
+              ${outGsplat}.scales *= ${scale2};
+              ${outGsplat}.quaternion = quatQuat(${rotate2}, ${outGsplat}.quaternion);
             }
           }
         `);
@@ -13941,6 +14021,26 @@ const _SplatMesh = class _SplatMesh extends SplatGenerator {
         key: "splatEditorLockedColor",
         value: new THREE.Vector4()
       }),
+      editorSelectedTransformEnabled: new DynoBool({
+        key: "splatEditorSelectedTransformEnabled",
+        value: false
+      }),
+      editorSelectedTransformPivot: new DynoVec3({
+        key: "splatEditorSelectedTransformPivot",
+        value: new THREE.Vector3()
+      }),
+      editorSelectedTransformTranslate: new DynoVec3({
+        key: "splatEditorSelectedTransformTranslate",
+        value: new THREE.Vector3()
+      }),
+      editorSelectedTransformRotate: new DynoVec4({
+        key: "splatEditorSelectedTransformRotate",
+        value: new THREE.Quaternion()
+      }),
+      editorSelectedTransformScale: new DynoFloat({
+        key: "splatEditorSelectedTransformScale",
+        value: 1
+      }),
       enableLod: new DynoBool({ value: false }),
       lodIndices: new DynoUsampler2D({
         value: emptyLodIndices,
@@ -14256,6 +14356,65 @@ const _SplatMesh = class _SplatMesh extends SplatGenerator {
   applySplatStateChanges(changes, side = "next") {
     return this.mutateEditorState((state) => state.applyChanges(changes, side));
   }
+  setSelectedSplatTransform({
+    pivot,
+    translate,
+    rotate,
+    scale = 1
+  } = {}) {
+    const nextPivot = (pivot == null ? void 0 : pivot.clone()) ?? new THREE.Vector3();
+    const nextTranslate = (translate == null ? void 0 : translate.clone()) ?? new THREE.Vector3();
+    const nextRotate = (rotate == null ? void 0 : rotate.clone()) ?? new THREE.Quaternion();
+    if (!isFiniteVector3(nextPivot)) {
+      throw new Error("Selected splat transform pivot must be finite");
+    }
+    if (!isFiniteVector3(nextTranslate)) {
+      throw new Error("Selected splat transform translation must be finite");
+    }
+    if (!isFiniteQuaternion(nextRotate)) {
+      throw new Error("Selected splat transform rotation must be finite");
+    }
+    if (!Number.isFinite(scale) || scale <= 0) {
+      throw new Error("Selected splat transform scale must be finite and > 0");
+    }
+    nextRotate.normalize();
+    const changed = !this.context.editorSelectedTransformEnabled.value || !this.context.editorSelectedTransformPivot.value.equals(nextPivot) || !this.context.editorSelectedTransformTranslate.value.equals(
+      nextTranslate
+    ) || !this.context.editorSelectedTransformRotate.value.equals(nextRotate) || this.context.editorSelectedTransformScale.value !== scale;
+    if (!changed) {
+      return false;
+    }
+    this.context.editorSelectedTransformEnabled.value = true;
+    this.context.editorSelectedTransformPivot.value.copy(nextPivot);
+    this.context.editorSelectedTransformTranslate.value.copy(nextTranslate);
+    this.context.editorSelectedTransformRotate.value.copy(nextRotate);
+    this.context.editorSelectedTransformScale.value = scale;
+    this.updateVersion();
+    return true;
+  }
+  clearSelectedSplatTransform() {
+    if (!this.context.editorSelectedTransformEnabled.value) {
+      return false;
+    }
+    this.context.editorSelectedTransformEnabled.value = false;
+    this.context.editorSelectedTransformPivot.value.set(0, 0, 0);
+    this.context.editorSelectedTransformTranslate.value.set(0, 0, 0);
+    this.context.editorSelectedTransformRotate.value.identity();
+    this.context.editorSelectedTransformScale.value = 1;
+    this.updateVersion();
+    return true;
+  }
+  getSelectedSplatTransform() {
+    if (!this.context.editorSelectedTransformEnabled.value) {
+      return null;
+    }
+    return {
+      pivot: this.context.editorSelectedTransformPivot.value.clone(),
+      translate: this.context.editorSelectedTransformTranslate.value.clone(),
+      rotate: this.context.editorSelectedTransformRotate.value.clone(),
+      scale: this.context.editorSelectedTransformScale.value
+    };
+  }
   getSplatStateCounts() {
     var _a2;
     return ((_a2 = this.getEditorState()) == null ? void 0 : _a2.getCounts()) ?? {
@@ -14489,6 +14648,16 @@ const _SplatMesh = class _SplatMesh extends SplatGenerator {
           context.editorStateTexture,
           context.editorStateEnabled
         );
+        gsplat = applySplatEditorStateTransform(
+          gsplat,
+          context.editorStateTexture,
+          context.editorStateEnabled,
+          context.editorSelectedTransformEnabled,
+          context.editorSelectedTransformPivot,
+          context.editorSelectedTransformTranslate,
+          context.editorSelectedTransformRotate,
+          context.editorSelectedTransformScale
+        );
         if (this.splatRgba) {
           gsplat = maybeInjectSplatRgba(
             gsplat,
@@ -14556,6 +14725,16 @@ const _SplatMesh = class _SplatMesh extends SplatGenerator {
           gsplat,
           context.editorStateTexture,
           context.editorStateEnabled
+        );
+        gsplat = applySplatEditorStateTransform(
+          gsplat,
+          context.editorStateTexture,
+          context.editorStateEnabled,
+          context.editorSelectedTransformEnabled,
+          context.editorSelectedTransformPivot,
+          context.editorSelectedTransformTranslate,
+          context.editorSelectedTransformRotate,
+          context.editorSelectedTransformScale
         );
         if (this.splatRgba) {
           gsplat = maybeInjectSplatRgba(
@@ -15000,6 +15179,13 @@ _SplatMesh.raycastDistanceFloat = new Float32Array(
   _SplatMesh.raycastDistanceBits.buffer
 );
 let SplatMesh = _SplatMesh;
+function isFiniteVector3(value) {
+  return Number.isFinite(value.x) && Number.isFinite(value.y) && Number.isFinite(value.z);
+}
+function isFiniteQuaternion(value) {
+  const lengthSq = value.x * value.x + value.y * value.y + value.z * value.z + value.w * value.w;
+  return Number.isFinite(value.x) && Number.isFinite(value.y) && Number.isFinite(value.z) && Number.isFinite(value.w) && lengthSq > 0;
+}
 function maybeLookupIndex(lodIndices, index, numSplats, enableLod, showLodPage) {
   return dyno$1({
     inTypes: {

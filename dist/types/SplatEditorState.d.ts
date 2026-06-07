@@ -119,6 +119,7 @@ export declare class SplatEditorState {
 }
 export declare function applySplatEditorStateVisibility(gsplat: DynoVal<typeof Gsplat>, stateTexture: DynoVal<"usampler2DArray">, enabled: DynoVal<"bool">): DynoVal<typeof Gsplat>;
 export declare function applySplatEditorStateColor(gsplat: DynoVal<typeof Gsplat>, stateTexture: DynoVal<"usampler2DArray">, enabled: DynoVal<"bool">, selectedColor: DynoVal<"vec4">, lockedColor: DynoVal<"vec4">): DynoVal<typeof Gsplat>;
+export declare function applySplatEditorStateTransform(gsplat: DynoVal<typeof Gsplat>, stateTexture: DynoVal<"usampler2DArray">, stateEnabled: DynoVal<"bool">, transformEnabled: DynoVal<"bool">, pivot: DynoVal<"vec3">, translate: DynoVal<"vec3">, rotate: DynoVal<"vec4">, scale: DynoVal<"float">): DynoVal<typeof Gsplat>;
 export declare function applyCovSplatEditorStateColor(covsplat: DynoVal<typeof CovSplat>, stateTexture: DynoVal<"usampler2DArray">, enabled: DynoVal<"bool">, selectedColor: DynoVal<"vec4">, lockedColor: DynoVal<"vec4">): DynoVal<typeof CovSplat>;
 export declare function matchesSplatEditorStateBits(bits: SplatEditorStateBits, mode: SplatEditorStateFilterMode): boolean;
 export declare function matchesSplatEditorStateIndexMode(bits: SplatEditorStateBits, mode: SplatEditorStateIndexMode): boolean;

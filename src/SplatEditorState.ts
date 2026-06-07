@@ -1037,6 +1037,28 @@ export function applySplatEditorStateColor(
   }).outputs.gsplat;
 }
 
+export function applySplatEditorStateTransform(
+  gsplat: DynoVal<typeof Gsplat>,
+  stateTexture: DynoVal<"usampler2DArray">,
+  stateEnabled: DynoVal<"bool">,
+  transformEnabled: DynoVal<"bool">,
+  pivot: DynoVal<"vec3">,
+  translate: DynoVal<"vec3">,
+  rotate: DynoVal<"vec4">,
+  scale: DynoVal<"float">,
+): DynoVal<typeof Gsplat> {
+  return new ApplySplatEditorStateTransform({
+    gsplat,
+    stateTexture,
+    stateEnabled,
+    transformEnabled,
+    pivot,
+    translate,
+    rotate,
+    scale,
+  }).outputs.gsplat;
+}
+
 export function applyCovSplatEditorStateColor(
   covsplat: DynoVal<typeof CovSplat>,
   stateTexture: DynoVal<"usampler2DArray">,
@@ -1308,6 +1330,105 @@ class ApplySplatEditorStateColor extends Dyno<
               ${outGsplat}.rgba *= ${lockedColor};
             } else if ((splatEditorState & ${SPLAT_EDITOR_STATE_SELECTED}u) != 0u) {
               ${outGsplat}.rgba.rgb = mix(${outGsplat}.rgba.rgb, ${selectedColor}.rgb, ${selectedColor}.a);
+            }
+          }
+        `);
+      },
+    });
+  }
+}
+
+class ApplySplatEditorStateTransform extends Dyno<
+  {
+    gsplat: typeof Gsplat;
+    stateTexture: "usampler2DArray";
+    stateEnabled: "bool";
+    transformEnabled: "bool";
+    pivot: "vec3";
+    translate: "vec3";
+    rotate: "vec4";
+    scale: "float";
+  },
+  { gsplat: typeof Gsplat }
+> {
+  constructor({
+    gsplat,
+    stateTexture,
+    stateEnabled,
+    transformEnabled,
+    pivot,
+    translate,
+    rotate,
+    scale,
+  }: {
+    gsplat: DynoVal<typeof Gsplat>;
+    stateTexture: DynoVal<"usampler2DArray">;
+    stateEnabled: DynoVal<"bool">;
+    transformEnabled: DynoVal<"bool">;
+    pivot: DynoVal<"vec3">;
+    translate: DynoVal<"vec3">;
+    rotate: DynoVal<"vec4">;
+    scale: DynoVal<"float">;
+  }) {
+    super({
+      inTypes: {
+        gsplat: Gsplat,
+        stateTexture: "usampler2DArray",
+        stateEnabled: "bool",
+        transformEnabled: "bool",
+        pivot: "vec3",
+        translate: "vec3",
+        rotate: "vec4",
+        scale: "float",
+      },
+      outTypes: { gsplat: Gsplat },
+      inputs: {
+        gsplat,
+        stateTexture,
+        stateEnabled,
+        transformEnabled,
+        pivot,
+        translate,
+        rotate,
+        scale,
+      },
+      globals: () => [defineGsplat],
+      statements: ({ inputs, outputs }) => {
+        const {
+          gsplat,
+          stateTexture,
+          stateEnabled,
+          transformEnabled,
+          pivot,
+          translate,
+          rotate,
+          scale,
+        } = inputs;
+        const { gsplat: outGsplat } = outputs;
+        if (!outGsplat) {
+          return [];
+        }
+        if (
+          !gsplat ||
+          !stateTexture ||
+          !stateEnabled ||
+          !transformEnabled ||
+          !pivot ||
+          !translate ||
+          !rotate ||
+          !scale
+        ) {
+          return [`${outGsplat}.flags = 0u;`];
+        }
+        return unindentLines(`
+          ${outGsplat} = ${gsplat};
+          if (${stateEnabled} && ${transformEnabled} && isGsplatActive(${gsplat}.flags)) {
+            uint splatEditorState = texelFetch(${stateTexture}, splatTexCoord(${gsplat}.index), 0).r;
+            if (splatEditorState == ${SPLAT_EDITOR_STATE_SELECTED}u) {
+              vec3 selectedTransformOffset = (${outGsplat}.center - ${pivot}) * ${scale};
+              ${outGsplat}.center = ${pivot} + quatVec(${rotate}, selectedTransformOffset) + ${translate};
+              ${outGsplat}.scales *= ${scale};
+              ${outGsplat}.quaternion = quatQuat(${rotate}, ${outGsplat}.quaternion);
             }
           }
         `);

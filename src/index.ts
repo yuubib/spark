@@ -87,6 +87,8 @@ export {
   type SplatMeshContext,
   type SplatSource,
   type SplatStateBoundingBoxOptions,
+  type SplatMeshSelectedTransformOptions,
+  type SplatMeshSelectedTransformSnapshot,
 } from "./SplatMesh";
 export {
   SplatSkinning,
