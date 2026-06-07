@@ -6,7 +6,7 @@ export { SplatAccumulator, type GeneratorMapping } from './SplatAccumulator';
 export * as dyno from './dyno';
 export { RgbaArray, readRgbaArray } from './RgbaArray';
 export { SplatLoader, unpackSplats, getSplatFileType, isPcSogs, } from './SplatLoader';
-export { PlyReader } from './ply';
+export { PlyReader, decodePlyDcColorChannel } from './ply';
 export { SpzReader, SpzWriter, transcodeSpz } from './spz';
 export { PackedSplats, type PackedSplatsOptions } from './PackedSplats';
 export { ExtSplats, type ExtSplatsOptions } from './ExtSplats';

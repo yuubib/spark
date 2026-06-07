@@ -27,6 +27,7 @@ export declare class ExtSplats implements SplatSource {
     numSplats: number;
     extArrays: [Uint32Array, Uint32Array];
     extra: Record<string, unknown>;
+    colorMatchRgb: Float32Array | null;
     editorState: SplatEditorState | null;
     maxSh: number;
     lod?: boolean | "quality";
@@ -70,6 +71,7 @@ export declare class ExtSplats implements SplatSource {
     forEachSplatCenterRaw(callback: (index: number, x: number, y: number, z: number) => void): void;
     getSplatCenterRaw(index: number, target: SplatCenterRaw): boolean;
     getSplatColorRaw(index: number, target: SplatColorRaw): boolean;
+    getSplatColorMatchRaw(index: number, target: SplatColorRaw): boolean;
     private updateTextures;
     extractSplats(indices: Uint32Array, pageColoring: boolean): ExtSplats;
     static emptyArray: THREE.DataArrayTexture;

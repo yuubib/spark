@@ -107,6 +107,16 @@ export type PackedSplatsOptions = {
   lodSplats?: PackedSplats;
 };
 
+function readColorMatchRgbExtra(
+  extra: Record<string, unknown>,
+  numSplats: number,
+): Float32Array | null {
+  const value = extra.colorMatchRgb;
+  return value instanceof Float32Array && value.length >= numSplats * 3
+    ? value
+    : null;
+}
+
 // A PackedSplats is a collection of Gaussian splats, packed into a format that
 // takes exactly 16 bytes per Gsplat to maximize memory and cache efficiency.
 // The center xyz coordinates are encoded as float16 (3 x 2 bytes), scale xyz
@@ -119,6 +129,7 @@ export class PackedSplats implements SplatSource {
   numSplats = 0;
   packedArray: Uint32Array | null = null;
   extra: Record<string, unknown>;
+  colorMatchRgb: Float32Array | null = null;
   editorState: SplatEditorState | null = null;
   maxSh = 3;
   splatEncoding?: SplatEncoding;
@@ -189,6 +200,7 @@ export class PackedSplats implements SplatSource {
     this.clearEditorState();
 
     this.extra = {};
+    this.colorMatchRgb = null;
     this.maxSplats = options.maxSplats ?? 0;
     this.splatEncoding = options.splatEncoding;
     this.lod = options.lod;
@@ -235,6 +247,7 @@ export class PackedSplats implements SplatSource {
       this.maxSplats = options.maxSplats ?? 0;
       this.numSplats = 0;
     }
+    this.colorMatchRgb = readColorMatchRgbExtra(this.extra, this.numSplats);
   }
 
   async asyncInitialize(options: PackedSplatsOptions) {
@@ -294,6 +307,7 @@ export class PackedSplats implements SplatSource {
     }
 
     this.packedArray = null;
+    this.colorMatchRgb = null;
 
     for (const key in this.extra) {
       const dyno = this.extra[key] as DynoUniform<
@@ -728,6 +742,23 @@ export class PackedSplats implements SplatSource {
     target.r = rgbMin + ((word0 & 0xff) / 255) * rgbRange;
     target.g = rgbMin + (((word0 >>> 8) & 0xff) / 255) * rgbRange;
     target.b = rgbMin + (((word0 >>> 16) & 0xff) / 255) * rgbRange;
+    return true;
+  }
+
+  getSplatColorMatchRaw(index: number, target: SplatColorRaw): boolean {
+    const colors = this.colorMatchRgb;
+    if (
+      !colors ||
+      !Number.isInteger(index) ||
+      index < 0 ||
+      index >= this.numSplats
+    ) {
+      return this.getSplatColorRaw(index, target);
+    }
+    const offset = index * 3;
+    target.r = colors[offset];
+    target.g = colors[offset + 1];
+    target.b = colors[offset + 2];
     return true;
   }
 

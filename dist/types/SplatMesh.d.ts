@@ -171,6 +171,7 @@ export interface SplatSource {
     forEachSplatCenterRaw?(callback: (index: number, x: number, y: number, z: number) => void): void;
     getSplatCenterRaw?(index: number, target: SplatCenterRaw): boolean;
     getSplatColorRaw?(index: number, target: SplatColorRaw): boolean;
+    getSplatColorMatchRaw?(index: number, target: SplatColorRaw): boolean;
 }
 export type SplatStateBoundingBoxOptions = {
     centersOnly?: boolean;
@@ -262,7 +263,9 @@ export declare class SplatMesh extends SplatGenerator {
     hasIndexedSplatCenters(): boolean;
     getSplatCenterRaw(index: number, target: SplatCenterRaw): boolean;
     hasIndexedSplatColors(): boolean;
+    hasIndexedSplatColorMatches(): boolean;
     getSplatColorRaw(index: number, target: SplatColorRaw): boolean;
+    getSplatColorMatchRaw(index: number, target: SplatColorRaw): boolean;
     findSplatColorMatches({ seedIndex, threshold, mode, maxMatches, }: SplatMeshColorMatchOptions): SplatMeshColorMatchResult | null;
     selectSplatStateColorMatches({ operation, mutationOptions, ...matchOptions }: SplatMeshColorMatchSelectionOptions): SplatMeshColorMatchSelectionResult | null;
     getEditorState(): SplatEditorState | null;

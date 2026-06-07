@@ -395,6 +395,7 @@ export interface SplatSource {
   getSplatCenterRaw?(index: number, target: SplatCenterRaw): boolean;
 
   getSplatColorRaw?(index: number, target: SplatColorRaw): boolean;
+  getSplatColorMatchRaw?(index: number, target: SplatColorRaw): boolean;
 }
 
 type MutableSplatSource = SplatSource & {
@@ -948,6 +949,13 @@ export class SplatMesh extends SplatGenerator {
     return this.splats?.getSplatColorRaw != null;
   }
 
+  hasIndexedSplatColorMatches(): boolean {
+    return (
+      this.splats?.getSplatColorMatchRaw != null ||
+      this.splats?.getSplatColorRaw != null
+    );
+  }
+
   getSplatColorRaw(index: number, target: SplatColorRaw): boolean {
     const source = this.splats;
     if (!source || index < 0 || index >= source.getNumSplats()) {
@@ -972,6 +980,17 @@ export class SplatMesh extends SplatGenerator {
     return found;
   }
 
+  getSplatColorMatchRaw(index: number, target: SplatColorRaw): boolean {
+    const source = this.splats;
+    if (!source || index < 0 || index >= source.getNumSplats()) {
+      return false;
+    }
+    if (source.getSplatColorMatchRaw) {
+      return source.getSplatColorMatchRaw(index, target);
+    }
+    return this.getSplatColorRaw(index, target);
+  }
+
   findSplatColorMatches({
     seedIndex,
     threshold = 0,
@@ -980,7 +999,7 @@ export class SplatMesh extends SplatGenerator {
   }: SplatMeshColorMatchOptions): SplatMeshColorMatchResult | null {
     const source = this.splats;
     const seed = { r: 0, g: 0, b: 0 };
-    if (!source || !this.getSplatColorRaw(seedIndex, seed)) {
+    if (!source || !this.getSplatColorMatchRaw(seedIndex, seed)) {
       return null;
     }
 
@@ -1034,10 +1053,10 @@ export class SplatMesh extends SplatGenerator {
       return true;
     };
 
-    if (this.hasIndexedSplatColors()) {
+    if (this.hasIndexedSplatColorMatches()) {
       const count = source.getNumSplats();
       for (let index = 0; index < count; index++) {
-        if (!this.getSplatColorRaw(index, color)) {
+        if (!this.getSplatColorMatchRaw(index, color)) {
           continue;
         }
         if (testColor(index, color.r, color.g, color.b) === false) {

@@ -4,6 +4,8 @@ import * as THREE from "three";
 
 import {
   ExtSplats,
+  PackedSplats,
+  PlyReader,
   SPLAT_EDITOR_STATE_DELETED,
   SPLAT_EDITOR_STATE_LOCKED,
   SplatMesh,
@@ -30,6 +32,55 @@ const assertClose = (actual: number, expected: number, epsilon = 1 / 255) => {
     `${actual} is not within ${epsilon} of ${expected}`,
   );
 };
+
+const makeDcPly = (rows: readonly (readonly number[])[]) => {
+  const header = [
+    "ply",
+    "format binary_little_endian 1.0",
+    `element vertex ${rows.length}`,
+    "property float x",
+    "property float y",
+    "property float z",
+    "property float f_dc_0",
+    "property float f_dc_1",
+    "property float f_dc_2",
+    "end_header",
+    "",
+  ].join("\n");
+  const headerBytes = new TextEncoder().encode(header);
+  const body = new ArrayBuffer(rows.length * 6 * 4);
+  const view = new DataView(body);
+  let offset = 0;
+  for (const row of rows) {
+    for (const value of row) {
+      view.setFloat32(offset, value, true);
+      offset += 4;
+    }
+  }
+  const bytes = new Uint8Array(headerBytes.length + body.byteLength);
+  bytes.set(headerBytes);
+  bytes.set(new Uint8Array(body), headerBytes.length);
+  return bytes;
+};
+
+{
+  const ply = new PlyReader({
+    fileBytes: makeDcPly([
+      [0, 0, 0, 0, 1, -1],
+      [0, 0, 0, 10, -10, 0.5],
+    ]),
+  });
+  await ply.parseHeader();
+  const rgb = ply.readColorMatchRgb();
+  assert.ok(rgb);
+  assert.strictEqual(rgb.length, 6);
+  assertClose(rgb[0], 0.5, 1e-6);
+  assertClose(rgb[1], 0.5 + 0.28209479177387814, 1e-6);
+  assertClose(rgb[2], 0.5 - 0.28209479177387814, 1e-6);
+  assertClose(rgb[3], 1, 1e-6);
+  assertClose(rgb[4], 0, 1e-6);
+  assertClose(rgb[5], 0.5 + 0.5 * 0.28209479177387814, 1e-6);
+}
 
 {
   const ext = new ExtSplats();
@@ -70,8 +121,9 @@ source.forEachSplat = () => {
 };
 
 let indexedColorReads = 0;
-const originalIndexedColor = mesh.getSplatColorRaw.bind(mesh);
-mesh.getSplatColorRaw = (index, target) => {
+const originalIndexedColor = source.getSplatColorMatchRaw?.bind(source);
+assert.ok(originalIndexedColor);
+source.getSplatColorMatchRaw = (index, target) => {
   indexedColorReads += 1;
   return originalIndexedColor(index, target);
 };
@@ -150,5 +202,36 @@ assert.strictEqual(
 );
 
 mesh.dispose();
+
+{
+  const packedBase = new PackedSplats();
+  pushSplat(packedBase, new THREE.Color(0.8, 0.1, 0.1));
+  pushSplat(packedBase, new THREE.Color(0.81, 0.11, 0.11));
+  pushSplat(packedBase, new THREE.Color(0.79, 0.09, 0.09));
+  const packed = new PackedSplats({
+    packedArray: packedBase.packedArray?.slice(),
+    numSplats: 3,
+    extra: {
+      colorMatchRgb: new Float32Array([
+        0.1, 0.1, 0.1, 0.5, 0.5, 0.5, 0.12, 0.1, 0.1,
+      ]),
+    },
+  });
+  const storageColor = { r: 0, g: 0, b: 0 };
+  const matchColor = { r: 0, g: 0, b: 0 };
+  assert.strictEqual(packed.getSplatColorRaw(1, storageColor), true);
+  assert.strictEqual(packed.getSplatColorMatchRaw(1, matchColor), true);
+  assertClose(storageColor.r, 0.81);
+  assertClose(matchColor.r, 0.5, 1e-6);
+
+  const meshWithSidecar = new SplatMesh({ packedSplats: packed });
+  const sidecarMatches = meshWithSidecar.findSplatColorMatches({
+    seedIndex: 0,
+    threshold: 0.05,
+  });
+  assert.deepStrictEqual([...(sidecarMatches?.indices ?? [])], [0, 2]);
+  meshWithSidecar.dispose();
+  packedBase.dispose();
+}
 
 console.log("Splat mesh color match tests passed");

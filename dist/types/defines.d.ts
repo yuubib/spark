@@ -57,6 +57,7 @@ export type PackedExtra = {
     sh1?: Uint32Array;
     sh2?: Uint32Array;
     sh3?: Uint32Array;
+    colorMatchRgb?: Float32Array;
     sh1Codes?: Uint32Array;
     sh2Codes?: Uint32Array;
     sh3Codes?: Uint32Array;
@@ -74,6 +75,7 @@ export type ExtExtra = {
     sh2?: Uint32Array;
     sh3a?: Uint32Array;
     sh3b?: Uint32Array;
+    colorMatchRgb?: Float32Array;
     sh1Codes?: Uint32Array;
     sh2Codes?: Uint32Array;
     sh3Codes?: [Uint32Array, Uint32Array];

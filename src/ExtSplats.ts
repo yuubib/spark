@@ -81,11 +81,22 @@ export type ExtSplatsOptions = {
   lodSplats?: ExtSplats;
 };
 
+function readColorMatchRgbExtra(
+  extra: Record<string, unknown>,
+  numSplats: number,
+): Float32Array | null {
+  const value = extra.colorMatchRgb;
+  return value instanceof Float32Array && value.length >= numSplats * 3
+    ? value
+    : null;
+}
+
 export class ExtSplats implements SplatSource {
   maxSplats = 0;
   numSplats = 0;
   extArrays: [Uint32Array, Uint32Array];
   extra: Record<string, unknown> = {};
+  colorMatchRgb: Float32Array | null = null;
   editorState: SplatEditorState | null = null;
   maxSh = 3;
   lod?: boolean | "quality";
@@ -126,6 +137,7 @@ export class ExtSplats implements SplatSource {
     this.clearEditorState();
 
     this.extra = {};
+    this.colorMatchRgb = null;
     this.maxSplats = options.maxSplats ?? 0;
     this.lod = options.lod;
     this.nonLod = options.nonLod;
@@ -174,6 +186,7 @@ export class ExtSplats implements SplatSource {
       this.numSplats = 0;
       this.extArrays = [new Uint32Array(0), new Uint32Array(0)];
     }
+    this.colorMatchRgb = readColorMatchRgbExtra(this.extra, this.numSplats);
   }
 
   async asyncInitialize(options: ExtSplatsOptions) {
@@ -233,6 +246,7 @@ export class ExtSplats implements SplatSource {
     }
 
     this.extArrays = [new Uint32Array(0), new Uint32Array(0)];
+    this.colorMatchRgb = null;
 
     for (const key in this.extra) {
       const dyno = this.extra[key] as DynoUniform<
@@ -660,6 +674,23 @@ export class ExtSplats implements SplatSource {
     target.r = fromHalf(extB[i4] & 0xffff);
     target.g = fromHalf(extB[i4] >>> 16);
     target.b = fromHalf(extB[i4 + 1] & 0xffff);
+    return true;
+  }
+
+  getSplatColorMatchRaw(index: number, target: SplatColorRaw): boolean {
+    const colors = this.colorMatchRgb;
+    if (
+      !colors ||
+      !Number.isInteger(index) ||
+      index < 0 ||
+      index >= this.numSplats
+    ) {
+      return this.getSplatColorRaw(index, target);
+    }
+    const offset = index * 3;
+    target.r = colors[offset];
+    target.g = colors[offset + 1];
+    target.b = colors[offset + 2];
     return true;
   }
 

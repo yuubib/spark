@@ -31,6 +31,7 @@ export declare class PackedSplats implements SplatSource {
     numSplats: number;
     packedArray: Uint32Array | null;
     extra: Record<string, unknown>;
+    colorMatchRgb: Float32Array | null;
     editorState: SplatEditorState | null;
     maxSh: number;
     splatEncoding?: SplatEncoding;
@@ -80,6 +81,7 @@ export declare class PackedSplats implements SplatSource {
     forEachSplatCenterRaw(callback: (index: number, x: number, y: number, z: number) => void): void;
     getSplatCenterRaw(index: number, target: SplatCenterRaw): boolean;
     getSplatColorRaw(index: number, target: SplatColorRaw): boolean;
+    getSplatColorMatchRaw(index: number, target: SplatColorRaw): boolean;
     ensureGenerate(maxSplats: number): boolean;
     generateMapping(splatCounts: number[]): {
         maxSplats: number;

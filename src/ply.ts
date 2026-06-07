@@ -714,9 +714,38 @@ export class PlyReader {
       }
     }
   }
+
+  readColorMatchRgb(): Float32Array | null {
+    const vertex = this.elements.vertex;
+    if (!vertex) {
+      return null;
+    }
+    const { f_dc_0, f_dc_1, f_dc_2 } = vertex.properties;
+    if (!f_dc_0 || !f_dc_1 || !f_dc_2) {
+      return null;
+    }
+
+    const rgb = new Float32Array(this.numSplats * 3);
+    this.parseData((element) => {
+      if (element.name !== "vertex") {
+        return null;
+      }
+      return (index, item) => {
+        const offset = index * 3;
+        rgb[offset] = decodePlyDcColorChannel(item.f_dc_0 as number);
+        rgb[offset + 1] = decodePlyDcColorChannel(item.f_dc_1 as number);
+        rgb[offset + 2] = decodePlyDcColorChannel(item.f_dc_2 as number);
+      };
+    });
+    return rgb;
+  }
 }
 
 export const SH_C0 = 0.28209479177387814;
+
+export function decodePlyDcColorChannel(value: number): number {
+  return Math.min(1, Math.max(0, 0.5 + value * SH_C0));
+}
 
 type FieldParser = (
   data: DataView,

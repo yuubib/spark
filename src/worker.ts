@@ -19,6 +19,7 @@ import init_wasm, {
   get_lod_tree_level,
 } from "spark-worker-rs";
 import type { ExtResult, PackedResult, SplatEncoding } from "./defines";
+import { PlyReader } from "./ply";
 
 const rpcHandlers = {
   sortSplats16,
@@ -133,6 +134,7 @@ async function decodeBytesUrl({
   chunked,
   chunkedLength,
   sendStatus,
+  onChunk,
 }: {
   decoder: ChunkDecoder;
   fileBytes?: Uint8Array;
@@ -142,8 +144,10 @@ async function decodeBytesUrl({
   chunked?: boolean;
   chunkedLength?: number;
   sendStatus: (data: unknown) => void;
+  onChunk?: (chunk: Uint8Array) => void;
 }) {
   if (fileBytes) {
+    onChunk?.(fileBytes);
     const CHUNK_SIZE = 1048576; // 1 MB
     for (let i = 0; i < fileBytes.length; i += CHUNK_SIZE) {
       decoder.push(
@@ -177,6 +181,7 @@ async function decodeBytesUrl({
       }
       loaded += value.length;
       sendStatus({ loaded, total });
+      onChunk?.(value);
 
       decoder.push(value);
     }
@@ -194,6 +199,7 @@ async function decodeBytesUrl({
         break;
       }
 
+      onChunk?.(nextChunk);
       decoder.push(nextChunk);
       loaded += nextChunk.length;
       sendStatus({ progress: { loaded, total } });
@@ -207,6 +213,107 @@ async function decodeBytesUrl({
 
   const decoded = decoder.finish();
   return decoded;
+}
+
+function shouldCapturePlyColorMatchRgb({
+  fileType,
+  pathName,
+  url,
+  fileBytes,
+}: {
+  fileType?: string;
+  pathName?: string;
+  url?: string;
+  fileBytes?: Uint8Array;
+}): boolean {
+  if (fileType?.toLowerCase() === "ply") {
+    return true;
+  }
+  const sourceName = pathName ?? url ?? "";
+  try {
+    const pathname = new URL(sourceName, "http://local.invalid").pathname;
+    if (pathname.toLowerCase().endsWith(".ply")) {
+      return true;
+    }
+  } catch {
+    if (sourceName.toLowerCase().split(/[?#]/, 1)[0].endsWith(".ply")) {
+      return true;
+    }
+  }
+  return !!fileBytes && looksLikePly(fileBytes);
+}
+
+function looksLikePly(bytes: Uint8Array): boolean {
+  return (
+    bytes.length >= 4 &&
+    bytes[0] === 0x70 &&
+    bytes[1] === 0x6c &&
+    bytes[2] === 0x79 &&
+    (bytes[3] === 0x0a || bytes[3] === 0x0d)
+  );
+}
+
+function createChunkCollector(): {
+  readonly chunks: Uint8Array[];
+  readonly onChunk: (chunk: Uint8Array) => void;
+} {
+  const chunks: Uint8Array[] = [];
+  return {
+    chunks,
+    onChunk: (chunk) => {
+      chunks.push(chunk.slice());
+    },
+  };
+}
+
+function concatenateChunks(chunks: readonly Uint8Array[]): Uint8Array {
+  if (chunks.length === 1) {
+    return chunks[0];
+  }
+  const total = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+  const result = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    result.set(chunk, offset);
+    offset += chunk.length;
+  }
+  return result;
+}
+
+async function readPlyColorMatchRgb(
+  fileBytes: Uint8Array,
+  expectedSplats: number,
+): Promise<Float32Array | null> {
+  if (!looksLikePly(fileBytes)) {
+    return null;
+  }
+  try {
+    const ply = new PlyReader({ fileBytes });
+    await ply.parseHeader();
+    if (ply.numSplats !== expectedSplats) {
+      return null;
+    }
+    return ply.readColorMatchRgb();
+  } catch {
+    return null;
+  }
+}
+
+async function attachPlyColorMatchRgb(
+  extra: Record<string, unknown>,
+  expectedSplats: number,
+  fileBytes?: Uint8Array,
+  chunks?: readonly Uint8Array[],
+): Promise<void> {
+  const bytes =
+    fileBytes ?? (chunks?.length ? concatenateChunks(chunks) : null);
+  if (!bytes) {
+    return;
+  }
+  const rgb = await readPlyColorMatchRgb(bytes, expectedSplats);
+  if (rgb) {
+    extra.colorMatchRgb = rgb;
+  }
 }
 
 type DecodedPackedResult = {
@@ -283,6 +390,13 @@ async function loadPackedSplats(
 ) {
   // console.log("loadPackedSplats", { url, requestHeader, withCredentials, fileBytes, fileType, pathName, stream, streamLength, encoding, lod, lodBase, lodAbove, nonLod });
   if (!lod) {
+    const capturePly = shouldCapturePlyColorMatchRgb({
+      fileType,
+      pathName,
+      url,
+      fileBytes,
+    });
+    const collector = capturePly && !fileBytes ? createChunkCollector() : null;
     const decoder = decode_to_packedsplats(
       fileType,
       pathName ?? url,
@@ -300,8 +414,17 @@ async function loadPackedSplats(
       chunked,
       chunkedLength,
       sendStatus,
+      onChunk: collector?.onChunk,
     });
     const result = toPackedResult(decoded as DecodedPackedResult);
+    if (capturePly) {
+      await attachPlyColorMatchRgb(
+        result.extra,
+        result.numSplats,
+        fileBytes,
+        collector?.chunks,
+      );
+    }
     if (result.splatEncoding.lodOpacity) {
       return { lodSplats: result };
     }
@@ -445,6 +568,13 @@ async function loadExtSplats(
 ) {
   // console.log("loadExtSplats", { url, requestHeader, withCredentials, fileBytes, fileType, pathName, stream, streamLength, lod, lodBase, lodAbove, nonLod });
   if (!lod) {
+    const capturePly = shouldCapturePlyColorMatchRgb({
+      fileType,
+      pathName,
+      url,
+      fileBytes,
+    });
+    const collector = capturePly && !fileBytes ? createChunkCollector() : null;
     const decoder = decode_to_extsplats(
       fileType,
       pathName ?? url,
@@ -461,8 +591,17 @@ async function loadExtSplats(
       chunked,
       chunkedLength,
       sendStatus,
+      onChunk: collector?.onChunk,
     });
     const result = toExtResult(decoded as DecodedExtResult);
+    if (capturePly) {
+      await attachPlyColorMatchRgb(
+        result.extra,
+        result.numSplats,
+        fileBytes,
+        collector?.chunks,
+      );
+    }
     if (result.extra.lodTree) {
       return { lodSplats: result };
     }

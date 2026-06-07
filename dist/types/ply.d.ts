@@ -28,6 +28,8 @@ export declare class PlyReader {
     parseData(elementCallback: (element: PlyElement) => null | ((index: number, item: Record<string, number | number[]>) => void)): void;
     parseSplats(splatCallback: SplatCallback, shCallback?: SplatShCallback): void;
     injectRgba(rgba: Uint8Array): void;
+    readColorMatchRgb(): Float32Array | null;
 }
 export declare const SH_C0 = 0.28209479177387814;
+export declare function decodePlyDcColorChannel(value: number): number;
 export {};
