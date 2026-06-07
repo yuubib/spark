@@ -343,6 +343,10 @@ import {
   const initialUpload = state.uploadDirtyWithResult();
   assert.strictEqual(initialUpload.mode, "full-texture");
   assert.deepStrictEqual(state.getDirtyRanges(), []);
+  assert.deepStrictEqual(state.getRenderDirtyRanges(), [
+    { start: 0, count: state.maxSplats },
+  ]);
+  state.clearRenderDirtyRanges();
 
   state.setList([4099, 2, 2], SPLAT_EDITOR_STATE_SELECTED, "set");
 
@@ -366,6 +370,12 @@ import {
     { layer: 0, row: 2, rowCount: 1, start: 4096, count: 2048 },
   ]);
   assert.deepStrictEqual(state.getDirtyRanges(), []);
+  assert.deepStrictEqual(state.getRenderDirtyRanges(), [
+    { start: 2, count: 1 },
+    { start: 4099, count: 1 },
+  ]);
+  state.clearRenderDirtyRanges();
+  assert.deepStrictEqual(state.getRenderDirtyRanges(), []);
 
   const noOpUpload = state.uploadDirtyWithResult();
   assert.strictEqual(noOpUpload.mode, "none");

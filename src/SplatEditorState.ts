@@ -101,7 +101,9 @@ export class SplatEditorState {
   private locked = 0;
   private deleted = 0;
   private dirtyRanges: SplatEditorStateDirtyRange[] = [];
+  private renderDirtyRanges: SplatEditorStateDirtyRange[] = [];
   private dirtyAll = false;
+  private renderDirtyAll = false;
   private fullTextureUploadPending = false;
 
   constructor(numSplats = 0, colors: SplatEditorStateColors = {}) {
@@ -128,7 +130,9 @@ export class SplatEditorState {
     this.deleted = 0;
     this.visibilityVersion = 0;
     this.dirtyRanges = [];
+    this.renderDirtyRanges = [];
     this.dirtyAll = false;
+    this.renderDirtyAll = false;
     this.fullTextureUploadPending = false;
   }
 
@@ -557,8 +561,17 @@ export class SplatEditorState {
     if (safeStart >= safeEnd) {
       return;
     }
-    this.dirtyRanges.push({ start: safeStart, count: safeEnd - safeStart });
+    if (!this.dirtyAll) {
+      this.dirtyRanges.push({ start: safeStart, count: safeEnd - safeStart });
+    }
+    if (!this.renderDirtyAll) {
+      this.renderDirtyRanges.push({
+        start: safeStart,
+        count: safeEnd - safeStart,
+      });
+    }
     this.dirtyAll ||= safeEnd - safeStart >= this.maxSplats;
+    this.renderDirtyAll ||= safeEnd - safeStart >= this.maxSplats;
   }
 
   markDirtyList(indices: Iterable<number>): void {
@@ -598,6 +611,18 @@ export class SplatEditorState {
       return [{ start: 0, count: this.maxSplats }];
     }
     return this.dirtyRanges.slice();
+  }
+
+  getRenderDirtyRanges(): readonly SplatEditorStateDirtyRange[] {
+    if (this.renderDirtyAll) {
+      return [{ start: 0, count: this.maxSplats }];
+    }
+    return this.renderDirtyRanges.slice();
+  }
+
+  clearRenderDirtyRanges(): void {
+    this.renderDirtyAll = false;
+    this.renderDirtyRanges = [];
   }
 
   getDirtyUploadSpans(): readonly SplatEditorStateDirtyUploadSpan[] {

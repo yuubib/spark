@@ -41,6 +41,7 @@ export declare class SplatAccumulator {
     editorStateEnabled: boolean;
     editorStateSelectedColor: THREE.Vector4;
     editorStateLockedColor: THREE.Vector4;
+    private editorStateMappingKey;
     constructor({ extSplats, covSplats, }?: {
         extSplats?: boolean;
         covSplats?: boolean;
@@ -48,10 +49,12 @@ export declare class SplatAccumulator {
     dispose(): void;
     getTextures(): THREE.DataArrayTexture[];
     getEditorStateTexture(): THREE.DataArrayTexture;
-    updateEditorStateTexture({ mapping, }?: {
+    updateEditorStateTexture({ mapping, renderer, }?: {
         mapping?: readonly GeneratorMapping[];
+        renderer?: THREE.WebGLRenderer;
     }): boolean;
     private ensureEditorStateTexture;
+    private uploadEditorStateSpans;
     static emptyTexture: THREE.DataArrayTexture;
     static emptyTextures: THREE.DataArrayTexture[];
     generateMapping(splatCounts: number[]): {

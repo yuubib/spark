@@ -966,7 +966,7 @@ export class SparkRenderer extends THREE.Mesh {
 
     if (!doUpdate) {
       if (needsStyleUpdate) {
-        this.display.updateEditorStateTexture();
+        this.display.updateEditorStateTexture({ renderer });
         this.display.styleVersion = styleVersion;
         this.setDirty();
       }

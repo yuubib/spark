@@ -2,7 +2,10 @@ import * as THREE from "three";
 import { FullScreenQuad } from "three/addons/postprocessing/Pass.js";
 import { Readback } from "./Readback";
 import { SplatEdit } from "./SplatEdit";
-import { SplatEditorState } from "./SplatEditorState";
+import {
+  SplatEditorState,
+  type SplatEditorStateDirtyRange,
+} from "./SplatEditorState";
 import {
   type CovSplatGenerator,
   type GsplatGenerator,
@@ -58,6 +61,27 @@ export type GeneratorMapping = {
   count: number;
 };
 
+type EditorStateTextureImage = {
+  data: Uint8Array;
+  width: number;
+  height: number;
+  depth: number;
+};
+
+type EditorStateUploadSpan = {
+  layer: number;
+  row: number;
+  rowCount: number;
+  start: number;
+  count: number;
+};
+
+type WebGLTextureProperties = {
+  __webglTexture?: WebGLTexture;
+};
+
+const MAX_EDITOR_STATE_UPLOAD_SPANS = 512;
+
 export class SplatAccumulator {
   time = 0;
   deltaTime = 0;
@@ -85,6 +109,7 @@ export class SplatAccumulator {
   editorStateEnabled = false;
   editorStateSelectedColor = new THREE.Vector4(0.38, 0.62, 1.0, 0.42);
   editorStateLockedColor = new THREE.Vector4(0.58, 0.64, 0.72, 1.0);
+  private editorStateMappingKey = "";
 
   constructor({
     extSplats,
@@ -109,6 +134,7 @@ export class SplatAccumulator {
     }
     this.editorStateData = new Uint8Array(0);
     this.editorStateEnabled = false;
+    this.editorStateMappingKey = "";
   }
 
   // Returns a THREE.DataArrayTexture representing the NewSplatAccumulator
@@ -126,8 +152,10 @@ export class SplatAccumulator {
 
   updateEditorStateTexture({
     mapping = this.mapping,
+    renderer,
   }: {
     mapping?: readonly GeneratorMapping[];
+    renderer?: THREE.WebGLRenderer;
   } = {}): boolean {
     const stateMappings: {
       item: GeneratorMapping;
@@ -155,11 +183,20 @@ export class SplatAccumulator {
     if (stateMappings.length === 0 || requiredSplats <= 0) {
       const wasEnabled = this.editorStateEnabled;
       this.editorStateEnabled = false;
+      this.editorStateMappingKey = "";
       return wasEnabled;
     }
 
-    this.ensureEditorStateTexture(requiredSplats);
-    this.editorStateData.fill(0);
+    const mappingKey = createEditorStateMappingKey(stateMappings);
+    const allocated = this.ensureEditorStateTexture(requiredSplats);
+    const fullCopy =
+      allocated ||
+      !this.editorStateEnabled ||
+      this.editorStateMappingKey !== mappingKey;
+    const dirtyRanges: SplatEditorStateDirtyRange[] = [];
+    if (fullCopy) {
+      this.editorStateData.fill(0);
+    }
 
     let enabled = false;
     let colorsCopied = false;
@@ -171,14 +208,36 @@ export class SplatAccumulator {
         colorsCopied = true;
       }
 
-      const source = state.states.subarray(
-        0,
-        Math.min(item.count, state.states.length),
-      );
-      this.editorStateData.set(source, item.base);
+      if (fullCopy) {
+        const source = state.states.subarray(
+          0,
+          Math.min(item.count, state.states.length),
+        );
+        this.editorStateData.set(source, item.base);
+        state.clearRenderDirtyRanges();
+        continue;
+      }
+
+      for (const range of state.getRenderDirtyRanges()) {
+        const start = Math.max(0, Math.floor(range.start));
+        const end = Math.min(
+          item.count,
+          start + Math.max(0, Math.floor(range.count)),
+        );
+        if (start >= end) {
+          continue;
+        }
+        this.editorStateData.set(
+          state.states.subarray(start, end),
+          item.base + start,
+        );
+        dirtyRanges.push({ start: item.base + start, count: end - start });
+      }
+      state.clearRenderDirtyRanges();
     }
 
     this.editorStateEnabled = enabled;
+    this.editorStateMappingKey = mappingKey;
     if (
       this.editorStateTexture &&
       this.editorStateTexture.image.data !== this.editorStateData
@@ -186,12 +245,29 @@ export class SplatAccumulator {
       this.editorStateTexture.image.data = this.editorStateData;
     }
     if (this.editorStateTexture) {
-      this.editorStateTexture.needsUpdate = true;
+      if (fullCopy) {
+        this.editorStateTexture.needsUpdate = true;
+      } else if (dirtyRanges.length > 0) {
+        const uploadSpans = createEditorStateUploadSpans(
+          dirtyRanges,
+          this.editorStateTexture.image.width,
+          this.editorStateTexture.image.height,
+          this.editorStateData.length,
+        );
+        if (
+          !renderer ||
+          uploadSpans.length === 0 ||
+          uploadSpans.length > MAX_EDITOR_STATE_UPLOAD_SPANS ||
+          !this.uploadEditorStateSpans(renderer, uploadSpans)
+        ) {
+          this.editorStateTexture.needsUpdate = true;
+        }
+      }
     }
     return enabled;
   }
 
-  private ensureEditorStateTexture(maxSplats: number) {
+  private ensureEditorStateTexture(maxSplats: number): boolean {
     const {
       width,
       height,
@@ -199,7 +275,7 @@ export class SplatAccumulator {
       maxSplats: capacity,
     } = getTextureSize(Math.max(1, maxSplats));
     if (this.editorStateData.length === capacity && this.editorStateTexture) {
-      return;
+      return false;
     }
 
     if (this.editorStateTexture) {
@@ -220,6 +296,94 @@ export class SplatAccumulator {
     this.editorStateTexture.minFilter = THREE.NearestFilter;
     this.editorStateTexture.generateMipmaps = false;
     this.editorStateTexture.needsUpdate = true;
+    return true;
+  }
+
+  private uploadEditorStateSpans(
+    renderer: THREE.WebGLRenderer,
+    uploadSpans: readonly EditorStateUploadSpan[],
+  ): boolean {
+    const texture = this.editorStateTexture;
+    if (!texture || !renderer.properties.has(texture)) {
+      return false;
+    }
+
+    const gl = renderer.getContext();
+    if (!("texSubImage3D" in gl)) {
+      return false;
+    }
+
+    const textureProperties = renderer.properties.get(
+      texture,
+    ) as WebGLTextureProperties;
+    const glTexture = textureProperties.__webglTexture;
+    if (!glTexture) {
+      return false;
+    }
+
+    const image = texture.image as EditorStateTextureImage;
+    if (image.data !== this.editorStateData) {
+      return false;
+    }
+
+    const gl2 = gl as WebGL2RenderingContext;
+    const previousAlignment = gl2.getParameter(gl2.UNPACK_ALIGNMENT) as number;
+    const previousFlipY = gl2.getParameter(gl2.UNPACK_FLIP_Y_WEBGL) as boolean;
+    const previousRowLength = gl2.getParameter(gl2.UNPACK_ROW_LENGTH) as number;
+    const previousImageHeight = gl2.getParameter(
+      gl2.UNPACK_IMAGE_HEIGHT,
+    ) as number;
+    const previousSkipPixels = gl2.getParameter(
+      gl2.UNPACK_SKIP_PIXELS,
+    ) as number;
+    const previousSkipRows = gl2.getParameter(gl2.UNPACK_SKIP_ROWS) as number;
+    const previousSkipImages = gl2.getParameter(
+      gl2.UNPACK_SKIP_IMAGES,
+    ) as number;
+
+    renderer.state.activeTexture(gl2.TEXTURE0);
+    renderer.state.bindTexture(gl2.TEXTURE_2D_ARRAY, glTexture);
+    gl2.bindBuffer(gl2.PIXEL_UNPACK_BUFFER, null);
+    gl2.pixelStorei(gl2.UNPACK_FLIP_Y_WEBGL, false);
+    gl2.pixelStorei(gl2.UNPACK_ALIGNMENT, 1);
+    gl2.pixelStorei(gl2.UNPACK_ROW_LENGTH, 0);
+    gl2.pixelStorei(gl2.UNPACK_IMAGE_HEIGHT, 0);
+    gl2.pixelStorei(gl2.UNPACK_SKIP_PIXELS, 0);
+    gl2.pixelStorei(gl2.UNPACK_SKIP_ROWS, 0);
+    gl2.pixelStorei(gl2.UNPACK_SKIP_IMAGES, 0);
+
+    try {
+      for (const span of uploadSpans) {
+        const data = this.editorStateData.subarray(
+          span.start,
+          span.start + span.count,
+        );
+        gl2.texSubImage3D(
+          gl2.TEXTURE_2D_ARRAY,
+          0,
+          0,
+          span.row,
+          span.layer,
+          image.width,
+          span.rowCount,
+          1,
+          gl2.RED_INTEGER,
+          gl2.UNSIGNED_BYTE,
+          data,
+        );
+      }
+    } finally {
+      gl2.pixelStorei(gl2.UNPACK_ALIGNMENT, previousAlignment);
+      gl2.pixelStorei(gl2.UNPACK_FLIP_Y_WEBGL, previousFlipY);
+      gl2.pixelStorei(gl2.UNPACK_ROW_LENGTH, previousRowLength);
+      gl2.pixelStorei(gl2.UNPACK_IMAGE_HEIGHT, previousImageHeight);
+      gl2.pixelStorei(gl2.UNPACK_SKIP_PIXELS, previousSkipPixels);
+      gl2.pixelStorei(gl2.UNPACK_SKIP_ROWS, previousSkipRows);
+      gl2.pixelStorei(gl2.UNPACK_SKIP_IMAGES, previousSkipImages);
+      renderer.state.bindTexture(gl2.TEXTURE_2D_ARRAY, null);
+    }
+
+    return true;
   }
 
   static emptyTexture = (() => {
@@ -700,7 +864,7 @@ export class SplatAccumulator {
             this.generate({ generator, covGenerator, base, count, renderer });
           }
         }
-        this.updateEditorStateTexture();
+        this.updateEditorStateTexture({ renderer });
       },
       readback: async () => {
         const textures = this.getTextures();
@@ -826,4 +990,85 @@ export class SplatAccumulator {
     });
     return { splatsUpdated, sortUpdated, styleUpdated, mappingUpdated };
   }
+}
+
+function createEditorStateMappingKey(
+  stateMappings: readonly {
+    item: GeneratorMapping;
+    state: SplatEditorState;
+  }[],
+): string {
+  return stateMappings
+    .map(({ item, state }) =>
+      [
+        item.node.id,
+        item.base,
+        item.count,
+        state.maxSplats,
+        state.numSplats,
+      ].join(":"),
+    )
+    .join("|");
+}
+
+function createEditorStateUploadSpans(
+  ranges: readonly SplatEditorStateDirtyRange[],
+  width: number,
+  height: number,
+  maxSplats: number,
+): EditorStateUploadSpan[] {
+  if (width <= 0 || height <= 0 || maxSplats <= 0) {
+    return [];
+  }
+
+  const splatsPerLayer = width * height;
+  const spans: EditorStateUploadSpan[] = [];
+  for (const range of ranges) {
+    let start = Math.max(0, Math.floor(range.start));
+    const end = Math.min(
+      maxSplats,
+      start + Math.max(0, Math.floor(range.count)),
+    );
+    while (start < end) {
+      const layer = Math.floor(start / splatsPerLayer);
+      const layerStart = layer * splatsPerLayer;
+      const layerEnd = Math.min(end, layerStart + splatsPerLayer);
+      const firstRow = Math.floor((start - layerStart) / width);
+      const lastRow = Math.floor((layerEnd - 1 - layerStart) / width);
+      const rowCount = lastRow - firstRow + 1;
+      spans.push({
+        layer,
+        row: firstRow,
+        rowCount,
+        start: layerStart + firstRow * width,
+        count: rowCount * width,
+      });
+      start = layerStart + (lastRow + 1) * width;
+    }
+  }
+
+  spans.sort((a, b) => a.layer - b.layer || a.row - b.row);
+
+  const merged: EditorStateUploadSpan[] = [];
+  for (const span of spans) {
+    const previous = merged[merged.length - 1];
+    if (
+      previous &&
+      previous.layer === span.layer &&
+      previous.row + previous.rowCount >= span.row
+    ) {
+      const previousEndRow = previous.row + previous.rowCount;
+      const nextEndRow = Math.max(previousEndRow, span.row + span.rowCount);
+      merged[merged.length - 1] = {
+        layer: previous.layer,
+        row: previous.row,
+        rowCount: nextEndRow - previous.row,
+        start: previous.start,
+        count: (nextEndRow - previous.row) * width,
+      };
+      continue;
+    }
+    merged.push(span);
+  }
+  return merged;
 }

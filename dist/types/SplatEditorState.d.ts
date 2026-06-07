@@ -54,7 +54,9 @@ export declare class SplatEditorState {
     private locked;
     private deleted;
     private dirtyRanges;
+    private renderDirtyRanges;
     private dirtyAll;
+    private renderDirtyAll;
     private fullTextureUploadPending;
     constructor(numSplats?: number, colors?: SplatEditorStateColors);
     dispose(): void;
@@ -85,6 +87,8 @@ export declare class SplatEditorState {
     markDirtyRange(start: number, count: number): void;
     markDirtyList(indices: Iterable<number>): void;
     getDirtyRanges(): readonly SplatEditorStateDirtyRange[];
+    getRenderDirtyRanges(): readonly SplatEditorStateDirtyRange[];
+    clearRenderDirtyRanges(): void;
     getDirtyUploadSpans(): readonly SplatEditorStateDirtyUploadSpan[];
     uploadDirty(): THREE.DataArrayTexture;
     uploadDirtyWithResult(renderer?: THREE.WebGLRenderer): SplatEditorStateUploadResult;

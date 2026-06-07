@@ -6846,7 +6846,9 @@ const _SplatEditorState = class _SplatEditorState {
     this.locked = 0;
     this.deleted = 0;
     this.dirtyRanges = [];
+    this.renderDirtyRanges = [];
     this.dirtyAll = false;
+    this.renderDirtyAll = false;
     this.fullTextureUploadPending = false;
     this.numSplats = 0;
     this.maxSplats = 0;
@@ -6869,7 +6871,9 @@ const _SplatEditorState = class _SplatEditorState {
     this.deleted = 0;
     this.visibilityVersion = 0;
     this.dirtyRanges = [];
+    this.renderDirtyRanges = [];
     this.dirtyAll = false;
+    this.renderDirtyAll = false;
     this.fullTextureUploadPending = false;
   }
   ensureCapacity(numSplats) {
@@ -7196,8 +7200,17 @@ const _SplatEditorState = class _SplatEditorState {
     if (safeStart >= safeEnd) {
       return;
     }
-    this.dirtyRanges.push({ start: safeStart, count: safeEnd - safeStart });
+    if (!this.dirtyAll) {
+      this.dirtyRanges.push({ start: safeStart, count: safeEnd - safeStart });
+    }
+    if (!this.renderDirtyAll) {
+      this.renderDirtyRanges.push({
+        start: safeStart,
+        count: safeEnd - safeStart
+      });
+    }
     this.dirtyAll || (this.dirtyAll = safeEnd - safeStart >= this.maxSplats);
+    this.renderDirtyAll || (this.renderDirtyAll = safeEnd - safeStart >= this.maxSplats);
   }
   markDirtyList(indices) {
     const sortedIndices = [];
@@ -7234,6 +7247,16 @@ const _SplatEditorState = class _SplatEditorState {
       return [{ start: 0, count: this.maxSplats }];
     }
     return this.dirtyRanges.slice();
+  }
+  getRenderDirtyRanges() {
+    if (this.renderDirtyAll) {
+      return [{ start: 0, count: this.maxSplats }];
+    }
+    return this.renderDirtyRanges.slice();
+  }
+  clearRenderDirtyRanges() {
+    this.renderDirtyAll = false;
+    this.renderDirtyRanges = [];
   }
   getDirtyUploadSpans() {
     if (this.maxSplats <= 0) {
@@ -10139,6 +10162,7 @@ class SplatGenerator extends THREE__namespace.Object3D {
     }
   }
 }
+const MAX_EDITOR_STATE_UPLOAD_SPANS = 512;
 const _SplatAccumulator = class _SplatAccumulator {
   constructor({
     extSplats,
@@ -10164,6 +10188,7 @@ const _SplatAccumulator = class _SplatAccumulator {
     this.editorStateEnabled = false;
     this.editorStateSelectedColor = new THREE__namespace.Vector4(0.38, 0.62, 1, 0.42);
     this.editorStateLockedColor = new THREE__namespace.Vector4(0.58, 0.64, 0.72, 1);
+    this.editorStateMappingKey = "";
     if (!threeMrtArray) {
       throw new Error("Spark requires THREE.js r179 or above");
     }
@@ -10182,6 +10207,7 @@ const _SplatAccumulator = class _SplatAccumulator {
     }
     this.editorStateData = new Uint8Array(0);
     this.editorStateEnabled = false;
+    this.editorStateMappingKey = "";
   }
   // Returns a THREE.DataArrayTexture representing the NewSplatAccumulator
   // content as 2 x Uint32x4 data array textures (2048 x 2048 x 2048 in size)
@@ -10195,7 +10221,8 @@ const _SplatAccumulator = class _SplatAccumulator {
     return this.editorStateTexture ?? SplatEditorState.emptyTexture;
   }
   updateEditorStateTexture({
-    mapping = this.mapping
+    mapping = this.mapping,
+    renderer
   } = {}) {
     const stateMappings = [];
     let requiredSplats = 0;
@@ -10214,10 +10241,16 @@ const _SplatAccumulator = class _SplatAccumulator {
     if (stateMappings.length === 0 || requiredSplats <= 0) {
       const wasEnabled = this.editorStateEnabled;
       this.editorStateEnabled = false;
+      this.editorStateMappingKey = "";
       return wasEnabled;
     }
-    this.ensureEditorStateTexture(requiredSplats);
-    this.editorStateData.fill(0);
+    const mappingKey = createEditorStateMappingKey(stateMappings);
+    const allocated = this.ensureEditorStateTexture(requiredSplats);
+    const fullCopy = allocated || !this.editorStateEnabled || this.editorStateMappingKey !== mappingKey;
+    const dirtyRanges = [];
+    if (fullCopy) {
+      this.editorStateData.fill(0);
+    }
     let enabled = false;
     let colorsCopied = false;
     for (const { item, state } of stateMappings) {
@@ -10227,18 +10260,51 @@ const _SplatAccumulator = class _SplatAccumulator {
         this.editorStateLockedColor.copy(state.lockedColor);
         colorsCopied = true;
       }
-      const source = state.states.subarray(
-        0,
-        Math.min(item.count, state.states.length)
-      );
-      this.editorStateData.set(source, item.base);
+      if (fullCopy) {
+        const source = state.states.subarray(
+          0,
+          Math.min(item.count, state.states.length)
+        );
+        this.editorStateData.set(source, item.base);
+        state.clearRenderDirtyRanges();
+        continue;
+      }
+      for (const range of state.getRenderDirtyRanges()) {
+        const start = Math.max(0, Math.floor(range.start));
+        const end = Math.min(
+          item.count,
+          start + Math.max(0, Math.floor(range.count))
+        );
+        if (start >= end) {
+          continue;
+        }
+        this.editorStateData.set(
+          state.states.subarray(start, end),
+          item.base + start
+        );
+        dirtyRanges.push({ start: item.base + start, count: end - start });
+      }
+      state.clearRenderDirtyRanges();
     }
     this.editorStateEnabled = enabled;
+    this.editorStateMappingKey = mappingKey;
     if (this.editorStateTexture && this.editorStateTexture.image.data !== this.editorStateData) {
       this.editorStateTexture.image.data = this.editorStateData;
     }
     if (this.editorStateTexture) {
-      this.editorStateTexture.needsUpdate = true;
+      if (fullCopy) {
+        this.editorStateTexture.needsUpdate = true;
+      } else if (dirtyRanges.length > 0) {
+        const uploadSpans = createEditorStateUploadSpans(
+          dirtyRanges,
+          this.editorStateTexture.image.width,
+          this.editorStateTexture.image.height,
+          this.editorStateData.length
+        );
+        if (!renderer || uploadSpans.length === 0 || uploadSpans.length > MAX_EDITOR_STATE_UPLOAD_SPANS || !this.uploadEditorStateSpans(renderer, uploadSpans)) {
+          this.editorStateTexture.needsUpdate = true;
+        }
+      }
     }
     return enabled;
   }
@@ -10250,7 +10316,7 @@ const _SplatAccumulator = class _SplatAccumulator {
       maxSplats: capacity
     } = getTextureSize(Math.max(1, maxSplats));
     if (this.editorStateData.length === capacity && this.editorStateTexture) {
-      return;
+      return false;
     }
     if (this.editorStateTexture) {
       this.editorStateTexture.dispose();
@@ -10270,6 +10336,83 @@ const _SplatAccumulator = class _SplatAccumulator {
     this.editorStateTexture.minFilter = THREE__namespace.NearestFilter;
     this.editorStateTexture.generateMipmaps = false;
     this.editorStateTexture.needsUpdate = true;
+    return true;
+  }
+  uploadEditorStateSpans(renderer, uploadSpans) {
+    const texture2 = this.editorStateTexture;
+    if (!texture2 || !renderer.properties.has(texture2)) {
+      return false;
+    }
+    const gl = renderer.getContext();
+    if (!("texSubImage3D" in gl)) {
+      return false;
+    }
+    const textureProperties = renderer.properties.get(
+      texture2
+    );
+    const glTexture = textureProperties.__webglTexture;
+    if (!glTexture) {
+      return false;
+    }
+    const image = texture2.image;
+    if (image.data !== this.editorStateData) {
+      return false;
+    }
+    const gl2 = gl;
+    const previousAlignment = gl2.getParameter(gl2.UNPACK_ALIGNMENT);
+    const previousFlipY = gl2.getParameter(gl2.UNPACK_FLIP_Y_WEBGL);
+    const previousRowLength = gl2.getParameter(gl2.UNPACK_ROW_LENGTH);
+    const previousImageHeight = gl2.getParameter(
+      gl2.UNPACK_IMAGE_HEIGHT
+    );
+    const previousSkipPixels = gl2.getParameter(
+      gl2.UNPACK_SKIP_PIXELS
+    );
+    const previousSkipRows = gl2.getParameter(gl2.UNPACK_SKIP_ROWS);
+    const previousSkipImages = gl2.getParameter(
+      gl2.UNPACK_SKIP_IMAGES
+    );
+    renderer.state.activeTexture(gl2.TEXTURE0);
+    renderer.state.bindTexture(gl2.TEXTURE_2D_ARRAY, glTexture);
+    gl2.bindBuffer(gl2.PIXEL_UNPACK_BUFFER, null);
+    gl2.pixelStorei(gl2.UNPACK_FLIP_Y_WEBGL, false);
+    gl2.pixelStorei(gl2.UNPACK_ALIGNMENT, 1);
+    gl2.pixelStorei(gl2.UNPACK_ROW_LENGTH, 0);
+    gl2.pixelStorei(gl2.UNPACK_IMAGE_HEIGHT, 0);
+    gl2.pixelStorei(gl2.UNPACK_SKIP_PIXELS, 0);
+    gl2.pixelStorei(gl2.UNPACK_SKIP_ROWS, 0);
+    gl2.pixelStorei(gl2.UNPACK_SKIP_IMAGES, 0);
+    try {
+      for (const span of uploadSpans) {
+        const data = this.editorStateData.subarray(
+          span.start,
+          span.start + span.count
+        );
+        gl2.texSubImage3D(
+          gl2.TEXTURE_2D_ARRAY,
+          0,
+          0,
+          span.row,
+          span.layer,
+          image.width,
+          span.rowCount,
+          1,
+          gl2.RED_INTEGER,
+          gl2.UNSIGNED_BYTE,
+          data
+        );
+      }
+    } finally {
+      gl2.pixelStorei(gl2.UNPACK_ALIGNMENT, previousAlignment);
+      gl2.pixelStorei(gl2.UNPACK_FLIP_Y_WEBGL, previousFlipY);
+      gl2.pixelStorei(gl2.UNPACK_ROW_LENGTH, previousRowLength);
+      gl2.pixelStorei(gl2.UNPACK_IMAGE_HEIGHT, previousImageHeight);
+      gl2.pixelStorei(gl2.UNPACK_SKIP_PIXELS, previousSkipPixels);
+      gl2.pixelStorei(gl2.UNPACK_SKIP_ROWS, previousSkipRows);
+      gl2.pixelStorei(gl2.UNPACK_SKIP_IMAGES, previousSkipImages);
+      renderer.state.bindTexture(gl2.TEXTURE_2D_ARRAY, null);
+    }
+    return true;
   }
   // Given an array of splatCounts (.numSplats for each
   // SplatGenerator/SplatMesh in the scene), compute a
@@ -10635,7 +10778,7 @@ const _SplatAccumulator = class _SplatAccumulator {
             this.generate({ generator, covGenerator, base, count, renderer });
           }
         }
-        this.updateEditorStateTexture();
+        this.updateEditorStateTexture({ renderer });
       },
       readback: async () => {
         const textures = this.getTextures();
@@ -10785,6 +10928,66 @@ _SplatAccumulator.fullScreenQuad = new Pass_js.FullScreenQuad(
   new THREE__namespace.RawShaderMaterial({ visible: false })
 );
 let SplatAccumulator = _SplatAccumulator;
+function createEditorStateMappingKey(stateMappings) {
+  return stateMappings.map(
+    ({ item, state }) => [
+      item.node.id,
+      item.base,
+      item.count,
+      state.maxSplats,
+      state.numSplats
+    ].join(":")
+  ).join("|");
+}
+function createEditorStateUploadSpans(ranges, width, height, maxSplats) {
+  if (width <= 0 || height <= 0 || maxSplats <= 0) {
+    return [];
+  }
+  const splatsPerLayer = width * height;
+  const spans = [];
+  for (const range of ranges) {
+    let start = Math.max(0, Math.floor(range.start));
+    const end = Math.min(
+      maxSplats,
+      start + Math.max(0, Math.floor(range.count))
+    );
+    while (start < end) {
+      const layer = Math.floor(start / splatsPerLayer);
+      const layerStart = layer * splatsPerLayer;
+      const layerEnd = Math.min(end, layerStart + splatsPerLayer);
+      const firstRow = Math.floor((start - layerStart) / width);
+      const lastRow = Math.floor((layerEnd - 1 - layerStart) / width);
+      const rowCount = lastRow - firstRow + 1;
+      spans.push({
+        layer,
+        row: firstRow,
+        rowCount,
+        start: layerStart + firstRow * width,
+        count: rowCount * width
+      });
+      start = layerStart + (lastRow + 1) * width;
+    }
+  }
+  spans.sort((a, b) => a.layer - b.layer || a.row - b.row);
+  const merged = [];
+  for (const span of spans) {
+    const previous = merged[merged.length - 1];
+    if (previous && previous.layer === span.layer && previous.row + previous.rowCount >= span.row) {
+      const previousEndRow = previous.row + previous.rowCount;
+      const nextEndRow = Math.max(previousEndRow, span.row + span.rowCount);
+      merged[merged.length - 1] = {
+        layer: previous.layer,
+        row: previous.row,
+        rowCount: nextEndRow - previous.row,
+        start: previous.start,
+        count: (nextEndRow - previous.row) * width
+      };
+      continue;
+    }
+    merged.push(span);
+  }
+  return merged;
+}
 class SplatGeometry extends THREE__namespace.InstancedBufferGeometry {
   constructor() {
     super();
@@ -11257,7 +11460,7 @@ const _SparkRenderer = class _SparkRenderer extends THREE__namespace.Mesh {
     }
     if (!doUpdate) {
       if (needsStyleUpdate) {
-        this.display.updateEditorStateTexture();
+        this.display.updateEditorStateTexture({ renderer });
         this.display.styleVersion = styleVersion;
         this.setDirty();
       }
