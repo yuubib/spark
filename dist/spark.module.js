@@ -7359,6 +7359,9 @@ const _SplatEditorState = class _SplatEditorState {
     if (changeSet.kind === "list") {
       return this.applyChanges(changeSet.changes, side);
     }
+    if (changeSet.kind === "packed-list") {
+      return this.applyPackedChangeSet(changeSet, side);
+    }
     return this.applyUniformChangeSet(changeSet, side);
   }
   replace(states, numSplats = states.length) {
@@ -7740,6 +7743,33 @@ const _SplatEditorState = class _SplatEditorState {
     }
     return this.commitMutation(changed, dirtyIndices, fullRange);
   }
+  applyPackedChangeSet(changeSet, side) {
+    const length2 = Math.min(
+      Math.max(0, Math.floor(changeSet.changed)),
+      changeSet.indices.length,
+      changeSet.previous.length,
+      changeSet.next.length
+    );
+    if (length2 <= 0) {
+      return this.createMutationResult(0);
+    }
+    const values = side === "previous" ? changeSet.previous : changeSet.next;
+    const dirtyIndices = [];
+    let fullRange = false;
+    let changed = 0;
+    for (let offset = 0; offset < length2; offset++) {
+      const index = this.normalizeIndex(changeSet.indices[offset]);
+      if (index === null) {
+        continue;
+      }
+      const next = Number(values[offset] ?? SPLAT_EDITOR_STATE_NONE) & 255;
+      if (this.setUnchecked(index, next, false)) {
+        changed++;
+        fullRange || (fullRange = this.collectDirtyIndex(dirtyIndices, index));
+      }
+    }
+    return this.commitMutation(changed, dirtyIndices, fullRange);
+  }
   matchesUniformState(bits2) {
     const state = bits2 & 255;
     if ((state & SPLAT_EDITOR_STATE_DELETED) !== 0) {
@@ -7777,8 +7807,8 @@ const _SplatEditorState = class _SplatEditorState {
     }
     return this.createMutationResult(
       changed,
-      changes,
-      changeSet ?? (changes ? { kind: "list", changes } : void 0)
+      getListMutationChanges(changes),
+      changeSet ?? createMutationChangeSet(changes)
     );
   }
   collectDirtyIndex(dirtyIndices, index) {
@@ -7952,7 +7982,7 @@ const _SplatEditorState = class _SplatEditorState {
     if (!this.setUnchecked(index, next, false)) {
       return false;
     }
-    changes == null ? void 0 : changes.push({ index, previous, next });
+    recordMutationChange(changes, index, previous, next);
     return true;
   }
   updateCounts(bits2, delta) {
@@ -8079,7 +8109,45 @@ function applyStateOperation(previous, bits2, operation) {
   }
 }
 function createMutationChanges(options) {
-  return options.recordChanges ? [] : void 0;
+  if (!options.recordChanges) {
+    return void 0;
+  }
+  return options.changeFormat === "packed" ? {
+    kind: "packed-list-buffer",
+    indices: [],
+    previous: [],
+    next: []
+  } : [];
+}
+function recordMutationChange(changes, index, previous, next) {
+  if (!changes) {
+    return;
+  }
+  if (Array.isArray(changes)) {
+    changes.push({ index, previous, next });
+    return;
+  }
+  changes.indices.push(index);
+  changes.previous.push(previous & 255);
+  changes.next.push(next & 255);
+}
+function getListMutationChanges(changes) {
+  return Array.isArray(changes) ? changes : void 0;
+}
+function createMutationChangeSet(changes) {
+  if (!changes) {
+    return void 0;
+  }
+  if (Array.isArray(changes)) {
+    return { kind: "list", changes };
+  }
+  return {
+    kind: "packed-list",
+    indices: Uint32Array.from(changes.indices),
+    previous: Uint8Array.from(changes.previous),
+    next: Uint8Array.from(changes.next),
+    changed: changes.indices.length
+  };
 }
 function matchesSplatEditorStateBits(bits2, mode) {
   const state = bits2 & 255;

@@ -9,7 +9,7 @@ export type SplatEditorStateOperation = "replace" | "set" | "clear" | "toggle";
 export type SplatEditorSelectionOperation = "set" | "add" | "remove";
 export type SplatEditorStateIndexMode = "selected" | "unselected-selectable" | "locked" | "deleted";
 export type SplatEditorStateChangeSide = "previous" | "next";
-export type SplatEditorStateChangeFormat = "list" | "compact";
+export type SplatEditorStateChangeFormat = "list" | "compact" | "packed";
 export type SplatEditorStateFilterMode = "all" | "visible" | "selected" | "editable" | "pick-add" | "pick-remove" | "pick-set";
 export interface SplatEditorStateCounts {
     readonly selected: number;
@@ -34,7 +34,7 @@ export interface SplatEditorStateChange {
     readonly previous: SplatEditorStateBits;
     readonly next: SplatEditorStateBits;
 }
-export type SplatEditorStateChangeSet = SplatEditorStateListChangeSet | SplatEditorStateUniformChangeSet;
+export type SplatEditorStateChangeSet = SplatEditorStateListChangeSet | SplatEditorStateUniformChangeSet | SplatEditorStatePackedListChangeSet;
 export interface SplatEditorStateListChangeSet {
     readonly kind: "list";
     readonly changes: readonly SplatEditorStateChange[];
@@ -45,6 +45,13 @@ export interface SplatEditorStateUniformChangeSet {
     readonly count: number;
     readonly previous: SplatEditorStateBits;
     readonly next: SplatEditorStateBits;
+    readonly changed: number;
+}
+export interface SplatEditorStatePackedListChangeSet {
+    readonly kind: "packed-list";
+    readonly indices: ArrayLike<number>;
+    readonly previous: ArrayLike<number>;
+    readonly next: ArrayLike<number>;
     readonly changed: number;
 }
 export interface SplatEditorStateMutationOptions {
@@ -139,6 +146,7 @@ export declare class SplatEditorState {
     private createUniformChangeSet;
     private commitUniformMutation;
     private applyUniformChangeSet;
+    private applyPackedChangeSet;
     private matchesUniformState;
     private createMutationResult;
     private commitMutation;

@@ -26,7 +26,7 @@ export type SplatEditorStateIndexMode =
   | "locked"
   | "deleted";
 export type SplatEditorStateChangeSide = "previous" | "next";
-export type SplatEditorStateChangeFormat = "list" | "compact";
+export type SplatEditorStateChangeFormat = "list" | "compact" | "packed";
 export type SplatEditorStateFilterMode =
   | "all"
   | "visible"
@@ -65,7 +65,8 @@ export interface SplatEditorStateChange {
 
 export type SplatEditorStateChangeSet =
   | SplatEditorStateListChangeSet
-  | SplatEditorStateUniformChangeSet;
+  | SplatEditorStateUniformChangeSet
+  | SplatEditorStatePackedListChangeSet;
 
 export interface SplatEditorStateListChangeSet {
   readonly kind: "list";
@@ -78,6 +79,14 @@ export interface SplatEditorStateUniformChangeSet {
   readonly count: number;
   readonly previous: SplatEditorStateBits;
   readonly next: SplatEditorStateBits;
+  readonly changed: number;
+}
+
+export interface SplatEditorStatePackedListChangeSet {
+  readonly kind: "packed-list";
+  readonly indices: ArrayLike<number>;
+  readonly previous: ArrayLike<number>;
+  readonly next: ArrayLike<number>;
   readonly changed: number;
 }
 
@@ -131,6 +140,17 @@ type StateTextureImage = {
 type WebGLTextureProperties = {
   __webglTexture?: WebGLTexture;
 };
+
+interface SplatEditorStatePackedChangeBuffer {
+  readonly kind: "packed-list-buffer";
+  readonly indices: number[];
+  readonly previous: number[];
+  readonly next: number[];
+}
+
+type SplatEditorStateMutationChangeBuffer =
+  | SplatEditorStateChange[]
+  | SplatEditorStatePackedChangeBuffer;
 
 export class SplatEditorState {
   states: Uint8Array;
@@ -826,6 +846,9 @@ export class SplatEditorState {
     if (changeSet.kind === "list") {
       return this.applyChanges(changeSet.changes, side);
     }
+    if (changeSet.kind === "packed-list") {
+      return this.applyPackedChangeSet(changeSet, side);
+    }
     return this.applyUniformChangeSet(changeSet, side);
   }
 
@@ -1317,6 +1340,38 @@ export class SplatEditorState {
     return this.commitMutation(changed, dirtyIndices, fullRange);
   }
 
+  private applyPackedChangeSet(
+    changeSet: SplatEditorStatePackedListChangeSet,
+    side: SplatEditorStateChangeSide,
+  ): SplatEditorStateMutationResult {
+    const length = Math.min(
+      Math.max(0, Math.floor(changeSet.changed)),
+      changeSet.indices.length,
+      changeSet.previous.length,
+      changeSet.next.length,
+    );
+    if (length <= 0) {
+      return this.createMutationResult(0);
+    }
+
+    const values = side === "previous" ? changeSet.previous : changeSet.next;
+    const dirtyIndices: number[] = [];
+    let fullRange = false;
+    let changed = 0;
+    for (let offset = 0; offset < length; offset++) {
+      const index = this.normalizeIndex(changeSet.indices[offset]);
+      if (index === null) {
+        continue;
+      }
+      const next = Number(values[offset] ?? SPLAT_EDITOR_STATE_NONE) & 0xff;
+      if (this.setUnchecked(index, next, false)) {
+        changed++;
+        fullRange ||= this.collectDirtyIndex(dirtyIndices, index);
+      }
+    }
+    return this.commitMutation(changed, dirtyIndices, fullRange);
+  }
+
   private matchesUniformState(bits: SplatEditorStateBits): boolean {
     const state = bits & 0xff;
     if ((state & SPLAT_EDITOR_STATE_DELETED) !== 0) {
@@ -1354,7 +1409,7 @@ export class SplatEditorState {
     changed: number,
     dirtyIndices: readonly number[] = [],
     fullRange = false,
-    changes?: readonly SplatEditorStateChange[],
+    changes?: SplatEditorStateMutationChangeBuffer,
     changeSet?: SplatEditorStateChangeSet,
   ): SplatEditorStateMutationResult {
     if (changed > 0) {
@@ -1374,8 +1429,8 @@ export class SplatEditorState {
     }
     return this.createMutationResult(
       changed,
-      changes,
-      changeSet ?? (changes ? { kind: "list", changes } : undefined),
+      getListMutationChanges(changes),
+      changeSet ?? createMutationChangeSet(changes),
     );
   }
 
@@ -1493,7 +1548,7 @@ export class SplatEditorState {
 
   private selectCandidateSetFromEmpty(
     indices: Iterable<number>,
-    changes?: SplatEditorStateChange[],
+    changes?: SplatEditorStateMutationChangeBuffer,
   ): SplatEditorStateMutationResult {
     const dirtyIndices: number[] = [];
     let fullRange = false;
@@ -1515,7 +1570,7 @@ export class SplatEditorState {
 
   private selectCandidateSetDense(
     candidates: Uint8Array,
-    changes?: SplatEditorStateChange[],
+    changes?: SplatEditorStateMutationChangeBuffer,
   ): SplatEditorStateMutationResult {
     const dirtyIndices: number[] = [];
     let fullRange = false;
@@ -1538,7 +1593,7 @@ export class SplatEditorState {
 
   private selectCandidateSetSparse(
     candidates: ReadonlySet<number>,
-    changes?: SplatEditorStateChange[],
+    changes?: SplatEditorStateMutationChangeBuffer,
   ): SplatEditorStateMutationResult {
     const mutations: { index: number; next: SplatEditorStateBits }[] = [];
     for (const index of this.selectedIndices) {
@@ -1567,7 +1622,7 @@ export class SplatEditorState {
 
   private commitSparseSelectedMutation(
     next: SplatEditorStateBits,
-    changes?: SplatEditorStateChange[],
+    changes?: SplatEditorStateMutationChangeBuffer,
   ): SplatEditorStateMutationResult | null {
     if (this.selected <= 0) {
       return this.commitMutation(0, [], false, changes);
@@ -1592,14 +1647,14 @@ export class SplatEditorState {
   private setMutationUnchecked(
     index: number,
     bits: SplatEditorStateBits,
-    changes?: SplatEditorStateChange[],
+    changes?: SplatEditorStateMutationChangeBuffer,
   ): boolean {
     const previous = this.states[index];
     const next = bits & 0xff;
     if (!this.setUnchecked(index, next, false)) {
       return false;
     }
-    changes?.push({ index, previous, next });
+    recordMutationChange(changes, index, previous, next);
     return true;
   }
 
@@ -1782,8 +1837,60 @@ function applyStateOperation(
 
 function createMutationChanges(
   options: SplatEditorStateMutationOptions,
-): SplatEditorStateChange[] | undefined {
-  return options.recordChanges ? [] : undefined;
+): SplatEditorStateMutationChangeBuffer | undefined {
+  if (!options.recordChanges) {
+    return undefined;
+  }
+  return options.changeFormat === "packed"
+    ? {
+        kind: "packed-list-buffer",
+        indices: [],
+        previous: [],
+        next: [],
+      }
+    : [];
+}
+
+function recordMutationChange(
+  changes: SplatEditorStateMutationChangeBuffer | undefined,
+  index: number,
+  previous: SplatEditorStateBits,
+  next: SplatEditorStateBits,
+): void {
+  if (!changes) {
+    return;
+  }
+  if (Array.isArray(changes)) {
+    changes.push({ index, previous, next });
+    return;
+  }
+  changes.indices.push(index);
+  changes.previous.push(previous & 0xff);
+  changes.next.push(next & 0xff);
+}
+
+function getListMutationChanges(
+  changes: SplatEditorStateMutationChangeBuffer | undefined,
+): readonly SplatEditorStateChange[] | undefined {
+  return Array.isArray(changes) ? changes : undefined;
+}
+
+function createMutationChangeSet(
+  changes: SplatEditorStateMutationChangeBuffer | undefined,
+): SplatEditorStateChangeSet | undefined {
+  if (!changes) {
+    return undefined;
+  }
+  if (Array.isArray(changes)) {
+    return { kind: "list", changes };
+  }
+  return {
+    kind: "packed-list",
+    indices: Uint32Array.from(changes.indices),
+    previous: Uint8Array.from(changes.previous),
+    next: Uint8Array.from(changes.next),
+    changed: changes.indices.length,
+  };
 }
 
 export function matchesSplatEditorStateBits(
