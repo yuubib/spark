@@ -109,6 +109,7 @@ export declare class SplatEditorState {
     toggleBits(index: number, mask: SplatEditorStateBits): SplatEditorStateBits;
     update(index: number, mask: SplatEditorStateBits, operation: SplatEditorStateOperation): SplatEditorStateBits;
     matches(index: number, mode: SplatEditorStateFilterMode): boolean;
+    forEachIndex(mode: SplatEditorStateIndexMode, callback: (index: number, bits: SplatEditorStateBits) => unknown): void;
     listIndices(mode: SplatEditorStateIndexMode): number[];
     setRange(start: number, count: number, bits: SplatEditorStateBits, operation?: SplatEditorStateOperation): void;
     setList(indices: Iterable<number>, bits: SplatEditorStateBits, operation?: SplatEditorStateOperation): void;

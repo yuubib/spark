@@ -59,6 +59,33 @@ import {
 }
 
 {
+  const state = new SplatEditorState(6);
+  state.set(1, SPLAT_EDITOR_STATE_SELECTED);
+  state.set(2, SPLAT_EDITOR_STATE_SELECTED | SPLAT_EDITOR_STATE_LOCKED);
+  state.set(3, SPLAT_EDITOR_STATE_LOCKED);
+  state.set(4, SPLAT_EDITOR_STATE_DELETED);
+  state.set(5, SPLAT_EDITOR_STATE_SELECTED);
+
+  const selected: number[] = [];
+  state.forEachIndex("selected", (index, bits) => {
+    selected.push(index);
+    assert.strictEqual(bits, SPLAT_EDITOR_STATE_SELECTED);
+  });
+  assert.deepStrictEqual(selected, [1, 5]);
+  assert.deepStrictEqual(state.listIndices("selected"), [1, 5]);
+  assert.deepStrictEqual(state.listIndices("unselected-selectable"), [0]);
+  assert.deepStrictEqual(state.listIndices("locked"), [2, 3]);
+  assert.deepStrictEqual(state.listIndices("deleted"), [4]);
+
+  const firstSelected: number[] = [];
+  state.forEachIndex("selected", (index) => {
+    firstSelected.push(index);
+    return false;
+  });
+  assert.deepStrictEqual(firstSelected, [1]);
+}
+
+{
   const state = new SplatEditorState(4);
   state.uploadDirty();
 

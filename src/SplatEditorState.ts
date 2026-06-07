@@ -274,13 +274,26 @@ export class SplatEditorState {
     return matchesSplatEditorStateBits(this.get(index), mode);
   }
 
-  listIndices(mode: SplatEditorStateIndexMode): number[] {
-    const indices: number[] = [];
+  forEachIndex(
+    mode: SplatEditorStateIndexMode,
+    callback: (index: number, bits: SplatEditorStateBits) => unknown,
+  ): void {
     for (let index = 0; index < this.numSplats; index++) {
-      if (matchesSplatEditorStateIndexMode(this.states[index], mode)) {
-        indices.push(index);
+      const bits = this.states[index] ?? SPLAT_EDITOR_STATE_NONE;
+      if (
+        matchesSplatEditorStateIndexMode(bits, mode) &&
+        callback(index, bits) === false
+      ) {
+        return;
       }
     }
+  }
+
+  listIndices(mode: SplatEditorStateIndexMode): number[] {
+    const indices: number[] = [];
+    this.forEachIndex(mode, (index) => {
+      indices.push(index);
+    });
     return indices;
   }
 

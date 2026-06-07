@@ -383,6 +383,11 @@ mesh.forEachSplatCenterRaw = () => {
 };
 
 let selectedStats: SplatScreenPickStats | null = null;
+const editorState = mesh.getEditorState();
+assert.ok(editorState);
+editorState.listIndices = () => {
+  throw new Error("compact selected picking should stream selected indices");
+};
 const selectedSparse = await sparkRenderer.pickSplatCandidateIndices({
   target: mesh,
   scene,
