@@ -314,6 +314,7 @@ async function unpackPly({
   const numSplats = ply.numSplats;
 
   const extra: Record<string, unknown> = {};
+  const centerMatchXyz = new Float32Array(numSplats * 3);
 
   ply.parseSplats(
     (
@@ -333,6 +334,10 @@ async function unpackPly({
       g,
       b,
     ) => {
+      const centerOffset = index * 3;
+      centerMatchXyz[centerOffset] = x;
+      centerMatchXyz[centerOffset + 1] = y;
+      centerMatchXyz[centerOffset + 2] = z;
       setPackedSplat(
         packedArray,
         index,
@@ -374,6 +379,7 @@ async function unpackPly({
       }
     },
   );
+  extra.centerMatchXyz = centerMatchXyz;
 
   return { packedArray, numSplats, extra };
 }

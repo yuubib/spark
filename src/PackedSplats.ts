@@ -117,6 +117,16 @@ function readColorMatchRgbExtra(
     : null;
 }
 
+function readCenterMatchXyzExtra(
+  extra: Record<string, unknown>,
+  numSplats: number,
+): Float32Array | null {
+  const value = extra.centerMatchXyz;
+  return value instanceof Float32Array && value.length >= numSplats * 3
+    ? value
+    : null;
+}
+
 // A PackedSplats is a collection of Gaussian splats, packed into a format that
 // takes exactly 16 bytes per Gsplat to maximize memory and cache efficiency.
 // The center xyz coordinates are encoded as float16 (3 x 2 bytes), scale xyz
@@ -130,6 +140,7 @@ export class PackedSplats implements SplatSource {
   packedArray: Uint32Array | null = null;
   extra: Record<string, unknown>;
   colorMatchRgb: Float32Array | null = null;
+  centerMatchXyz: Float32Array | null = null;
   editorState: SplatEditorState | null = null;
   maxSh = 3;
   splatEncoding?: SplatEncoding;
@@ -201,6 +212,7 @@ export class PackedSplats implements SplatSource {
 
     this.extra = {};
     this.colorMatchRgb = null;
+    this.centerMatchXyz = null;
     this.maxSplats = options.maxSplats ?? 0;
     this.splatEncoding = options.splatEncoding;
     this.lod = options.lod;
@@ -248,6 +260,7 @@ export class PackedSplats implements SplatSource {
       this.numSplats = 0;
     }
     this.colorMatchRgb = readColorMatchRgbExtra(this.extra, this.numSplats);
+    this.centerMatchXyz = readCenterMatchXyzExtra(this.extra, this.numSplats);
   }
 
   async asyncInitialize(options: PackedSplatsOptions) {
@@ -308,6 +321,7 @@ export class PackedSplats implements SplatSource {
 
     this.packedArray = null;
     this.colorMatchRgb = null;
+    this.centerMatchXyz = null;
 
     for (const key in this.extra) {
       const dyno = this.extra[key] as DynoUniform<
@@ -526,7 +540,31 @@ export class PackedSplats implements SplatSource {
     if (this.editorState) {
       this.editorState.ensureCapacity(this.maxSplats);
     }
+    this.ensureCenterMatchXyzCapacity(this.maxSplats);
     return this.packedArray;
+  }
+
+  private ensureCenterMatchXyzCapacity(numSplats: number): Float32Array | null {
+    const centers = this.centerMatchXyz;
+    if (!centers || centers.length >= numSplats * 3) {
+      return centers;
+    }
+    const next = new Float32Array(this.maxSplats * 3);
+    next.set(centers);
+    this.centerMatchXyz = next;
+    this.extra.centerMatchXyz = next;
+    return next;
+  }
+
+  private writeCenterMatchXyz(index: number, center: THREE.Vector3): void {
+    const centers = this.ensureCenterMatchXyzCapacity(index + 1);
+    if (!centers) {
+      return;
+    }
+    const offset = index * 3;
+    centers[offset] = center.x;
+    centers[offset + 1] = center.y;
+    centers[offset + 2] = center.z;
   }
 
   // Ensure the extra array for the given level is large enough to hold numSplats
@@ -619,6 +657,7 @@ export class PackedSplats implements SplatSource {
       color.b,
     );
     this.numSplats = Math.max(this.numSplats, index + 1);
+    this.writeCenterMatchXyz(index, center);
   }
 
   // Effectively calls this.setSplat(this.numSplats++, center, ...), useful on
@@ -649,6 +688,7 @@ export class PackedSplats implements SplatSource {
       color.g,
       color.b,
     );
+    this.writeCenterMatchXyz(this.numSplats, center);
     ++this.numSplats;
   }
 
@@ -681,6 +721,14 @@ export class PackedSplats implements SplatSource {
   }
 
   forEachSplatCenter(callback: (index: number, center: THREE.Vector3) => void) {
+    if (this.centerMatchXyz && this.numSplats) {
+      const center = new THREE.Vector3();
+      this.forEachSplatCenterRaw((index, x, y, z) => {
+        center.set(x, y, z);
+        callback(index, center);
+      });
+      return;
+    }
     if (!this.packedArray || !this.numSplats) {
       return;
     }
@@ -692,6 +740,14 @@ export class PackedSplats implements SplatSource {
   forEachSplatCenterRaw(
     callback: (index: number, x: number, y: number, z: number) => void,
   ) {
+    const centers = this.centerMatchXyz;
+    if (centers && this.numSplats) {
+      for (let i = 0; i < this.numSplats; ++i) {
+        const i3 = i * 3;
+        callback(i, centers[i3], centers[i3 + 1], centers[i3 + 2]);
+      }
+      return;
+    }
     if (!this.packedArray || !this.numSplats) {
       return;
     }
@@ -709,6 +765,19 @@ export class PackedSplats implements SplatSource {
   }
 
   getSplatCenterRaw(index: number, target: SplatCenterRaw): boolean {
+    const centers = this.centerMatchXyz;
+    if (
+      centers &&
+      Number.isInteger(index) &&
+      index >= 0 &&
+      index < this.numSplats
+    ) {
+      const i3 = index * 3;
+      target.x = centers[i3];
+      target.y = centers[i3 + 1];
+      target.z = centers[i3 + 2];
+      return true;
+    }
     if (
       !this.packedArray ||
       !Number.isInteger(index) ||

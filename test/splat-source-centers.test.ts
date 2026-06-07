@@ -5,6 +5,7 @@ import * as THREE from "three";
 import {
   ExtSplats,
   PackedSplats,
+  PlyReader,
   SPLAT_EDITOR_STATE_DELETED,
   SplatMesh,
   type SplatSource,
@@ -46,6 +47,59 @@ const collectRawCenters = (
   return values;
 };
 
+const assertClose = (actual: number, expected: number, epsilon = 1e-6) => {
+  assert.ok(
+    Math.abs(actual - expected) <= epsilon,
+    `${actual} is not within ${epsilon} of ${expected}`,
+  );
+};
+
+const makePositionPly = (rows: readonly (readonly number[])[]) => {
+  const header = [
+    "ply",
+    "format binary_little_endian 1.0",
+    `element vertex ${rows.length}`,
+    "property float x",
+    "property float y",
+    "property float z",
+    "end_header",
+    "",
+  ].join("\n");
+  const headerBytes = new TextEncoder().encode(header);
+  const body = new ArrayBuffer(rows.length * 3 * 4);
+  const view = new DataView(body);
+  let offset = 0;
+  for (const row of rows) {
+    for (const value of row) {
+      view.setFloat32(offset, value, true);
+      offset += 4;
+    }
+  }
+  const bytes = new Uint8Array(headerBytes.length + body.byteLength);
+  bytes.set(headerBytes);
+  bytes.set(new Uint8Array(body), headerBytes.length);
+  return bytes;
+};
+
+{
+  const ply = new PlyReader({
+    fileBytes: makePositionPly([
+      [0.3333333432674408, 2.25, -3.5],
+      [-4.75, 5.125, 6.875],
+    ]),
+  });
+  await ply.parseHeader();
+  const xyz = ply.readCenterMatchXyz();
+  assert.ok(xyz);
+  assert.strictEqual(xyz.length, 6);
+  assertClose(xyz[0], 0.3333333432674408);
+  assertClose(xyz[1], 2.25);
+  assertClose(xyz[2], -3.5);
+  assertClose(xyz[3], -4.75);
+  assertClose(xyz[4], 5.125);
+  assertClose(xyz[5], 6.875);
+}
+
 {
   const packed = new PackedSplats();
   splat(packed, new THREE.Vector3(1, 2, 3));
@@ -69,6 +123,59 @@ const collectRawCenters = (
   assert.strictEqual(packed.getSplatCenterRaw(1, center), true);
   assert.deepStrictEqual(center, { x: -4, y: 5, z: -6 });
   assert.strictEqual(packed.getSplatCenterRaw(2, center), false);
+}
+
+{
+  const packedBase = new PackedSplats();
+  splat(packedBase, new THREE.Vector3(0.3333333432674408, 2.25, -3.5));
+  splat(packedBase, new THREE.Vector3(-4.75, 5.125, 6.875));
+  const packed = new PackedSplats({
+    packedArray: packedBase.packedArray?.slice(),
+    numSplats: 2,
+    extra: {
+      centerMatchXyz: new Float32Array([
+        0.3333333432674408, 2.25, -3.5, -4.75, 5.125, 6.875,
+      ]),
+    },
+  });
+
+  assert.deepStrictEqual(
+    collectRawCenters(packed.forEachSplatCenterRaw.bind(packed)),
+    [
+      [0, 0.3333333432674408, 2.25, -3.5],
+      [1, -4.75, 5.125, 6.875],
+    ],
+  );
+  assert.deepStrictEqual(
+    collectCenters(packed.forEachSplatCenter.bind(packed)),
+    [
+      [0, 0.3333333432674408, 2.25, -3.5],
+      [1, -4.75, 5.125, 6.875],
+    ],
+  );
+
+  const center = { x: 0, y: 0, z: 0 };
+  assert.strictEqual(packed.getSplatCenterRaw(0, center), true);
+  assert.deepStrictEqual(center, {
+    x: 0.3333333432674408,
+    y: 2.25,
+    z: -3.5,
+  });
+
+  packed.setSplat(
+    1,
+    new THREE.Vector3(9.25, -8.5, 7.75),
+    new THREE.Vector3(0.25, 0.5, 0.75),
+    new THREE.Quaternion(),
+    0.8,
+    new THREE.Color(1, 0, 0),
+  );
+  assert.strictEqual(packed.getSplatCenterRaw(1, center), true);
+  assert.deepStrictEqual(center, { x: 9.25, y: -8.5, z: 7.75 });
+
+  splat(packed, new THREE.Vector3(1.125, 2.375, 3.625));
+  assert.strictEqual(packed.getSplatCenterRaw(2, center), true);
+  assert.deepStrictEqual(center, { x: 1.125, y: 2.375, z: 3.625 });
 }
 
 {

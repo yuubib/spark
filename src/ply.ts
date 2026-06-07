@@ -739,6 +739,31 @@ export class PlyReader {
     });
     return rgb;
   }
+
+  readCenterMatchXyz(): Float32Array | null {
+    const vertex = this.elements.vertex;
+    if (!vertex) {
+      return null;
+    }
+    const { x, y, z } = vertex.properties;
+    if (!x || !y || !z) {
+      return null;
+    }
+
+    const xyz = new Float32Array(this.numSplats * 3);
+    this.parseData((element) => {
+      if (element.name !== "vertex") {
+        return null;
+      }
+      return (index, item) => {
+        const offset = index * 3;
+        xyz[offset] = item.x as number;
+        xyz[offset + 1] = item.y as number;
+        xyz[offset + 2] = item.z as number;
+      };
+    });
+    return xyz;
+  }
 }
 
 export const SH_C0 = 0.28209479177387814;

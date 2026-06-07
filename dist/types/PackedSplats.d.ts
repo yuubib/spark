@@ -32,6 +32,7 @@ export declare class PackedSplats implements SplatSource {
     packedArray: Uint32Array | null;
     extra: Record<string, unknown>;
     colorMatchRgb: Float32Array | null;
+    centerMatchXyz: Float32Array | null;
     editorState: SplatEditorState | null;
     maxSh: number;
     splatEncoding?: SplatEncoding;
@@ -66,6 +67,8 @@ export declare class PackedSplats implements SplatSource {
     }): DynoVal<typeof Gsplat>;
     private ensureShTextures;
     ensureSplats(numSplats: number): Uint32Array;
+    private ensureCenterMatchXyzCapacity;
+    private writeCenterMatchXyz;
     ensureSplatsSh(level: number, numSplats: number): Uint32Array;
     getSplat(index: number): {
         center: THREE.Vector3;

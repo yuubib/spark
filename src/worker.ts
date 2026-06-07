@@ -299,6 +299,25 @@ async function readPlyColorMatchRgb(
   }
 }
 
+async function readPlyCenterMatchXyz(
+  fileBytes: Uint8Array,
+  expectedSplats: number,
+): Promise<Float32Array | null> {
+  if (!looksLikePly(fileBytes)) {
+    return null;
+  }
+  try {
+    const ply = new PlyReader({ fileBytes });
+    await ply.parseHeader();
+    if (ply.numSplats !== expectedSplats) {
+      return null;
+    }
+    return ply.readCenterMatchXyz();
+  } catch {
+    return null;
+  }
+}
+
 async function attachPlyColorMatchRgb(
   extra: Record<string, unknown>,
   expectedSplats: number,
@@ -313,6 +332,23 @@ async function attachPlyColorMatchRgb(
   const rgb = await readPlyColorMatchRgb(bytes, expectedSplats);
   if (rgb) {
     extra.colorMatchRgb = rgb;
+  }
+}
+
+async function attachPlyCenterMatchXyz(
+  extra: Record<string, unknown>,
+  expectedSplats: number,
+  fileBytes?: Uint8Array,
+  chunks?: readonly Uint8Array[],
+): Promise<void> {
+  const bytes =
+    fileBytes ?? (chunks?.length ? concatenateChunks(chunks) : null);
+  if (!bytes) {
+    return;
+  }
+  const xyz = await readPlyCenterMatchXyz(bytes, expectedSplats);
+  if (xyz) {
+    extra.centerMatchXyz = xyz;
   }
 }
 
@@ -419,6 +455,12 @@ async function loadPackedSplats(
     const result = toPackedResult(decoded as DecodedPackedResult);
     if (capturePly) {
       await attachPlyColorMatchRgb(
+        result.extra,
+        result.numSplats,
+        fileBytes,
+        collector?.chunks,
+      );
+      await attachPlyCenterMatchXyz(
         result.extra,
         result.numSplats,
         fileBytes,
