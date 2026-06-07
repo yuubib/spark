@@ -56,6 +56,26 @@ export type SplatScreenPickIndexOptions = SplatScreenPickOptions & {
   target: SplatGenerator;
 };
 
+export type SplatScreenPickNearestCenterRankMode =
+  | "screen-distance-depth"
+  | "screen-distance"
+  | "depth";
+
+export type SplatScreenPickNearestCenterOptions =
+  SplatScreenPickIndexOptions & {
+    rankMode?: SplatScreenPickNearestCenterRankMode;
+  };
+
+export type SplatScreenPickNearestCenterResult = {
+  index: number;
+  pixel: {
+    x: number;
+    y: number;
+  };
+  screenDistanceSq: number;
+  ndcZ: number;
+};
+
 export type SplatScreenPickHit = {
   object: SplatGenerator;
   index: number;

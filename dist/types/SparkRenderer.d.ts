@@ -1,6 +1,6 @@
 import { ExtSplats, PackedSplats, PagedSplats, SplatMesh, SplatPager } from '.';
 import { SplatAccumulator } from './SplatAccumulator';
-import { SplatScreenPickHit, SplatScreenPickIndexOptions, SplatScreenPickOptions } from './SplatScreenPicker';
+import { SplatScreenPickHit, SplatScreenPickIndexOptions, SplatScreenPickNearestCenterOptions, SplatScreenPickNearestCenterResult, SplatScreenPickOptions } from './SplatScreenPicker';
 import { SplatWorker } from './SplatWorker';
 import * as THREE from "three";
 export interface SparkRendererOptions {
@@ -578,8 +578,10 @@ export declare class SparkRenderer extends THREE.Mesh {
     render(scene: THREE.Scene, camera: THREE.Camera): void;
     pickSplatCandidates(options: SplatScreenPickOptions): Promise<SplatScreenPickHit[]>;
     pickSplatCandidateIndices(options: SplatScreenPickIndexOptions): Promise<Uint32Array | null>;
+    pickNearestSplatCenterIndex(options: SplatScreenPickNearestCenterOptions): Promise<SplatScreenPickNearestCenterResult | null>;
     private collectSplatScreenPickCenterHits;
     private collectSplatScreenPickCenterIndices;
+    private collectNearestSplatScreenPickCenterIndex;
     private ensureScreenPickTarget;
     private renderSplatScreenPickPass;
     private createScreenPickViewOffsetCamera;
