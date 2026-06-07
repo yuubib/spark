@@ -1015,7 +1015,8 @@ export class SplatMesh extends SplatGenerator {
     let tested = 0;
     let stateRejected = 0;
     let earlyExit = false;
-    const editorState = this.getEditorState();
+    const filterEditorState = mode !== "all";
+    const editorState = filterEditorState ? this.getEditorState() : null;
     const color = { r: 0, g: 0, b: 0 };
     const pushIndex = (index: number) => {
       if (matched >= max) {
@@ -1038,10 +1039,12 @@ export class SplatMesh extends SplatGenerator {
         earlyExit = true;
         return false;
       }
-      const bits = this.getEditorStateBits(editorState, index);
-      if (!matchesSplatEditorStateBits(bits, mode)) {
-        stateRejected += 1;
-        return true;
+      if (filterEditorState) {
+        const bits = this.getEditorStateBits(editorState, index);
+        if (!matchesSplatEditorStateBits(bits, mode)) {
+          stateRejected += 1;
+          return true;
+        }
       }
       tested += 1;
       color.r = r;

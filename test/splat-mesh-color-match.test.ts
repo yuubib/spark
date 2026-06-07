@@ -141,12 +141,34 @@ assert.strictEqual(allMatches?.stateRejected, 0);
 assert.strictEqual(allMatches?.earlyExit, false);
 assert.ok(indexedColorReads >= 6);
 
+const originalGetEditorState = mesh.getEditorState.bind(mesh);
+mesh.getEditorState = () => {
+  throw new Error("mode all should not read editor state");
+};
+const allMatchesWithoutState = mesh.findSplatColorMatches({
+  seedIndex: 0,
+  threshold: 0.035,
+  mode: "all",
+});
+assert.deepStrictEqual(
+  [...(allMatchesWithoutState?.indices ?? [])],
+  [0, 1, 3, 4],
+);
+mesh.getEditorState = originalGetEditorState;
+
+let filteredModeReadEditorState = false;
+mesh.getEditorState = () => {
+  filteredModeReadEditorState = true;
+  return originalGetEditorState();
+};
 const editableMatches = mesh.findSplatColorMatches({
   seedIndex: 0,
   threshold: 0.035,
   mode: "editable",
 });
+mesh.getEditorState = originalGetEditorState;
 
+assert.strictEqual(filteredModeReadEditorState, true);
 assert.deepStrictEqual([...(editableMatches?.indices ?? [])], [0, 1]);
 assert.strictEqual(editableMatches?.tested, 3);
 assert.strictEqual(editableMatches?.stateRejected, 2);
