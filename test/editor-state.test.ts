@@ -7,6 +7,7 @@ import {
   SPLAT_EDITOR_STATE_SELECTED,
   SplatEditorState,
   matchesSplatEditorStateBits,
+  matchesSplatEditorStateIndexMode,
 } from "../src/SplatEditorState.js";
 
 {
@@ -205,6 +206,70 @@ import {
 }
 
 {
+  const state = new SplatEditorState(64);
+  state.replace(
+    new Uint8Array([
+      SPLAT_EDITOR_STATE_SELECTED,
+      SPLAT_EDITOR_STATE_SELECTED | SPLAT_EDITOR_STATE_LOCKED,
+      SPLAT_EDITOR_STATE_DELETED,
+      SPLAT_EDITOR_STATE_SELECTED,
+      SPLAT_EDITOR_STATE_NONE,
+      SPLAT_EDITOR_STATE_NONE,
+    ]),
+    64,
+  );
+  state.uploadDirty();
+  state.clearRenderDirtyRanges();
+
+  const result = state.selectCandidates([4], "set");
+  assert.strictEqual(result.changed, 3);
+  assert.deepStrictEqual(state.getDirtyRanges(), [
+    { start: 0, count: 1 },
+    { start: 3, count: 2 },
+  ]);
+  assert.deepStrictEqual(state.getRenderDirtyRanges(), [
+    { start: 0, count: 1 },
+    { start: 3, count: 2 },
+  ]);
+  assert.deepStrictEqual(state.listIndices("selected"), [4]);
+  assert.deepStrictEqual(
+    state.listIndices("unselected-selectable"),
+    [
+      0, 3, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22,
+      23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40,
+      41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58,
+      59, 60, 61, 62, 63,
+    ],
+  );
+  assert.deepStrictEqual(state.listIndices("locked"), [1]);
+  assert.deepStrictEqual(state.listIndices("deleted"), [2]);
+
+  state.uploadDirty();
+  state.clearRenderDirtyRanges();
+  const deleteResult = state.deleteSelected();
+  assert.strictEqual(deleteResult.changed, 1);
+  assert.deepStrictEqual(state.getDirtyRanges(), [{ start: 4, count: 1 }]);
+  assert.strictEqual(state.visibilityVersion, 2);
+
+  state.uploadDirty();
+  state.clearRenderDirtyRanges();
+  const resetResult = state.resetDeleted();
+  assert.strictEqual(resetResult.changed, 2);
+  assert.deepStrictEqual(state.getDirtyRanges(), [
+    { start: 2, count: 1 },
+    { start: 4, count: 1 },
+  ]);
+}
+
+{
+  const state = new SplatEditorState(64);
+  state.uploadDirty();
+  state.clearRenderDirtyRanges();
+  state.selectAll();
+  assert.deepStrictEqual(state.getDirtyRanges(), [{ start: 0, count: 64 }]);
+}
+
+{
   const state = new SplatEditorState(6);
   state.replace(
     new Uint8Array([
@@ -335,6 +400,40 @@ import {
   assert.strictEqual(
     matchesSplatEditorStateBits(deletedSelected, "pick-set"),
     false,
+  );
+
+  assert.strictEqual(
+    matchesSplatEditorStateIndexMode(SPLAT_EDITOR_STATE_SELECTED, "selected"),
+    true,
+  );
+  assert.strictEqual(
+    matchesSplatEditorStateIndexMode(
+      SPLAT_EDITOR_STATE_SELECTED | SPLAT_EDITOR_STATE_LOCKED,
+      "selected",
+    ),
+    false,
+  );
+  assert.strictEqual(
+    matchesSplatEditorStateIndexMode(
+      SPLAT_EDITOR_STATE_NONE,
+      "unselected-selectable",
+    ),
+    true,
+  );
+  assert.strictEqual(
+    matchesSplatEditorStateIndexMode(SPLAT_EDITOR_STATE_LOCKED, "locked"),
+    true,
+  );
+  assert.strictEqual(
+    matchesSplatEditorStateIndexMode(
+      SPLAT_EDITOR_STATE_LOCKED | SPLAT_EDITOR_STATE_DELETED,
+      "locked",
+    ),
+    false,
+  );
+  assert.strictEqual(
+    matchesSplatEditorStateIndexMode(SPLAT_EDITOR_STATE_DELETED, "deleted"),
+    true,
   );
 }
 

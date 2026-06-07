@@ -16,6 +16,7 @@ function readVersions(mesh: InstanceType<typeof SplatMesh>) {
   const initial = readVersions(mesh);
 
   mesh.selectAllSplatState();
+  assert.deepStrictEqual(mesh.listSplatStateIndices("selected"), [0, 1, 2, 3]);
   assert.deepStrictEqual(readVersions(mesh), {
     version: initial.version,
     sortVersion: initial.sortVersion,
@@ -23,6 +24,7 @@ function readVersions(mesh: InstanceType<typeof SplatMesh>) {
   });
 
   mesh.deleteSelectedSplatState();
+  assert.deepStrictEqual(mesh.listSplatStateIndices("deleted"), [0, 1, 2, 3]);
   assert.deepStrictEqual(readVersions(mesh), {
     version: initial.version,
     sortVersion: initial.sortVersion,

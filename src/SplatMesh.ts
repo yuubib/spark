@@ -19,6 +19,7 @@ import {
   type SplatEditorStateBits,
   type SplatEditorStateCounts,
   type SplatEditorStateFilterMode,
+  type SplatEditorStateIndexMode,
   type SplatEditorStateMutationResult,
   type SplatEditorStateOperation,
   type SplatEditorStateUploadResult,
@@ -858,6 +859,17 @@ export class SplatMesh extends SplatGenerator {
         deleted: 0,
       }
     );
+  }
+
+  listSplatStateIndices(mode: SplatEditorStateIndexMode): number[] {
+    const state = this.getEditorState();
+    if (state) {
+      return state.listIndices(mode);
+    }
+    if (mode !== "unselected-selectable") {
+      return [];
+    }
+    return Array.from({ length: this.numSplats }, (_, index) => index);
   }
 
   uploadDirtySplatState(

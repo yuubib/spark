@@ -20,6 +20,11 @@ export const SPLAT_EDITOR_STATE_NONE = 0;
 export type SplatEditorStateBits = number;
 export type SplatEditorStateOperation = "replace" | "set" | "clear" | "toggle";
 export type SplatEditorSelectionOperation = "set" | "add" | "remove";
+export type SplatEditorStateIndexMode =
+  | "selected"
+  | "unselected-selectable"
+  | "locked"
+  | "deleted";
 export type SplatEditorStateFilterMode =
   | "all"
   | "visible"
@@ -205,6 +210,16 @@ export class SplatEditorState {
     return matchesSplatEditorStateBits(this.get(index), mode);
   }
 
+  listIndices(mode: SplatEditorStateIndexMode): number[] {
+    const indices: number[] = [];
+    for (let index = 0; index < this.numSplats; index++) {
+      if (matchesSplatEditorStateIndexMode(this.states[index], mode)) {
+        indices.push(index);
+      }
+    }
+    return indices;
+  }
+
   setRange(
     start: number,
     count: number,
@@ -282,6 +297,8 @@ export class SplatEditorState {
         }
       }
 
+      const dirtyIndices: number[] = [];
+      let fullRange = false;
       let changed = 0;
       for (let index = 0; index < this.numSplats; index++) {
         const previous = this.states[index];
@@ -293,12 +310,14 @@ export class SplatEditorState {
               : previous;
         if (this.setUnchecked(index, next, false)) {
           changed++;
+          fullRange ||= this.collectDirtyIndex(dirtyIndices, index);
         }
       }
-      return this.commitMutation(changed, [], true);
+      return this.commitMutation(changed, dirtyIndices, fullRange);
     }
 
     const dirtyIndices: number[] = [];
+    let fullRange = false;
     let changed = 0;
     for (const rawIndex of indices) {
       const index = this.normalizeIndex(rawIndex);
@@ -313,14 +332,16 @@ export class SplatEditorState {
             ? SPLAT_EDITOR_STATE_NONE
             : previous;
       if (this.setUnchecked(index, next, false)) {
-        dirtyIndices.push(index);
         changed++;
+        fullRange ||= this.collectDirtyIndex(dirtyIndices, index);
       }
     }
-    return this.commitMutation(changed, dirtyIndices);
+    return this.commitMutation(changed, dirtyIndices, fullRange);
   }
 
   selectAll(): SplatEditorStateMutationResult {
+    const dirtyIndices: number[] = [];
+    let fullRange = false;
     let changed = 0;
     for (let index = 0; index < this.numSplats; index++) {
       if (
@@ -333,12 +354,15 @@ export class SplatEditorState {
         )
       ) {
         changed++;
+        fullRange ||= this.collectDirtyIndex(dirtyIndices, index);
       }
     }
-    return this.commitMutation(changed, [], true);
+    return this.commitMutation(changed, dirtyIndices, fullRange);
   }
 
   clearSelection(): SplatEditorStateMutationResult {
+    const dirtyIndices: number[] = [];
+    let fullRange = false;
     let changed = 0;
     for (let index = 0; index < this.numSplats; index++) {
       if (
@@ -351,12 +375,15 @@ export class SplatEditorState {
         )
       ) {
         changed++;
+        fullRange ||= this.collectDirtyIndex(dirtyIndices, index);
       }
     }
-    return this.commitMutation(changed, [], true);
+    return this.commitMutation(changed, dirtyIndices, fullRange);
   }
 
   invertSelection(): SplatEditorStateMutationResult {
+    const dirtyIndices: number[] = [];
+    let fullRange = false;
     let changed = 0;
     for (let index = 0; index < this.numSplats; index++) {
       const previous = this.states[index];
@@ -368,12 +395,15 @@ export class SplatEditorState {
             : previous;
       if (this.setUnchecked(index, next, false)) {
         changed++;
+        fullRange ||= this.collectDirtyIndex(dirtyIndices, index);
       }
     }
-    return this.commitMutation(changed, [], true);
+    return this.commitMutation(changed, dirtyIndices, fullRange);
   }
 
   hideSelected(): SplatEditorStateMutationResult {
+    const dirtyIndices: number[] = [];
+    let fullRange = false;
     let changed = 0;
     for (let index = 0; index < this.numSplats; index++) {
       if (
@@ -386,12 +416,15 @@ export class SplatEditorState {
         )
       ) {
         changed++;
+        fullRange ||= this.collectDirtyIndex(dirtyIndices, index);
       }
     }
-    return this.commitMutation(changed, [], true);
+    return this.commitMutation(changed, dirtyIndices, fullRange);
   }
 
   unhideAll(): SplatEditorStateMutationResult {
+    const dirtyIndices: number[] = [];
+    let fullRange = false;
     let changed = 0;
     for (let index = 0; index < this.numSplats; index++) {
       const previous = this.states[index];
@@ -402,12 +435,15 @@ export class SplatEditorState {
           : previous;
       if (this.setUnchecked(index, next, false)) {
         changed++;
+        fullRange ||= this.collectDirtyIndex(dirtyIndices, index);
       }
     }
-    return this.commitMutation(changed, [], true);
+    return this.commitMutation(changed, dirtyIndices, fullRange);
   }
 
   deleteSelected(): SplatEditorStateMutationResult {
+    const dirtyIndices: number[] = [];
+    let fullRange = false;
     let changed = 0;
     for (let index = 0; index < this.numSplats; index++) {
       if (
@@ -420,12 +456,15 @@ export class SplatEditorState {
         )
       ) {
         changed++;
+        fullRange ||= this.collectDirtyIndex(dirtyIndices, index);
       }
     }
-    return this.commitMutation(changed, [], true);
+    return this.commitMutation(changed, dirtyIndices, fullRange);
   }
 
   resetDeleted(): SplatEditorStateMutationResult {
+    const dirtyIndices: number[] = [];
+    let fullRange = false;
     let changed = 0;
     for (let index = 0; index < this.numSplats; index++) {
       const previous = this.states[index];
@@ -435,12 +474,15 @@ export class SplatEditorState {
           : previous;
       if (this.setUnchecked(index, next, false)) {
         changed++;
+        fullRange ||= this.collectDirtyIndex(dirtyIndices, index);
       }
     }
-    return this.commitMutation(changed, [], true);
+    return this.commitMutation(changed, dirtyIndices, fullRange);
   }
 
   cropToSelection(): SplatEditorStateMutationResult {
+    const dirtyIndices: number[] = [];
+    let fullRange = false;
     let changed = 0;
     for (let index = 0; index < this.numSplats; index++) {
       const previous = this.states[index];
@@ -451,9 +493,10 @@ export class SplatEditorState {
           : previous;
       if (this.setUnchecked(index, next, false)) {
         changed++;
+        fullRange ||= this.collectDirtyIndex(dirtyIndices, index);
       }
     }
-    return this.commitMutation(changed, [], true);
+    return this.commitMutation(changed, dirtyIndices, fullRange);
   }
 
   replace(states: ArrayLike<number>, numSplats = states.length): void {
@@ -843,6 +886,18 @@ export class SplatEditorState {
     };
   }
 
+  private collectDirtyIndex(dirtyIndices: number[], index: number): boolean {
+    if (dirtyIndices.length > this.numSplats / 4) {
+      return true;
+    }
+    dirtyIndices.push(index);
+    if (dirtyIndices.length > this.numSplats / 4) {
+      dirtyIndices.length = 0;
+      return true;
+    }
+    return false;
+  }
+
   private setUnchecked(
     index: number,
     bits: SplatEditorStateBits,
@@ -1027,6 +1082,28 @@ export function matchesSplatEditorStateBits(
       return state === SPLAT_EDITOR_STATE_SELECTED;
     default:
       throw new Error(`Unsupported splat editor state filter mode: ${mode}`);
+  }
+}
+
+export function matchesSplatEditorStateIndexMode(
+  bits: SplatEditorStateBits,
+  mode: SplatEditorStateIndexMode,
+): boolean {
+  const state = bits & 0xff;
+  switch (mode) {
+    case "selected":
+      return state === SPLAT_EDITOR_STATE_SELECTED;
+    case "unselected-selectable":
+      return state === SPLAT_EDITOR_STATE_NONE;
+    case "locked":
+      return (
+        (state & SPLAT_EDITOR_STATE_DELETED) === 0 &&
+        (state & SPLAT_EDITOR_STATE_LOCKED) !== 0
+      );
+    case "deleted":
+      return (state & SPLAT_EDITOR_STATE_DELETED) !== 0;
+    default:
+      throw new Error(`Unsupported splat editor state index mode: ${mode}`);
   }
 }
 

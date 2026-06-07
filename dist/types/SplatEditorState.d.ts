@@ -7,6 +7,7 @@ export declare const SPLAT_EDITOR_STATE_NONE = 0;
 export type SplatEditorStateBits = number;
 export type SplatEditorStateOperation = "replace" | "set" | "clear" | "toggle";
 export type SplatEditorSelectionOperation = "set" | "add" | "remove";
+export type SplatEditorStateIndexMode = "selected" | "unselected-selectable" | "locked" | "deleted";
 export type SplatEditorStateFilterMode = "all" | "visible" | "selected" | "editable" | "pick-add" | "pick-remove" | "pick-set";
 export interface SplatEditorStateCounts {
     readonly selected: number;
@@ -68,6 +69,7 @@ export declare class SplatEditorState {
     toggleBits(index: number, mask: SplatEditorStateBits): SplatEditorStateBits;
     update(index: number, mask: SplatEditorStateBits, operation: SplatEditorStateOperation): SplatEditorStateBits;
     matches(index: number, mode: SplatEditorStateFilterMode): boolean;
+    listIndices(mode: SplatEditorStateIndexMode): number[];
     setRange(start: number, count: number, bits: SplatEditorStateBits, operation?: SplatEditorStateOperation): void;
     setList(indices: Iterable<number>, bits: SplatEditorStateBits, operation?: SplatEditorStateOperation): void;
     selectCandidates(indices: Iterable<number>, operation?: SplatEditorSelectionOperation): SplatEditorStateMutationResult;
@@ -98,6 +100,7 @@ export declare class SplatEditorState {
     private assertIndex;
     private normalizeIndex;
     private commitMutation;
+    private collectDirtyIndex;
     private setUnchecked;
     private updateCounts;
     static emptyTexture: THREE.DataArrayTexture;
@@ -106,3 +109,4 @@ export declare function applySplatEditorStateVisibility(gsplat: DynoVal<typeof G
 export declare function applySplatEditorStateColor(gsplat: DynoVal<typeof Gsplat>, stateTexture: DynoVal<"usampler2DArray">, enabled: DynoVal<"bool">, selectedColor: DynoVal<"vec4">, lockedColor: DynoVal<"vec4">): DynoVal<typeof Gsplat>;
 export declare function applyCovSplatEditorStateColor(covsplat: DynoVal<typeof CovSplat>, stateTexture: DynoVal<"usampler2DArray">, enabled: DynoVal<"bool">, selectedColor: DynoVal<"vec4">, lockedColor: DynoVal<"vec4">): DynoVal<typeof CovSplat>;
 export declare function matchesSplatEditorStateBits(bits: SplatEditorStateBits, mode: SplatEditorStateFilterMode): boolean;
+export declare function matchesSplatEditorStateIndexMode(bits: SplatEditorStateBits, mode: SplatEditorStateIndexMode): boolean;
