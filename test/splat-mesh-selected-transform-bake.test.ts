@@ -30,6 +30,22 @@ function createMesh(): SplatMesh {
   return new SplatMesh({ packedSplats: splats });
 }
 
+function createFiveSplatMesh(): SplatMesh {
+  const splats = new PackedSplats();
+  const identity = new THREE.Quaternion();
+  const white = new THREE.Color(1, 1, 1);
+  for (let index = 0; index < 5; index += 1) {
+    splats.pushSplat(
+      new THREE.Vector3(index, 0, 0),
+      new THREE.Vector3(1, 1, 1),
+      identity,
+      1,
+      white,
+    );
+  }
+  return new SplatMesh({ packedSplats: splats });
+}
+
 function assertVectorClose(
   actual: THREE.Vector3 | undefined,
   expected: THREE.Vector3,
@@ -96,6 +112,42 @@ function assertQuaternionClose(
   assertVectorClose(baked.scales, selectedScalesBefore.multiplyScalar(2), 0.3);
   assertQuaternionClose(baked.quaternion, rotate, 1e-4);
   assert.strictEqual(baked.opacity, 0.8);
+
+  mesh.dispose();
+}
+
+{
+  const mesh = createFiveSplatMesh();
+  mesh.setSplatState(3, SPLAT_EDITOR_STATE_SELECTED);
+  const editorState = mesh.getEditorState();
+  assert.ok(editorState);
+  editorState.listIndices = () => {
+    throw new Error("selected transform bake should not list selected indices");
+  };
+  editorState.forEachIndex = () => {
+    throw new Error("selected transform bake should use selected index cache");
+  };
+  mesh.setSelectedSplatTransform({
+    translate: new THREE.Vector3(2, 0, 0),
+  });
+
+  const result = mesh.bakeSelectedSplatTransform();
+
+  assert.deepStrictEqual(result, {
+    applied: true,
+    changed: 1,
+    selected: 1,
+    cleared: true,
+    unsupported: false,
+  });
+  assertVectorClose(
+    mesh.packedSplats?.getSplat(3).center,
+    new THREE.Vector3(5, 0, 0),
+  );
+  assertVectorClose(
+    mesh.packedSplats?.getSplat(2).center,
+    new THREE.Vector3(2, 0, 0),
+  );
 
   mesh.dispose();
 }

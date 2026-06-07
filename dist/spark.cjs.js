@@ -16937,9 +16937,9 @@ const _SplatMesh = class _SplatMesh extends SplatGenerator {
       };
     }
     const sourceCount = source.getNumSplats();
-    for (const index of editorState.listIndices("selected")) {
+    editorState.forEachSelectedIndex((index) => {
       if (index < 0 || index >= sourceCount) {
-        continue;
+        return;
       }
       const splat = source.getSplat(index);
       applySelectedTransformToDecodedSplat(
@@ -16957,7 +16957,7 @@ const _SplatMesh = class _SplatMesh extends SplatGenerator {
         splat.color
       );
       result.changed += 1;
-    }
+    });
     if (result.changed > 0) {
       markMutableSplatSourceUpdated(source);
       this.updateVersion();
