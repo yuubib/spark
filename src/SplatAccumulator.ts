@@ -4,6 +4,8 @@ import { Readback } from "./Readback";
 import { SplatEdit } from "./SplatEdit";
 import {
   SPLAT_EDITOR_STATE_DELETED,
+  SPLAT_EDITOR_STATE_NONE,
+  SPLAT_EDITOR_STATE_SELECTED,
   SplatEditorState,
   type SplatEditorStateDirtyRange,
 } from "./SplatEditorState";
@@ -110,6 +112,7 @@ export class SplatAccumulator {
   editorStateTexture: THREE.DataArrayTexture | null = null;
   editorStateEnabled = false;
   editorStateVisibleCount: number | null = null;
+  editorStateUniformValue: number | null = null;
   editorStateSelectedColor = new THREE.Vector4(0.38, 0.62, 1.0, 0.42);
   editorStateLockedColor = new THREE.Vector4(0.58, 0.64, 0.72, 1.0);
   private editorStateMappingKey = "";
@@ -138,6 +141,7 @@ export class SplatAccumulator {
     this.editorStateData = new Uint8Array(0);
     this.editorStateEnabled = false;
     this.editorStateVisibleCount = null;
+    this.editorStateUniformValue = null;
     this.editorStateMappingKey = "";
   }
 
@@ -167,39 +171,61 @@ export class SplatAccumulator {
     }[] = [];
     let requiredSplats = 0;
     let totalSplats = 0;
+    let uniformValue: number | null | undefined = undefined;
     for (const item of mapping) {
+      if (item.count <= 0) {
+        continue;
+      }
       totalSplats = Math.max(totalSplats, item.base + item.count);
       const node = item.node;
       if (
         !(node instanceof SplatMesh) ||
         node.editorStateRenderMode !== "accumulator"
       ) {
+        uniformValue = mergeEditorStateUniformValue(
+          uniformValue,
+          SPLAT_EDITOR_STATE_NONE,
+        );
         continue;
       }
 
       const state = node.getEditorState();
       if (!state) {
+        uniformValue = mergeEditorStateUniformValue(
+          uniformValue,
+          SPLAT_EDITOR_STATE_NONE,
+        );
         continue;
       }
 
       stateMappings.push({ item, state });
       requiredSplats = Math.max(requiredSplats, item.base + item.count);
+      uniformValue = mergeEditorStateUniformValue(
+        uniformValue,
+        getUniformEditorStateValueForMapping(state, item.count),
+      );
     }
 
     if (stateMappings.length === 0 || requiredSplats <= 0) {
       const wasEnabled = this.editorStateEnabled;
       this.editorStateEnabled = false;
       this.editorStateVisibleCount = null;
+      this.editorStateUniformValue = null;
       this.editorStateMappingKey = "";
       return wasEnabled;
     }
 
     const mappingKey = createEditorStateMappingKey(stateMappings);
-    const allocated = this.ensureEditorStateTexture(requiredSplats);
+    const editorStateUniformValue = uniformValue ?? null;
+    const allocated =
+      editorStateUniformValue == null
+        ? this.ensureEditorStateTexture(requiredSplats)
+        : false;
     const fullCopy =
       allocated ||
       !this.editorStateEnabled ||
-      this.editorStateMappingKey !== mappingKey;
+      this.editorStateMappingKey !== mappingKey ||
+      (this.editorStateUniformValue != null && editorStateUniformValue == null);
     const dirtyRanges: SplatEditorStateDirtyRange[] = [];
     if (fullCopy) {
       this.editorStateData.fill(0);
@@ -215,6 +241,11 @@ export class SplatAccumulator {
         this.editorStateSelectedColor.copy(state.selectedColor);
         this.editorStateLockedColor.copy(state.lockedColor);
         colorsCopied = true;
+      }
+
+      if (editorStateUniformValue != null) {
+        state.clearRenderDirtyRanges();
+        continue;
       }
 
       if (fullCopy) {
@@ -249,6 +280,7 @@ export class SplatAccumulator {
     this.editorStateVisibleCount = enabled
       ? Math.max(0, Math.max(this.numSplats, totalSplats) - deletedSplats)
       : null;
+    this.editorStateUniformValue = enabled ? editorStateUniformValue : null;
     this.editorStateMappingKey = mappingKey;
     if (
       this.editorStateTexture &&
@@ -1054,6 +1086,55 @@ function countDeletedSplatsForMapping(
     }
   }
   return deleted;
+}
+
+function mergeEditorStateUniformValue(
+  previous: number | null | undefined,
+  next: number | null,
+): number | null | undefined {
+  if (previous === null || next === null) {
+    return null;
+  }
+  if (previous === undefined) {
+    return next;
+  }
+  return previous === next ? previous : null;
+}
+
+function getUniformEditorStateValueForMapping(
+  state: SplatEditorState,
+  count: number,
+): number | null {
+  const safeCount = Math.max(0, Math.floor(count));
+  if (safeCount === 0) {
+    return SPLAT_EDITOR_STATE_NONE;
+  }
+
+  if (safeCount === state.numSplats) {
+    const summary = state.getSummary();
+    if (summary.selected === safeCount) {
+      return SPLAT_EDITOR_STATE_SELECTED;
+    }
+    if (
+      summary.selected === 0 &&
+      summary.locked === 0 &&
+      summary.deleted === 0
+    ) {
+      return SPLAT_EDITOR_STATE_NONE;
+    }
+    if (summary.locked !== safeCount && summary.deleted !== safeCount) {
+      return null;
+    }
+  }
+
+  const first = state.states[0] ?? SPLAT_EDITOR_STATE_NONE;
+  const limit = Math.min(safeCount, state.states.length);
+  for (let index = 1; index < limit; index += 1) {
+    if (state.states[index] !== first) {
+      return null;
+    }
+  }
+  return safeCount > limit && first !== SPLAT_EDITOR_STATE_NONE ? null : first;
 }
 
 function createEditorStateUploadSpans(

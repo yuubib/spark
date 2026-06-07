@@ -39,6 +39,7 @@ uniform usampler2DArray extSplats;
 uniform usampler2DArray extSplats2;
 uniform bool splatEditorStateEnabled;
 uniform usampler2DArray splatEditorStateTexture;
+uniform int splatEditorStateUniform;
 uniform vec4 splatEditorSelectedColor;
 uniform vec4 splatEditorLockedColor;
 uniform int splatEditorStateFilterMode;
@@ -129,7 +130,11 @@ void main() {
 
     uint splatEditorState = 0u;
     if (splatEditorStateEnabled) {
-        splatEditorState = texelFetch(splatEditorStateTexture, texCoord, 0).r;
+        if (splatEditorStateUniform >= 0) {
+            splatEditorState = uint(splatEditorStateUniform);
+        } else {
+            splatEditorState = texelFetch(splatEditorStateTexture, texCoord, 0).r;
+        }
     }
     if (splatEditorStateFilterMode != 0) {
         if (!matchesSplatEditorStateFilter(splatEditorState, splatEditorStateFilterMode)) {

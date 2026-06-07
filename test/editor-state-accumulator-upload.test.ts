@@ -1,6 +1,10 @@
 import assert from "node:assert";
 
 import { SplatAccumulator, SplatMesh } from "../dist/spark.module.js";
+import {
+  SPLAT_EDITOR_STATE_DELETED,
+  SPLAT_EDITOR_STATE_SELECTED,
+} from "../src/SplatEditorState.js";
 
 function createMockRenderer() {
   const texSubImageCalls: unknown[][] = [];
@@ -113,6 +117,75 @@ function createMockRenderer() {
 
 {
   const mesh = new SplatMesh({ editorStateRenderMode: "accumulator" });
+  const state = mesh.ensureEditorState(4);
+  const accumulator = new SplatAccumulator();
+  const mapping = [
+    {
+      node: mesh,
+      version: 0,
+      sortVersion: 0,
+      styleVersion: 0,
+      mappingVersion: 0,
+      base: 0,
+      count: 4,
+    },
+  ];
+
+  state.selectAll();
+
+  assert.strictEqual(accumulator.updateEditorStateTexture({ mapping }), true);
+  assert.strictEqual(
+    accumulator.editorStateUniformValue,
+    SPLAT_EDITOR_STATE_SELECTED,
+  );
+  assert.strictEqual(accumulator.editorStateVisibleCount, 4);
+  assert.strictEqual(accumulator.editorStateTexture, null);
+  assert.deepStrictEqual(state.getRenderDirtyRanges(), []);
+
+  state.deleteSelected();
+
+  assert.strictEqual(accumulator.updateEditorStateTexture({ mapping }), true);
+  assert.strictEqual(
+    accumulator.editorStateUniformValue,
+    SPLAT_EDITOR_STATE_SELECTED | SPLAT_EDITOR_STATE_DELETED,
+  );
+  assert.strictEqual(accumulator.editorStateVisibleCount, 0);
+  assert.strictEqual(accumulator.editorStateTexture, null);
+
+  state.replace([SPLAT_EDITOR_STATE_SELECTED, 0, 0, 0]);
+
+  assert.strictEqual(accumulator.updateEditorStateTexture({ mapping }), true);
+  assert.strictEqual(accumulator.editorStateUniformValue, null);
+  assert.strictEqual(accumulator.editorStateVisibleCount, 4);
+  assert.ok(accumulator.editorStateTexture);
+  assert.strictEqual(
+    accumulator.editorStateData[0],
+    SPLAT_EDITOR_STATE_SELECTED,
+  );
+
+  state.selectAll();
+
+  assert.strictEqual(accumulator.updateEditorStateTexture({ mapping }), true);
+  assert.strictEqual(
+    accumulator.editorStateUniformValue,
+    SPLAT_EDITOR_STATE_SELECTED,
+  );
+
+  state.selectCandidates([1], "set");
+
+  assert.strictEqual(accumulator.updateEditorStateTexture({ mapping }), true);
+  assert.strictEqual(accumulator.editorStateUniformValue, null);
+  assert.deepStrictEqual(
+    [...accumulator.editorStateData.slice(0, 4)],
+    [0, SPLAT_EDITOR_STATE_SELECTED, 0, 0],
+  );
+
+  accumulator.dispose();
+  mesh.dispose();
+}
+
+{
+  const mesh = new SplatMesh({ editorStateRenderMode: "accumulator" });
   const plainMesh = new SplatMesh();
   const state = mesh.ensureEditorState(3);
   const accumulator = new SplatAccumulator();
@@ -151,11 +224,13 @@ function createMockRenderer() {
 
   assert.strictEqual(accumulator.updateEditorStateTexture({ mapping }), true);
   assert.strictEqual(accumulator.editorStateVisibleCount, 2);
+  assert.strictEqual(accumulator.editorStateUniformValue, null);
 
   state.resetDeleted();
 
   assert.strictEqual(accumulator.updateEditorStateTexture({ mapping }), true);
   assert.strictEqual(accumulator.editorStateVisibleCount, 5);
+  assert.strictEqual(accumulator.editorStateUniformValue, null);
 
   accumulator.dispose();
   plainMesh.dispose();

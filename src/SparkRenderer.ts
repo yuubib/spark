@@ -684,6 +684,7 @@ export class SparkRenderer extends THREE.Mesh {
         type: "t",
         value: SplatEditorState.emptyTexture,
       },
+      splatEditorStateUniform: { value: -1 },
       splatEditorSelectedColor: {
         value: new THREE.Vector4(0.38, 0.62, 1.0, 0.42),
       },
@@ -845,6 +846,8 @@ export class SparkRenderer extends THREE.Mesh {
       spark.display.editorStateEnabled;
     this.uniforms.splatEditorStateTexture.value =
       spark.display.getEditorStateTexture();
+    this.uniforms.splatEditorStateUniform.value =
+      spark.display.editorStateUniformValue ?? -1;
     this.uniforms.splatEditorSelectedColor.value.copy(
       spark.display.editorStateSelectedColor,
     );
@@ -1123,6 +1126,7 @@ export class SparkRenderer extends THREE.Mesh {
         numSplats,
         readback,
         editorStateData: current.editorStateData,
+        editorStateUniformValue: current.editorStateUniformValue,
         compactReadback: this.compactReadback32,
         sourceIndices: this.compactSortSourceIndices,
       });

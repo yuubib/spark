@@ -89,6 +89,51 @@ assert.strictEqual(
   const input = compactSplatSortInputForEditorState({
     numSplats: 4,
     readback,
+    editorStateData: new Uint8Array([
+      SPLAT_EDITOR_STATE_DELETED,
+      SPLAT_EDITOR_STATE_DELETED,
+      SPLAT_EDITOR_STATE_DELETED,
+      SPLAT_EDITOR_STATE_DELETED,
+    ]),
+    editorStateUniformValue: 1,
+    compactReadback,
+    sourceIndices,
+  });
+
+  assert.strictEqual(input.numSplats, 4);
+  assert.strictEqual(input.readback, readback);
+  assert.strictEqual(input.sourceIndices, undefined);
+  assert.strictEqual(input.excludedDeleted, 0);
+}
+
+{
+  const readback = new Uint32Array([10, 20, 30, 40]);
+  const compactReadback = new Uint32Array(4);
+  const sourceIndices = new Uint32Array(4);
+
+  const input = compactSplatSortInputForEditorState({
+    numSplats: 4,
+    readback,
+    editorStateData: new Uint8Array([0, 0, 0, 0]),
+    editorStateUniformValue: SPLAT_EDITOR_STATE_DELETED,
+    compactReadback,
+    sourceIndices,
+  });
+
+  assert.strictEqual(input.numSplats, 0);
+  assert.strictEqual(input.readback, compactReadback);
+  assert.strictEqual(input.sourceIndices, sourceIndices);
+  assert.strictEqual(input.excludedDeleted, 4);
+}
+
+{
+  const readback = new Uint32Array([10, 20, 30, 40]);
+  const compactReadback = new Uint32Array(4);
+  const sourceIndices = new Uint32Array(4);
+
+  const input = compactSplatSortInputForEditorState({
+    numSplats: 4,
+    readback,
     editorStateData: null,
     compactReadback,
     sourceIndices,

@@ -38,16 +38,29 @@ export function compactSplatSortInputForEditorState({
   numSplats,
   readback,
   editorStateData,
+  editorStateUniformValue,
   compactReadback,
   sourceIndices,
 }: {
   numSplats: number;
   readback: Uint32Array;
   editorStateData?: Uint8Array | null;
+  editorStateUniformValue?: number | null;
   compactReadback: Uint32Array;
   sourceIndices: Uint32Array;
 }): SplatSortInputForEditorState {
   const count = Math.max(0, Math.floor(numSplats));
+  if (editorStateUniformValue != null) {
+    if ((editorStateUniformValue & SPLAT_EDITOR_STATE_DELETED) === 0) {
+      return { numSplats: count, readback, excludedDeleted: 0 };
+    }
+    return {
+      numSplats: 0,
+      readback: compactReadback,
+      sourceIndices,
+      excludedDeleted: count,
+    };
+  }
   if (!editorStateData || editorStateData.length === 0 || count === 0) {
     return { numSplats: count, readback, excludedDeleted: 0 };
   }

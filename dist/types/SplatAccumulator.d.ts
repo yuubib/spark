@@ -41,6 +41,7 @@ export declare class SplatAccumulator {
     editorStateTexture: THREE.DataArrayTexture | null;
     editorStateEnabled: boolean;
     editorStateVisibleCount: number | null;
+    editorStateUniformValue: number | null;
     editorStateSelectedColor: THREE.Vector4;
     editorStateLockedColor: THREE.Vector4;
     private editorStateMappingKey;
