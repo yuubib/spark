@@ -13167,7 +13167,7 @@ const _SparkRenderer = class _SparkRenderer extends THREE.Mesh {
       layout.targetHeight
     );
     const renderStartedAt = readNowMs();
-    const pixels = await this.renderSplatScreenPickPass({
+    const pickPass = await this.renderSplatScreenPickPass({
       target,
       scene,
       camera,
@@ -13176,6 +13176,7 @@ const _SparkRenderer = class _SparkRenderer extends THREE.Mesh {
       editorStateMode: options.editorStateMode ?? editorSelectionOperationToPickFilterMode(options.operation ?? "set")
     });
     const renderReadbackMs = readNowMs() - renderStartedAt;
+    const { pixels } = pickPass;
     const collectStats = {
       pixelCount: 0,
       candidatePixelCount: 0,
@@ -13215,6 +13216,8 @@ const _SparkRenderer = class _SparkRenderer extends THREE.Mesh {
       collect: collectStats,
       timingsMs: {
         update: updateMs,
+        render: pickPass.renderMs,
+        readback: pickPass.readbackMs,
         renderReadback: renderReadbackMs,
         decode: decodeMs,
         map: mapMs,
@@ -13293,7 +13296,10 @@ const _SparkRenderer = class _SparkRenderer extends THREE.Mesh {
       renderer.setClearColor(0, 0);
       renderer.clear(true, true, true);
       _SparkRenderer.sparkOverride = this;
+      const renderStartedAt = readNowMs();
       renderer.render(this, pickCamera);
+      const renderMs = readNowMs() - renderStartedAt;
+      const readbackStartedAt = readNowMs();
       renderer.readRenderTargetPixels(
         target,
         readRect.x,
@@ -13302,7 +13308,11 @@ const _SparkRenderer = class _SparkRenderer extends THREE.Mesh {
         readRect.height,
         pixels
       );
-      return pixels;
+      return {
+        pixels,
+        renderMs,
+        readbackMs: readNowMs() - readbackStartedAt
+      };
     } finally {
       _SparkRenderer.sparkOverride = void 0;
       this.autoUpdate = previousAutoUpdate;

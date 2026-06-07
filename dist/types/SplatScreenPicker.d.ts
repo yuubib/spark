@@ -108,6 +108,8 @@ export type SplatScreenPickStats = {
     collect: SplatScreenPickCollectStats;
     timingsMs: {
         update: number;
+        render?: number;
+        readback?: number;
         renderReadback: number;
         decode: number;
         map: number;
