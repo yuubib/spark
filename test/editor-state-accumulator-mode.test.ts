@@ -34,19 +34,42 @@ function readVersions(mesh: InstanceType<typeof SplatMesh>) {
   mesh.applySplatStateChanges(selectResult.changes ?? [], "next");
   assert.deepStrictEqual(mesh.listSplatStateIndices("selected"), [0, 1, 2, 3]);
 
+  const clearResult = mesh.clearSplatStateSelection({
+    recordChanges: true,
+    changeFormat: "compact",
+  });
+  assert.strictEqual(clearResult.changes, undefined);
+  assert.deepStrictEqual(clearResult.changeSet, {
+    kind: "uniform",
+    start: 0,
+    count: 4,
+    previous: 1,
+    next: 0,
+    changed: 4,
+  });
+  assert.ok(clearResult.changeSet);
+  mesh.applySplatStateChangeSet(clearResult.changeSet, "previous");
+  assert.deepStrictEqual(mesh.listSplatStateIndices("selected"), [0, 1, 2, 3]);
+  mesh.applySplatStateChangeSet(clearResult.changeSet, "next");
+  assert.deepStrictEqual(mesh.listSplatStateIndices("selected"), []);
+  mesh.applySplatStateChangeSet(clearResult.changeSet, "previous");
+  assert.deepStrictEqual(mesh.listSplatStateIndices("selected"), [0, 1, 2, 3]);
+
+  const beforeDelete = readVersions(mesh);
   mesh.deleteSelectedSplatState();
   assert.deepStrictEqual(mesh.listSplatStateIndices("deleted"), [0, 1, 2, 3]);
   assert.deepStrictEqual(readVersions(mesh), {
-    version: initial.version,
-    sortVersion: initial.sortVersion,
-    styleVersion: initial.styleVersion + 4,
+    version: beforeDelete.version,
+    sortVersion: beforeDelete.sortVersion,
+    styleVersion: beforeDelete.styleVersion + 1,
   });
 
+  const beforeReset = readVersions(mesh);
   mesh.resetDeletedSplatState();
   assert.deepStrictEqual(readVersions(mesh), {
-    version: initial.version,
-    sortVersion: initial.sortVersion,
-    styleVersion: initial.styleVersion + 5,
+    version: beforeReset.version,
+    sortVersion: beforeReset.sortVersion,
+    styleVersion: beforeReset.styleVersion + 1,
   });
 
   mesh.dispose();

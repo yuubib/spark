@@ -2,7 +2,7 @@ import { ExtSplats } from './ExtSplats';
 import { PackedSplats } from './PackedSplats';
 import { RgbaArray, TRgbaArray } from './RgbaArray';
 import { SplatEdit, SplatEdits } from './SplatEdit';
-import { SplatEditorSelectionOperation, SplatEditorState, SplatEditorStateBits, SplatEditorStateChange, SplatEditorStateChangeSide, SplatEditorStateCounts, SplatEditorStateFilterMode, SplatEditorStateIndexMode, SplatEditorStateMutationOptions, SplatEditorStateMutationResult, SplatEditorStateOperation, SplatEditorStateUploadResult } from './SplatEditorState';
+import { SplatEditorSelectionOperation, SplatEditorState, SplatEditorStateBits, SplatEditorStateChange, SplatEditorStateChangeSet, SplatEditorStateChangeSide, SplatEditorStateCounts, SplatEditorStateFilterMode, SplatEditorStateIndexMode, SplatEditorStateMutationOptions, SplatEditorStateMutationResult, SplatEditorStateOperation, SplatEditorStateUploadResult } from './SplatEditorState';
 import { CovSplatModifier, CovSplatTransformer, FrameUpdateContext, GsplatModifier, SplatGenerator, SplatTransformer } from './SplatGenerator';
 import { PagedSplats, SplatPager } from './SplatPager';
 import { SplatSkinning } from './SplatSkinning';
@@ -219,6 +219,7 @@ export declare class SplatMesh extends SplatGenerator {
     resetDeletedSplatState(options?: SplatEditorStateMutationOptions): SplatEditorStateMutationResult;
     cropSplatStateToSelection(options?: SplatEditorStateMutationOptions): SplatEditorStateMutationResult;
     applySplatStateChanges(changes: Iterable<SplatEditorStateChange>, side?: SplatEditorStateChangeSide): SplatEditorStateMutationResult;
+    applySplatStateChangeSet(changeSet: SplatEditorStateChangeSet, side?: SplatEditorStateChangeSide): SplatEditorStateMutationResult;
     setSelectedSplatTransform({ pivot, translate, rotate, scale, }?: SplatMeshSelectedTransformOptions): boolean;
     clearSelectedSplatTransform(): boolean;
     getSelectedSplatTransform(): SplatMeshSelectedTransformSnapshot | null;

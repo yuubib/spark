@@ -9,6 +9,7 @@ export type SplatEditorStateOperation = "replace" | "set" | "clear" | "toggle";
 export type SplatEditorSelectionOperation = "set" | "add" | "remove";
 export type SplatEditorStateIndexMode = "selected" | "unselected-selectable" | "locked" | "deleted";
 export type SplatEditorStateChangeSide = "previous" | "next";
+export type SplatEditorStateChangeFormat = "list" | "compact";
 export type SplatEditorStateFilterMode = "all" | "visible" | "selected" | "editable" | "pick-add" | "pick-remove" | "pick-set";
 export interface SplatEditorStateCounts {
     readonly selected: number;
@@ -21,14 +22,29 @@ export interface SplatEditorStateMutationResult {
     readonly version: number;
     readonly visibilityVersion: number;
     readonly changes?: readonly SplatEditorStateChange[];
+    readonly changeSet?: SplatEditorStateChangeSet;
 }
 export interface SplatEditorStateChange {
     readonly index: number;
     readonly previous: SplatEditorStateBits;
     readonly next: SplatEditorStateBits;
 }
+export type SplatEditorStateChangeSet = SplatEditorStateListChangeSet | SplatEditorStateUniformChangeSet;
+export interface SplatEditorStateListChangeSet {
+    readonly kind: "list";
+    readonly changes: readonly SplatEditorStateChange[];
+}
+export interface SplatEditorStateUniformChangeSet {
+    readonly kind: "uniform";
+    readonly start: number;
+    readonly count: number;
+    readonly previous: SplatEditorStateBits;
+    readonly next: SplatEditorStateBits;
+    readonly changed: number;
+}
 export interface SplatEditorStateMutationOptions {
     readonly recordChanges?: boolean;
+    readonly changeFormat?: SplatEditorStateChangeFormat;
 }
 export interface SplatEditorStateDirtyRange {
     readonly start: number;
@@ -94,6 +110,7 @@ export declare class SplatEditorState {
     resetDeleted(options?: SplatEditorStateMutationOptions): SplatEditorStateMutationResult;
     cropToSelection(options?: SplatEditorStateMutationOptions): SplatEditorStateMutationResult;
     applyChanges(changes: Iterable<SplatEditorStateChange>, side?: SplatEditorStateChangeSide): SplatEditorStateMutationResult;
+    applyChangeSet(changeSet: SplatEditorStateChangeSet, side?: SplatEditorStateChangeSide): SplatEditorStateMutationResult;
     replace(states: ArrayLike<number>, numSplats?: number): void;
     clear(mask?: SplatEditorStateBits): void;
     reset(): void;
@@ -112,7 +129,10 @@ export declare class SplatEditorState {
     private uploadDirtySpans;
     private assertIndex;
     private normalizeIndex;
+    private createUniformChangeSet;
     private commitUniformMutation;
+    private applyUniformChangeSet;
+    private matchesUniformState;
     private createMutationResult;
     private commitMutation;
     private collectDirtyIndex;

@@ -26,6 +26,7 @@ export type SplatEditorStateIndexMode =
   | "locked"
   | "deleted";
 export type SplatEditorStateChangeSide = "previous" | "next";
+export type SplatEditorStateChangeFormat = "list" | "compact";
 export type SplatEditorStateFilterMode =
   | "all"
   | "visible"
@@ -47,6 +48,7 @@ export interface SplatEditorStateMutationResult {
   readonly version: number;
   readonly visibilityVersion: number;
   readonly changes?: readonly SplatEditorStateChange[];
+  readonly changeSet?: SplatEditorStateChangeSet;
 }
 
 export interface SplatEditorStateChange {
@@ -55,8 +57,27 @@ export interface SplatEditorStateChange {
   readonly next: SplatEditorStateBits;
 }
 
+export type SplatEditorStateChangeSet =
+  | SplatEditorStateListChangeSet
+  | SplatEditorStateUniformChangeSet;
+
+export interface SplatEditorStateListChangeSet {
+  readonly kind: "list";
+  readonly changes: readonly SplatEditorStateChange[];
+}
+
+export interface SplatEditorStateUniformChangeSet {
+  readonly kind: "uniform";
+  readonly start: number;
+  readonly count: number;
+  readonly previous: SplatEditorStateBits;
+  readonly next: SplatEditorStateBits;
+  readonly changed: number;
+}
+
 export interface SplatEditorStateMutationOptions {
   readonly recordChanges?: boolean;
+  readonly changeFormat?: SplatEditorStateChangeFormat;
 }
 
 export interface SplatEditorStateDirtyRange {
@@ -393,6 +414,26 @@ export class SplatEditorState {
       }
       return this.commitUniformMutation(SPLAT_EDITOR_STATE_SELECTED, changed);
     }
+    if (
+      options.recordChanges &&
+      options.changeFormat === "compact" &&
+      this.locked === 0 &&
+      this.deleted === 0 &&
+      this.selected === 0 &&
+      this.numSplats > 0
+    ) {
+      return this.commitUniformMutation(
+        SPLAT_EDITOR_STATE_SELECTED,
+        this.numSplats,
+        0,
+        this.createUniformChangeSet(
+          options,
+          SPLAT_EDITOR_STATE_NONE,
+          SPLAT_EDITOR_STATE_SELECTED,
+          this.numSplats,
+        ),
+      );
+    }
 
     const changes = createMutationChanges(options);
     const dirtyIndices: number[] = [];
@@ -424,6 +465,26 @@ export class SplatEditorState {
         return this.createMutationResult(0);
       }
       return this.commitUniformMutation(SPLAT_EDITOR_STATE_NONE, changed);
+    }
+    if (
+      options.recordChanges &&
+      options.changeFormat === "compact" &&
+      this.locked === 0 &&
+      this.deleted === 0 &&
+      this.selected === this.numSplats &&
+      this.numSplats > 0
+    ) {
+      return this.commitUniformMutation(
+        SPLAT_EDITOR_STATE_NONE,
+        this.numSplats,
+        0,
+        this.createUniformChangeSet(
+          options,
+          SPLAT_EDITOR_STATE_SELECTED,
+          SPLAT_EDITOR_STATE_NONE,
+          this.numSplats,
+        ),
+      );
     }
 
     const changes = createMutationChanges(options);
@@ -466,6 +527,40 @@ export class SplatEditorState {
         );
       }
     }
+    if (
+      options.recordChanges &&
+      options.changeFormat === "compact" &&
+      this.locked === 0 &&
+      this.deleted === 0 &&
+      this.numSplats > 0
+    ) {
+      if (this.selected === 0) {
+        return this.commitUniformMutation(
+          SPLAT_EDITOR_STATE_SELECTED,
+          this.numSplats,
+          0,
+          this.createUniformChangeSet(
+            options,
+            SPLAT_EDITOR_STATE_NONE,
+            SPLAT_EDITOR_STATE_SELECTED,
+            this.numSplats,
+          ),
+        );
+      }
+      if (this.selected === this.numSplats) {
+        return this.commitUniformMutation(
+          SPLAT_EDITOR_STATE_NONE,
+          this.numSplats,
+          0,
+          this.createUniformChangeSet(
+            options,
+            SPLAT_EDITOR_STATE_SELECTED,
+            SPLAT_EDITOR_STATE_NONE,
+            this.numSplats,
+          ),
+        );
+      }
+    }
 
     const changes = createMutationChanges(options);
     const dirtyIndices: number[] = [];
@@ -502,6 +597,26 @@ export class SplatEditorState {
             this.numSplats,
           )
         : this.createMutationResult(0);
+    }
+    if (
+      options.recordChanges &&
+      options.changeFormat === "compact" &&
+      this.selected === this.numSplats &&
+      this.locked === 0 &&
+      this.deleted === 0 &&
+      this.numSplats > 0
+    ) {
+      return this.commitUniformMutation(
+        SPLAT_EDITOR_STATE_SELECTED | SPLAT_EDITOR_STATE_LOCKED,
+        this.numSplats,
+        0,
+        this.createUniformChangeSet(
+          options,
+          SPLAT_EDITOR_STATE_SELECTED,
+          SPLAT_EDITOR_STATE_SELECTED | SPLAT_EDITOR_STATE_LOCKED,
+          this.numSplats,
+        ),
+      );
     }
 
     const changes = createMutationChanges(options);
@@ -563,6 +678,26 @@ export class SplatEditorState {
             this.numSplats,
           )
         : this.createMutationResult(0);
+    }
+    if (
+      options.recordChanges &&
+      options.changeFormat === "compact" &&
+      this.selected === this.numSplats &&
+      this.locked === 0 &&
+      this.deleted === 0 &&
+      this.numSplats > 0
+    ) {
+      return this.commitUniformMutation(
+        SPLAT_EDITOR_STATE_SELECTED | SPLAT_EDITOR_STATE_DELETED,
+        this.numSplats,
+        this.numSplats,
+        this.createUniformChangeSet(
+          options,
+          SPLAT_EDITOR_STATE_SELECTED,
+          SPLAT_EDITOR_STATE_SELECTED | SPLAT_EDITOR_STATE_DELETED,
+          this.numSplats,
+        ),
+      );
     }
 
     const changes = createMutationChanges(options);
@@ -648,6 +783,16 @@ export class SplatEditorState {
       }
     }
     return this.commitMutation(changed, dirtyIndices, fullRange);
+  }
+
+  applyChangeSet(
+    changeSet: SplatEditorStateChangeSet,
+    side: SplatEditorStateChangeSide = "next",
+  ): SplatEditorStateMutationResult {
+    if (changeSet.kind === "list") {
+      return this.applyChanges(changeSet.changes, side);
+    }
+    return this.applyUniformChangeSet(changeSet, side);
   }
 
   replace(states: ArrayLike<number>, numSplats = states.length): void {
@@ -1028,10 +1173,29 @@ export class SplatEditorState {
       : null;
   }
 
+  private createUniformChangeSet(
+    options: SplatEditorStateMutationOptions,
+    previous: SplatEditorStateBits,
+    next: SplatEditorStateBits,
+    changed: number,
+  ): SplatEditorStateUniformChangeSet | undefined {
+    return options.recordChanges && options.changeFormat === "compact"
+      ? {
+          kind: "uniform",
+          start: 0,
+          count: this.numSplats,
+          previous,
+          next,
+          changed,
+        }
+      : undefined;
+  }
+
   private commitUniformMutation(
     bits: SplatEditorStateBits,
     changed: number,
     visibilityDelta = 0,
+    changeSet?: SplatEditorStateChangeSet,
   ): SplatEditorStateMutationResult {
     const next = bits & 0xff;
     this.states.fill(next, 0, this.numSplats);
@@ -1049,12 +1213,73 @@ export class SplatEditorState {
       (next & SPLAT_EDITOR_STATE_DELETED) !== 0 ? this.numSplats : 0;
     this.resetSelectedIndexTrackingForUniform(next);
     this.visibilityVersion += visibilityDelta;
-    return this.commitMutation(changed);
+    return this.commitMutation(changed, [], false, undefined, changeSet);
+  }
+
+  private applyUniformChangeSet(
+    changeSet: SplatEditorStateUniformChangeSet,
+    side: SplatEditorStateChangeSide,
+  ): SplatEditorStateMutationResult {
+    const safeStart = Math.max(0, Math.floor(changeSet.start));
+    const safeCount = Math.max(0, Math.floor(changeSet.count));
+    const safeEnd = Math.min(this.numSplats, safeStart + safeCount);
+    if (safeStart >= safeEnd) {
+      return this.createMutationResult(0);
+    }
+
+    const target = side === "previous" ? changeSet.previous : changeSet.next;
+    const source = side === "previous" ? changeSet.next : changeSet.previous;
+    const visibilityDelta =
+      (source & SPLAT_EDITOR_STATE_DELETED) !==
+      (target & SPLAT_EDITOR_STATE_DELETED)
+        ? changeSet.changed
+        : 0;
+
+    if (safeStart === 0 && safeEnd === this.numSplats) {
+      if (this.matchesUniformState(target)) {
+        return this.createMutationResult(0);
+      }
+      return this.commitUniformMutation(
+        target,
+        changeSet.changed,
+        visibilityDelta,
+      );
+    }
+
+    const dirtyIndices: number[] = [];
+    let fullRange = false;
+    let changed = 0;
+    for (let index = safeStart; index < safeEnd; index++) {
+      if (this.setUnchecked(index, target, false)) {
+        changed++;
+        fullRange ||= this.collectDirtyIndex(dirtyIndices, index);
+      }
+    }
+    return this.commitMutation(changed, dirtyIndices, fullRange);
+  }
+
+  private matchesUniformState(bits: SplatEditorStateBits): boolean {
+    const state = bits & 0xff;
+    if ((state & SPLAT_EDITOR_STATE_DELETED) !== 0) {
+      return this.deleted === this.numSplats;
+    }
+    if ((state & SPLAT_EDITOR_STATE_LOCKED) !== 0) {
+      return this.locked === this.numSplats && this.deleted === 0;
+    }
+    if ((state & SPLAT_EDITOR_STATE_SELECTED) !== 0) {
+      return (
+        this.selected === this.numSplats &&
+        this.locked === 0 &&
+        this.deleted === 0
+      );
+    }
+    return this.selected === 0 && this.locked === 0 && this.deleted === 0;
   }
 
   private createMutationResult(
     changed: number,
     changes?: readonly SplatEditorStateChange[],
+    changeSet?: SplatEditorStateChangeSet,
   ): SplatEditorStateMutationResult {
     return {
       changed,
@@ -1062,6 +1287,7 @@ export class SplatEditorState {
       version: this.version,
       visibilityVersion: this.visibilityVersion,
       ...(changes ? { changes } : {}),
+      ...(changeSet ? { changeSet } : {}),
     };
   }
 
@@ -1070,6 +1296,7 @@ export class SplatEditorState {
     dirtyIndices: readonly number[] = [],
     fullRange = false,
     changes?: readonly SplatEditorStateChange[],
+    changeSet?: SplatEditorStateChangeSet,
   ): SplatEditorStateMutationResult {
     if (changed > 0) {
       if (
@@ -1086,7 +1313,11 @@ export class SplatEditorState {
       this.version++;
       this.refreshSelectedIndexTracking();
     }
-    return this.createMutationResult(changed, changes);
+    return this.createMutationResult(
+      changed,
+      changes,
+      changeSet ?? (changes ? { kind: "list", changes } : undefined),
+    );
   }
 
   private collectDirtyIndex(dirtyIndices: number[], index: number): boolean {

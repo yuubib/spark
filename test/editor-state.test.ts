@@ -203,6 +203,7 @@ import {
 
   const selectResult = state.selectAll({ recordChanges: true });
   assert.strictEqual(selectResult.changed, 4);
+  assert.strictEqual(selectResult.changeSet?.kind, "list");
   assert.deepStrictEqual(
     selectResult.changes?.map(({ index, previous, next }) => ({
       index,
@@ -219,6 +220,7 @@ import {
 
   const hideResult = state.hideSelected({ recordChanges: true });
   assert.strictEqual(hideResult.changed, 4);
+  assert.strictEqual(hideResult.changeSet?.kind, "list");
   assert.deepStrictEqual(
     hideResult.changes?.map(({ index, previous, next }) => ({
       index,
@@ -248,6 +250,117 @@ import {
       },
     ],
   );
+}
+
+{
+  const state = new SplatEditorState(5);
+
+  const selectResult = state.selectAll({
+    recordChanges: true,
+    changeFormat: "compact",
+  });
+  assert.strictEqual(selectResult.changed, 5);
+  assert.strictEqual(selectResult.changes, undefined);
+  assert.deepStrictEqual(selectResult.changeSet, {
+    kind: "uniform",
+    start: 0,
+    count: 5,
+    previous: SPLAT_EDITOR_STATE_NONE,
+    next: SPLAT_EDITOR_STATE_SELECTED,
+    changed: 5,
+  });
+  assert.deepStrictEqual(selectResult.counts, {
+    selected: 5,
+    locked: 0,
+    deleted: 0,
+  });
+
+  assert.ok(selectResult.changeSet);
+  const undoSelect = state.applyChangeSet(selectResult.changeSet, "previous");
+  assert.strictEqual(undoSelect.changed, 5);
+  assert.deepStrictEqual(undoSelect.counts, {
+    selected: 0,
+    locked: 0,
+    deleted: 0,
+  });
+  const redoSelect = state.applyChangeSet(selectResult.changeSet, "next");
+  assert.strictEqual(redoSelect.changed, 5);
+  assert.deepStrictEqual(redoSelect.counts, {
+    selected: 5,
+    locked: 0,
+    deleted: 0,
+  });
+
+  const visibilityVersion = state.visibilityVersion;
+  const deleteResult = state.deleteSelected({
+    recordChanges: true,
+    changeFormat: "compact",
+  });
+  assert.strictEqual(deleteResult.changed, 5);
+  assert.strictEqual(deleteResult.changes, undefined);
+  assert.deepStrictEqual(deleteResult.changeSet, {
+    kind: "uniform",
+    start: 0,
+    count: 5,
+    previous: SPLAT_EDITOR_STATE_SELECTED,
+    next: SPLAT_EDITOR_STATE_SELECTED | SPLAT_EDITOR_STATE_DELETED,
+    changed: 5,
+  });
+  assert.strictEqual(state.visibilityVersion, visibilityVersion + 5);
+
+  assert.ok(deleteResult.changeSet);
+  const undoDelete = state.applyChangeSet(deleteResult.changeSet, "previous");
+  assert.strictEqual(undoDelete.changed, 5);
+  assert.deepStrictEqual(undoDelete.counts, {
+    selected: 5,
+    locked: 0,
+    deleted: 0,
+  });
+  assert.strictEqual(state.visibilityVersion, visibilityVersion + 10);
+
+  const redoDelete = state.applyChangeSet(deleteResult.changeSet, "next");
+  assert.strictEqual(redoDelete.changed, 5);
+  assert.deepStrictEqual(redoDelete.counts, {
+    selected: 0,
+    locked: 0,
+    deleted: 5,
+  });
+  assert.strictEqual(state.visibilityVersion, visibilityVersion + 15);
+
+  const redoDeleteAgain = state.applyChangeSet(deleteResult.changeSet, "next");
+  assert.strictEqual(redoDeleteAgain.changed, 0);
+  assert.strictEqual(state.visibilityVersion, visibilityVersion + 15);
+}
+
+{
+  const state = new SplatEditorState(5);
+  state.selectCandidates([1, 3], "set");
+
+  const clearResult = state.clearSelection({
+    recordChanges: true,
+    changeFormat: "compact",
+  });
+  assert.strictEqual(clearResult.changed, 2);
+  assert.strictEqual(clearResult.changeSet?.kind, "list");
+  assert.deepStrictEqual(clearResult.changes, [
+    {
+      index: 1,
+      previous: SPLAT_EDITOR_STATE_SELECTED,
+      next: SPLAT_EDITOR_STATE_NONE,
+    },
+    {
+      index: 3,
+      previous: SPLAT_EDITOR_STATE_SELECTED,
+      next: SPLAT_EDITOR_STATE_NONE,
+    },
+  ]);
+
+  assert.ok(clearResult.changeSet);
+  const redoResult = state.applyChangeSet(clearResult.changeSet, "next");
+  assert.strictEqual(redoResult.changed, 0);
+  const undoResult = state.applyChangeSet(clearResult.changeSet, "previous");
+  assert.strictEqual(undoResult.changed, 2);
+  assert.deepStrictEqual(state.listIndices("selected"), [1, 3]);
 }
 
 {

@@ -18,6 +18,7 @@ import {
   SplatEditorState,
   type SplatEditorStateBits,
   type SplatEditorStateChange,
+  type SplatEditorStateChangeSet,
   type SplatEditorStateChangeSide,
   type SplatEditorStateCounts,
   type SplatEditorStateFilterMode,
@@ -939,6 +940,15 @@ export class SplatMesh extends SplatGenerator {
     side: SplatEditorStateChangeSide = "next",
   ): SplatEditorStateMutationResult {
     return this.mutateEditorState((state) => state.applyChanges(changes, side));
+  }
+
+  applySplatStateChangeSet(
+    changeSet: SplatEditorStateChangeSet,
+    side: SplatEditorStateChangeSide = "next",
+  ): SplatEditorStateMutationResult {
+    return this.mutateEditorState((state) =>
+      state.applyChangeSet(changeSet, side),
+    );
   }
 
   setSelectedSplatTransform({
