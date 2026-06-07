@@ -2,6 +2,8 @@ import assert from "node:assert";
 import * as THREE from "three";
 
 import {
+  SPLAT_EDITOR_STATE_LOCKED,
+  SPLAT_EDITOR_STATE_SELECTED,
   SplatAccumulator,
   SplatEditorState,
   SplatMesh,
@@ -212,6 +214,41 @@ assertGeneratorVisibilityBaking({
   );
   assert.strictEqual(accumulator.editorSelectedTransformScale, 1.5);
   assert.strictEqual(accumulator.editorStateUniformValue, 1);
+  assert.strictEqual(accumulator.editorStateTexture, null);
+
+  accumulator.dispose();
+  mesh.dispose();
+}
+
+{
+  const mesh = new SplatMesh({ editorStateRenderMode: "accumulator" });
+  const state = mesh.ensureEditorState(4);
+  mesh.selectAllSplatState();
+  mesh.hideSelectedSplatState();
+
+  const accumulator = new SplatAccumulator();
+  accumulator.numSplats = 4;
+  assert.strictEqual(
+    accumulator.updateEditorStateTexture({
+      mapping: [
+        {
+          node: mesh,
+          version: mesh.version,
+          sortVersion: mesh.sortVersion,
+          styleVersion: mesh.styleVersion,
+          mappingVersion: mesh.mappingVersion,
+          editorStateVisibilityVersion: state.visibilityVersion,
+          base: 0,
+          count: 4,
+        },
+      ],
+    }),
+    true,
+  );
+  assert.strictEqual(
+    accumulator.editorStateUniformValue,
+    SPLAT_EDITOR_STATE_SELECTED | SPLAT_EDITOR_STATE_LOCKED,
+  );
   assert.strictEqual(accumulator.editorStateTexture, null);
 
   accumulator.dispose();

@@ -131,6 +131,7 @@ export declare class SplatEditorState {
     reset(): void;
     getCounts(): SplatEditorStateCounts;
     getSummary(): SplatEditorStateSummary;
+    getUniformStateBits(count?: number): SplatEditorStateBits | null;
     setColors(colors: SplatEditorStateColors): void;
     markDirtyRange(start: number, count: number): void;
     markDirtyList(indices: Iterable<number>): void;

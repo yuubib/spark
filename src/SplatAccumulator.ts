@@ -1196,36 +1196,7 @@ function getUniformEditorStateValueForMapping(
   state: SplatEditorState,
   count: number,
 ): number | null {
-  const safeCount = Math.max(0, Math.floor(count));
-  if (safeCount === 0) {
-    return SPLAT_EDITOR_STATE_NONE;
-  }
-
-  if (safeCount === state.numSplats) {
-    const summary = state.getSummary();
-    if (summary.selected === safeCount) {
-      return SPLAT_EDITOR_STATE_SELECTED;
-    }
-    if (
-      summary.selected === 0 &&
-      summary.locked === 0 &&
-      summary.deleted === 0
-    ) {
-      return SPLAT_EDITOR_STATE_NONE;
-    }
-    if (summary.locked !== safeCount && summary.deleted !== safeCount) {
-      return null;
-    }
-  }
-
-  const first = state.states[0] ?? SPLAT_EDITOR_STATE_NONE;
-  const limit = Math.min(safeCount, state.states.length);
-  for (let index = 1; index < limit; index += 1) {
-    if (state.states[index] !== first) {
-      return null;
-    }
-  }
-  return safeCount > limit && first !== SPLAT_EDITOR_STATE_NONE ? null : first;
+  return state.getUniformStateBits(count);
 }
 
 function createEditorStateUploadSpans(

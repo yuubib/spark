@@ -86,6 +86,43 @@ import {
 }
 
 {
+  const state = new SplatEditorState(4);
+
+  assert.strictEqual(state.getUniformStateBits(), SPLAT_EDITOR_STATE_NONE);
+  assert.strictEqual(state.getUniformStateBits(0), SPLAT_EDITOR_STATE_NONE);
+
+  state.selectAll();
+  assert.strictEqual(state.getUniformStateBits(), SPLAT_EDITOR_STATE_SELECTED);
+  assert.strictEqual(state.getUniformStateBits(2), SPLAT_EDITOR_STATE_SELECTED);
+
+  state.hideSelected();
+  assert.strictEqual(
+    state.getUniformStateBits(),
+    SPLAT_EDITOR_STATE_SELECTED | SPLAT_EDITOR_STATE_LOCKED,
+  );
+  assert.strictEqual(
+    state.getUniformStateBits(5),
+    null,
+    "oversized uniform queries must not hide inactive tail state",
+  );
+
+  state.unhideAll();
+  state.deleteSelected();
+  assert.strictEqual(
+    state.getUniformStateBits(),
+    SPLAT_EDITOR_STATE_SELECTED | SPLAT_EDITOR_STATE_DELETED,
+  );
+
+  state.resetDeleted();
+  state.setRange(0, 4, SPLAT_EDITOR_STATE_LOCKED);
+  assert.strictEqual(state.getUniformStateBits(), SPLAT_EDITOR_STATE_LOCKED);
+
+  state.set(3, SPLAT_EDITOR_STATE_NONE);
+  assert.strictEqual(state.getUniformStateBits(), null);
+  assert.strictEqual(state.getUniformStateBits(3), SPLAT_EDITOR_STATE_LOCKED);
+}
+
+{
   const state = new SplatEditorState(8);
   state.set(5, SPLAT_EDITOR_STATE_SELECTED);
   state.set(1, SPLAT_EDITOR_STATE_SELECTED);

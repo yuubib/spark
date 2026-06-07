@@ -1045,6 +1045,26 @@ export class SplatEditorState {
     };
   }
 
+  getUniformStateBits(count = this.numSplats): SplatEditorStateBits | null {
+    const safeCount = Math.max(0, Math.floor(count));
+    if (safeCount <= 0) {
+      return SPLAT_EDITOR_STATE_NONE;
+    }
+    if (safeCount <= this.numSplats && this.uniformStateBits !== null) {
+      return this.uniformStateBits;
+    }
+
+    const limit = Math.min(safeCount, this.states.length);
+    if (limit !== safeCount) {
+      return null;
+    }
+    const uniform = this.readUniformStateBits(limit);
+    if (safeCount === this.numSplats) {
+      this.uniformStateBits = uniform;
+    }
+    return uniform;
+  }
+
   setColors(colors: SplatEditorStateColors): void {
     let changed = false;
     if (colors.selected && !colors.selected.equals(this.selectedColor)) {
