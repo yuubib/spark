@@ -92,6 +92,7 @@ export declare class SplatEditorState {
     private selected;
     private locked;
     private deleted;
+    private uniformStateBits;
     private selectedIndices;
     private selectedIndicesComplete;
     private dirtyRanges;
@@ -148,6 +149,7 @@ export declare class SplatEditorState {
     private createUniformChangeSet;
     private commitUniformMutation;
     private applyUniformChangeSet;
+    private readUniformStateBits;
     private applyPackedChangeSet;
     private matchesUniformState;
     private createMutationResult;

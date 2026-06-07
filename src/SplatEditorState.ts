@@ -165,6 +165,8 @@ export class SplatEditorState {
   private selected = 0;
   private locked = 0;
   private deleted = 0;
+  private uniformStateBits: SplatEditorStateBits | null =
+    SPLAT_EDITOR_STATE_NONE;
   private selectedIndices = new Set<number>();
   private selectedIndicesComplete = true;
   private dirtyRanges: SplatEditorStateDirtyRange[] = [];
@@ -195,6 +197,7 @@ export class SplatEditorState {
     this.selected = 0;
     this.locked = 0;
     this.deleted = 0;
+    this.uniformStateBits = SPLAT_EDITOR_STATE_NONE;
     this.selectedIndices.clear();
     this.selectedIndicesComplete = true;
     this.visibilityVersion = 0;
@@ -207,7 +210,14 @@ export class SplatEditorState {
 
   ensureCapacity(numSplats: number): Uint8Array {
     const safeNumSplats = Math.max(0, Math.ceil(numSplats));
+    const previousNumSplats = this.numSplats;
     this.numSplats = Math.max(this.numSplats, safeNumSplats);
+    if (
+      this.numSplats > previousNumSplats &&
+      this.uniformStateBits !== SPLAT_EDITOR_STATE_NONE
+    ) {
+      this.uniformStateBits = null;
+    }
     if (safeNumSplats <= this.maxSplats) {
       return this.states;
     }
@@ -339,6 +349,9 @@ export class SplatEditorState {
         ) || changed;
     }
     if (changed) {
+      if (operation === "replace" && safeStart === 0 && end >= this.numSplats) {
+        this.uniformStateBits = bits & 0xff;
+      }
       this.markDirtyRange(safeStart, end - safeStart);
       this.version++;
       this.refreshSelectedIndexTracking();
@@ -736,6 +749,27 @@ export class SplatEditorState {
   unhideAll(
     options: SplatEditorStateMutationOptions = {},
   ): SplatEditorStateMutationResult {
+    const uniform = this.uniformStateBits;
+    if (
+      uniform !== null &&
+      (uniform & SPLAT_EDITOR_STATE_DELETED) === 0 &&
+      (uniform & SPLAT_EDITOR_STATE_LOCKED) !== 0 &&
+      this.numSplats > 0
+    ) {
+      const next = uniform & ~SPLAT_EDITOR_STATE_LOCKED;
+      if (!options.recordChanges) {
+        return this.commitUniformMutation(next, this.numSplats);
+      }
+      if (options.changeFormat === "compact") {
+        return this.commitUniformMutation(
+          next,
+          this.numSplats,
+          0,
+          this.createUniformChangeSet(options, uniform, next, this.numSplats),
+        );
+      }
+    }
+
     const changes = createMutationChanges(options);
     const dirtyIndices: number[] = [];
     let fullRange = false;
@@ -956,6 +990,7 @@ export class SplatEditorState {
     this.selected = selected;
     this.locked = locked;
     this.deleted = deleted;
+    this.uniformStateBits = this.readUniformStateBits(safeNumSplats);
 
     if (changed) {
       this.markDirtyRange(0, this.maxSplats);
@@ -973,6 +1008,7 @@ export class SplatEditorState {
       this.selected = 0;
       this.locked = 0;
       this.deleted = 0;
+      this.uniformStateBits = SPLAT_EDITOR_STATE_NONE;
       this.selectedIndices.clear();
       this.selectedIndicesComplete = true;
       this.markDirtyRange(0, this.maxSplats);
@@ -1328,6 +1364,7 @@ export class SplatEditorState {
   ): SplatEditorStateMutationResult {
     const next = bits & 0xff;
     this.states.fill(next, 0, this.numSplats);
+    this.uniformStateBits = next;
     this.selected =
       (next & (SPLAT_EDITOR_STATE_DELETED | SPLAT_EDITOR_STATE_LOCKED)) === 0 &&
       (next & SPLAT_EDITOR_STATE_SELECTED) !== 0
@@ -1385,6 +1422,22 @@ export class SplatEditorState {
       }
     }
     return this.commitMutation(changed, dirtyIndices, fullRange);
+  }
+
+  private readUniformStateBits(count: number): SplatEditorStateBits | null {
+    if (count <= 0) {
+      return SPLAT_EDITOR_STATE_NONE;
+    }
+    const first = Number(this.states[0] ?? SPLAT_EDITOR_STATE_NONE) & 0xff;
+    for (let index = 1; index < count; index++) {
+      if (
+        (Number(this.states[index] ?? SPLAT_EDITOR_STATE_NONE) & 0xff) !==
+        first
+      ) {
+        return null;
+      }
+    }
+    return first;
   }
 
   private applyPackedChangeSet(
@@ -1579,6 +1632,16 @@ export class SplatEditorState {
     this.updateCounts(previous, -1);
     this.updateSelectedIndex(index, previous, next);
     this.states[index] = next;
+    if (index < this.numSplats) {
+      if (this.numSplats === 1) {
+        this.uniformStateBits = next;
+      } else if (
+        this.uniformStateBits !== null &&
+        next !== this.uniformStateBits
+      ) {
+        this.uniformStateBits = null;
+      }
+    }
     this.updateCounts(next, 1);
     if (
       (previous & SPLAT_EDITOR_STATE_DELETED) !==

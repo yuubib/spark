@@ -390,6 +390,80 @@ import {
 
 {
   const state = new SplatEditorState(5);
+  state.selectAll();
+  state.hideSelected();
+
+  const unhideResult = state.unhideAll({
+    recordChanges: true,
+    changeFormat: "compact",
+  });
+  assert.strictEqual(unhideResult.changed, 5);
+  assert.strictEqual(unhideResult.changes, undefined);
+  assert.deepStrictEqual(unhideResult.changeSet, {
+    kind: "uniform",
+    start: 0,
+    count: 5,
+    previous: SPLAT_EDITOR_STATE_SELECTED | SPLAT_EDITOR_STATE_LOCKED,
+    next: SPLAT_EDITOR_STATE_SELECTED,
+    changed: 5,
+  });
+  assert.deepStrictEqual(unhideResult.counts, {
+    selected: 5,
+    locked: 0,
+    deleted: 0,
+  });
+  assert.strictEqual(state.get(0), SPLAT_EDITOR_STATE_SELECTED);
+
+  assert.ok(unhideResult.changeSet);
+  const undoUnhide = state.applyChangeSet(unhideResult.changeSet, "previous");
+  assert.strictEqual(undoUnhide.changed, 5);
+  assert.deepStrictEqual(undoUnhide.counts, {
+    selected: 0,
+    locked: 5,
+    deleted: 0,
+  });
+  assert.strictEqual(
+    state.get(0),
+    SPLAT_EDITOR_STATE_SELECTED | SPLAT_EDITOR_STATE_LOCKED,
+  );
+
+  const redoUnhide = state.applyChangeSet(unhideResult.changeSet, "next");
+  assert.strictEqual(redoUnhide.changed, 5);
+  assert.deepStrictEqual(redoUnhide.counts, {
+    selected: 5,
+    locked: 0,
+    deleted: 0,
+  });
+  assert.strictEqual(state.get(0), SPLAT_EDITOR_STATE_SELECTED);
+}
+
+{
+  const state = new SplatEditorState(4);
+  state.setRange(0, 4, SPLAT_EDITOR_STATE_LOCKED);
+
+  const unhideResult = state.unhideAll({
+    recordChanges: true,
+    changeFormat: "compact",
+  });
+  assert.strictEqual(unhideResult.changed, 4);
+  assert.deepStrictEqual(unhideResult.changeSet, {
+    kind: "uniform",
+    start: 0,
+    count: 4,
+    previous: SPLAT_EDITOR_STATE_LOCKED,
+    next: SPLAT_EDITOR_STATE_NONE,
+    changed: 4,
+  });
+  assert.deepStrictEqual(unhideResult.counts, {
+    selected: 0,
+    locked: 0,
+    deleted: 0,
+  });
+  assert.strictEqual(state.get(0), SPLAT_EDITOR_STATE_NONE);
+}
+
+{
+  const state = new SplatEditorState(5);
   state.selectCandidates([1, 3], "set");
 
   const clearResult = state.clearSelection({
