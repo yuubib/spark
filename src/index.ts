@@ -24,6 +24,7 @@ export {
   type SplatScreenPickCenterCollectStats,
   type SplatScreenPickCollectStats,
   type SplatScreenPickHit,
+  type SplatScreenPickIndexOptions,
   type SplatScreenPickMask,
   type SplatScreenPickOptions,
   type SplatScreenPickPixelHit,

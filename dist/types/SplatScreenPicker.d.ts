@@ -41,6 +41,9 @@ export type SplatScreenPickOptions = {
     renderMode?: SplatScreenPickRenderMode;
     onStats?: (stats: SplatScreenPickStats) => void;
 };
+export type SplatScreenPickIndexOptions = SplatScreenPickOptions & {
+    target: SplatGenerator;
+};
 export type SplatScreenPickHit = {
     object: SplatGenerator;
     index: number;

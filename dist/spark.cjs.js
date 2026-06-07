@@ -12108,6 +12108,19 @@ function readNowMs() {
   var _a2, _b2;
   return ((_b2 = (_a2 = globalThis.performance) == null ? void 0 : _a2.now) == null ? void 0 : _b2.call(_a2)) ?? Date.now();
 }
+function compactStableSplatScreenPickHitIndices(hits, target) {
+  const seen = /* @__PURE__ */ new Set();
+  for (const hit of hits) {
+    if (hit.object !== target || !hit.sourceIndexStable || !Number.isInteger(hit.index) || hit.index < 0) {
+      continue;
+    }
+    seen.add(hit.index);
+  }
+  if (!seen.size) {
+    return new Uint32Array();
+  }
+  return Uint32Array.from([...seen].sort((a, b) => a - b));
+}
 const _SparkRenderer = class _SparkRenderer extends THREE__namespace.Mesh {
   constructor(options) {
     if (!options) {
@@ -13398,6 +13411,94 @@ const _SparkRenderer = class _SparkRenderer extends THREE__namespace.Mesh {
     });
     return hits;
   }
+  async pickSplatCandidateIndices(options) {
+    var _a2;
+    const totalStartedAt = readNowMs();
+    const { scene, camera, target } = options;
+    const size = this.renderer.getDrawingBufferSize(new THREE__namespace.Vector2());
+    const width = Math.max(1, Math.floor(options.width ?? size.x));
+    const height = Math.max(1, Math.floor(options.height ?? size.y));
+    const renderMode = options.renderMode ?? "viewport";
+    const rect = normalizeSplatScreenPickShape(options.shape, width, height);
+    const layout = resolveSplatScreenPickRenderLayout(
+      rect,
+      width,
+      height,
+      renderMode
+    );
+    const candidateMode = options.candidateMode ?? "centers";
+    const editorStateMode = options.editorStateMode ?? editorSelectionOperationToPickFilterMode(options.operation ?? "set");
+    if (candidateMode !== "centers") {
+      const hits = await this.pickSplatCandidates(options);
+      const indices2 = compactStableSplatScreenPickHitIndices(hits, target);
+      return indices2.length > 0 ? indices2 : null;
+    }
+    if (!(target instanceof SplatMesh) || !target.isInitialized) {
+      return null;
+    }
+    if (target.context.enableLod.value !== false || target.paged) {
+      return null;
+    }
+    let updateMs = 0;
+    if (options.update !== false) {
+      const updateStartedAt = readNowMs();
+      scene.updateMatrixWorld(true);
+      camera.updateMatrixWorld(true);
+      updateMs = readNowMs() - updateStartedAt;
+    }
+    const collectStats = createSplatScreenPickCenterCollectStats();
+    const collectStartedAt = readNowMs();
+    const indices = this.collectSplatScreenPickCenterIndices({
+      scene,
+      camera,
+      target,
+      rect,
+      viewportWidth: width,
+      viewportHeight: height,
+      editorStateMode,
+      maxCandidates: options.maxCandidates,
+      sort: options.sort,
+      stats: collectStats
+    });
+    const collectMs = readNowMs() - collectStartedAt;
+    (_a2 = options.onStats) == null ? void 0 : _a2.call(options, {
+      shapeKind: options.shape.kind,
+      candidateMode,
+      renderMode,
+      viewportWidth: width,
+      viewportHeight: height,
+      targetWidth: layout.targetWidth,
+      targetHeight: layout.targetHeight,
+      normalizedRect: {
+        x: rect.x,
+        y: rect.y,
+        width: rect.width,
+        height: rect.height
+      },
+      readRect: layout.readRect,
+      pixelHitCount: 0,
+      mappedHitCount: indices.length,
+      sourceStableHitCount: indices.length,
+      collect: {
+        pixelCount: 0,
+        candidatePixelCount: 0,
+        maskTestedPixelCount: 0,
+        encodedPixelCount: 0,
+        duplicatePixelHitCount: 0,
+        uniqueHitCount: 0,
+        earlyExit: collectStats.earlyExit
+      },
+      centerCollect: collectStats,
+      timingsMs: {
+        update: updateMs,
+        renderReadback: 0,
+        decode: 0,
+        map: collectMs,
+        total: readNowMs() - totalStartedAt
+      }
+    });
+    return indices;
+  }
   collectSplatScreenPickCenterHits({
     scene,
     camera,
@@ -13500,6 +13601,109 @@ const _SparkRenderer = class _SparkRenderer extends THREE__namespace.Mesh {
       );
     }
     return hits;
+  }
+  collectSplatScreenPickCenterIndices({
+    scene,
+    camera,
+    target,
+    rect,
+    viewportWidth,
+    viewportHeight,
+    editorStateMode,
+    maxCandidates,
+    sort,
+    stats
+  }) {
+    const max2 = maxCandidates != null ? Math.max(0, Math.floor(maxCandidates)) : Number.POSITIVE_INFINITY;
+    if (max2 <= 0) {
+      stats.earlyExit = true;
+      return new Uint32Array();
+    }
+    const viewProjection = new THREE__namespace.Matrix4().multiplyMatrices(
+      camera.projectionMatrix,
+      camera.matrixWorldInverse
+    );
+    const objectToClip = new THREE__namespace.Matrix4();
+    const projectedCenter = {
+      x: 0,
+      y: 0,
+      ndcZ: 0
+    };
+    let indices = new Uint32Array(
+      Math.min(Number.isFinite(max2) ? max2 : 1024, 1024)
+    );
+    let indexCount = 0;
+    let lastIndex = -1;
+    let orderedIndices = true;
+    const pushIndex = (index) => {
+      if (indexCount >= max2) {
+        stats.earlyExit = true;
+        return false;
+      }
+      if (indexCount >= indices.length) {
+        const next = new Uint32Array(
+          indices.length ? indices.length * 2 : 1024
+        );
+        next.set(indices);
+        indices = next;
+      }
+      if (index < lastIndex) {
+        orderedIndices = false;
+      }
+      lastIndex = index;
+      indices[indexCount] = index;
+      indexCount += 1;
+      return true;
+    };
+    scene.traverseVisible((object) => {
+      if (indexCount >= max2 || object !== target) {
+        return;
+      }
+      const editorState = target.getEditorState();
+      target.updateMatrixWorld(true);
+      objectToClip.multiplyMatrices(viewProjection, target.matrixWorld);
+      const objectToClipElements = objectToClip.elements;
+      target.forEachSplatCenter((index, center) => {
+        if (indexCount >= max2) {
+          stats.earlyExit = true;
+          return;
+        }
+        stats.centerCount += 1;
+        const bits2 = editorState && index < editorState.maxSplats ? editorState.states[index] ?? 0 : 0;
+        if (!matchesSplatEditorStateBits(bits2, editorStateMode)) {
+          stats.stateRejectedCenterCount += 1;
+          return;
+        }
+        if (!projectSplatScreenPickCenter(
+          objectToClipElements,
+          center.x,
+          center.y,
+          center.z,
+          viewportWidth,
+          viewportHeight,
+          projectedCenter
+        )) {
+          stats.viewRejectedCenterCount += 1;
+          return;
+        }
+        if (!testSplatScreenPickCenter(
+          rect,
+          projectedCenter.x,
+          projectedCenter.y,
+          stats
+        )) {
+          return;
+        }
+        stats.candidateCenterCount += 1;
+        pushIndex(index);
+      });
+    });
+    stats.uniqueHitCount = indexCount;
+    const result = indices.subarray(0, indexCount);
+    if (sort !== false && !orderedIndices) {
+      result.sort();
+    }
+    return result;
   }
   ensureScreenPickTarget(width, height) {
     const current = this.screenPickTarget;
