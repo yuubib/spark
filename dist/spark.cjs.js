@@ -12940,6 +12940,12 @@ function canSkipSplatScreenPickEditorStateFilter(editorState, editorStateMode) {
       return false;
   }
 }
+function applySelectedTransformToRawCenter(center, x, y, z, { pivot, translate, rotate, scale }) {
+  center.set(x, y, z);
+  center.sub(pivot).multiplyScalar(scale).applyQuaternion(rotate);
+  center.add(pivot).add(translate);
+  return center;
+}
 const SPLAT_CENTER_INTERSECTION_OUTPUT_WIDTH = 4096;
 const SPLAT_CENTER_INTERSECTION_AUTO_CPU_MAX_SPLATS = 125e4;
 const SPLAT_CENTER_INTERSECTION_OUTPUT_ENCODING_BITSET = "bitset-rgba8";
@@ -14364,12 +14370,20 @@ const _SparkRenderer = class _SparkRenderer extends THREE__namespace.Mesh {
     }
     const collectStats = createSplatScreenPickCenterCollectStats();
     const requestedProcessor = options.centerProcessor ?? "auto";
+    const selectedTransformActive = target.getSelectedSplatTransform() != null;
     if (requestedProcessor === "auto" && shouldPreferCpuSplatCenterProcessor(target.numSplats)) {
       setSplatScreenPickCenterProcessorStats(
         collectStats,
         requestedProcessor,
         "cpu",
         "auto-cpu-estimated-faster"
+      );
+    } else if (selectedTransformActive && requestedProcessor !== "cpu") {
+      setSplatScreenPickCenterProcessorStats(
+        collectStats,
+        requestedProcessor,
+        "cpu",
+        "selected-transform-preview"
       );
     } else if (requestedProcessor !== "cpu") {
       setSplatScreenPickCenterProcessorStats(
@@ -14719,10 +14733,9 @@ const _SparkRenderer = class _SparkRenderer extends THREE__namespace.Mesh {
       }
       const mapping = mappings.get(object);
       const editorState = object.getEditorState();
-      const skipEditorStateFilter = canSkipSplatScreenPickEditorStateFilter(
-        editorState,
-        editorStateMode
-      );
+      const selectedTransform = object.getSelectedSplatTransform();
+      const transformedCenter = new THREE__namespace.Vector3();
+      const skipEditorStateFilter = selectedTransform == null && canSkipSplatScreenPickEditorStateFilter(editorState, editorStateMode);
       const sourceIndexStable = object.context.enableLod.value === false && !object.paged;
       object.updateMatrixWorld(true);
       objectToClip.multiplyMatrices(viewProjection, object.matrixWorld);
@@ -14738,11 +14751,26 @@ const _SparkRenderer = class _SparkRenderer extends THREE__namespace.Mesh {
           stats.stateRejectedCenterCount += 1;
           return;
         }
+        let projectCenterX = centerX;
+        let projectCenterY = centerY;
+        let projectCenterZ = centerZ;
+        if (selectedTransform && bits2 === SPLAT_EDITOR_STATE_SELECTED) {
+          applySelectedTransformToRawCenter(
+            transformedCenter,
+            centerX,
+            centerY,
+            centerZ,
+            selectedTransform
+          );
+          projectCenterX = transformedCenter.x;
+          projectCenterY = transformedCenter.y;
+          projectCenterZ = transformedCenter.z;
+        }
         if (!projectSplatScreenPickCenter(
           objectToClipElements,
-          centerX,
-          centerY,
-          centerZ,
+          projectCenterX,
+          projectCenterY,
+          projectCenterZ,
           viewportWidth,
           viewportHeight,
           projectedCenter
@@ -14794,10 +14822,22 @@ const _SparkRenderer = class _SparkRenderer extends THREE__namespace.Mesh {
     callback
   }) {
     const editorState = target.getEditorState();
-    const skipEditorStateFilter = canSkipSplatScreenPickEditorStateFilter(
-      editorState,
-      editorStateMode
-    );
+    const selectedTransform = target.getSelectedSplatTransform();
+    const transformedCenter = new THREE__namespace.Vector3();
+    const skipEditorStateFilter = selectedTransform == null && canSkipSplatScreenPickEditorStateFilter(editorState, editorStateMode);
+    const emitCenter = (index, centerX, centerY, centerZ, bits2) => {
+      if (selectedTransform && bits2 === SPLAT_EDITOR_STATE_SELECTED) {
+        const center = applySelectedTransformToRawCenter(
+          transformedCenter,
+          centerX,
+          centerY,
+          centerZ,
+          selectedTransform
+        );
+        return callback(index, center.x, center.y, center.z, bits2);
+      }
+      return callback(index, centerX, centerY, centerZ, bits2);
+    };
     if (editorState && target.hasIndexedSplatCenters() && canUseSelectedSplatCenterIndexMode(editorStateMode)) {
       const center = { x: 0, y: 0, z: 0 };
       editorState.forEachSelectedIndex((index, bits2) => {
@@ -14810,7 +14850,7 @@ const _SparkRenderer = class _SparkRenderer extends THREE__namespace.Mesh {
           stats.viewRejectedCenterCount += 1;
           return;
         }
-        if (callback(index, center.x, center.y, center.z, bits2) === false) {
+        if (emitCenter(index, center.x, center.y, center.z, bits2) === false) {
           return false;
         }
       });
@@ -14823,7 +14863,7 @@ const _SparkRenderer = class _SparkRenderer extends THREE__namespace.Mesh {
         stats.stateRejectedCenterCount += 1;
         return;
       }
-      callback(index, centerX, centerY, centerZ, bits2);
+      return emitCenter(index, centerX, centerY, centerZ, bits2);
     });
   }
   collectSplatScreenPickCenterIndices({

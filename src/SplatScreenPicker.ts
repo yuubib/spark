@@ -126,6 +126,7 @@ export type SplatScreenPickCenterProcessorFallbackReason =
   | "lod-or-paged"
   | "missing-center-texture"
   | "selected-index-mode"
+  | "selected-transform-preview"
   | "scene-wide-unsupported"
   | "nearest-unsupported"
   | "target-not-visible"

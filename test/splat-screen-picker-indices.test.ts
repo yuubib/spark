@@ -223,6 +223,128 @@ assert.strictEqual(
 );
 sparkRenderer.renderer.capabilities = undefined;
 
+const transformMesh = new SplatMesh({
+  constructSplats: (splats) => {
+    splats.pushSplat(
+      new THREE.Vector3(2, 0, 0),
+      new THREE.Vector3(0.1, 0.1, 0.1),
+      new THREE.Quaternion(),
+      1,
+      new THREE.Color(1, 0, 0),
+    );
+    splats.pushSplat(
+      new THREE.Vector3(2, 0, 0),
+      new THREE.Vector3(0.1, 0.1, 0.1),
+      new THREE.Quaternion(),
+      1,
+      new THREE.Color(0, 1, 0),
+    );
+    splats.pushSplat(
+      new THREE.Vector3(0, 0, 0),
+      new THREE.Vector3(0.1, 0.1, 0.1),
+      new THREE.Quaternion(),
+      1,
+      new THREE.Color(0, 0, 1),
+    );
+  },
+});
+await transformMesh.initialized;
+const transformScene = new THREE.Scene();
+transformScene.add(transformMesh);
+const transformRenderer = Object.create(
+  SparkRenderer.prototype,
+) as SparkRenderer & {
+  renderer: {
+    capabilities?: { isWebGL2: boolean };
+    getDrawingBufferSize: (target: THREE.Vector2) => THREE.Vector2;
+  };
+  display: { mapping: Array<{ node: SplatMesh; base: number; count: number }> };
+};
+transformRenderer.renderer = {
+  capabilities: { isWebGL2: true },
+  getDrawingBufferSize: (target) => target.set(100, 100),
+};
+transformRenderer.display = {
+  mapping: [{ node: transformMesh, base: 0, count: 3 }],
+};
+transformMesh.selectSplatStateCandidates([0], "set");
+transformMesh.setSelectedSplatTransform({
+  translate: new THREE.Vector3(-2, 0, 0),
+});
+
+let selectedTransformGpuStats: SplatScreenPickStats | null = null;
+const selectedTransformIndices =
+  await transformRenderer.pickSplatCandidateIndices({
+    target: transformMesh,
+    scene: transformScene,
+    camera,
+    candidateMode: "centers",
+    centerProcessor: "gpu",
+    shape: { kind: "rect", x: 0.49, y: 0.49, width: 0.02, height: 0.02 },
+    width: 100,
+    height: 100,
+    editorStateMode: "all",
+    onStats: (nextStats) => {
+      selectedTransformGpuStats = nextStats;
+    },
+  });
+
+assert.deepStrictEqual([...(selectedTransformIndices ?? [])], [0, 2]);
+assert.strictEqual(
+  selectedTransformGpuStats?.centerCollect?.requestedProcessor,
+  "gpu",
+);
+assert.strictEqual(selectedTransformGpuStats?.centerCollect?.processor, "cpu");
+assert.strictEqual(
+  selectedTransformGpuStats?.centerCollect?.fallbackReason,
+  "selected-transform-preview",
+);
+
+const selectedTransformHits = await transformRenderer.pickSplatCandidates({
+  scene: transformScene,
+  camera,
+  candidateMode: "centers",
+  shape: { kind: "rect", x: 0.49, y: 0.49, width: 0.02, height: 0.02 },
+  width: 100,
+  height: 100,
+  editorStateMode: "all",
+});
+assert.deepStrictEqual(
+  selectedTransformHits.map((hit) => hit.index),
+  [0, 2],
+);
+
+const nearestTransformed = await transformRenderer.pickNearestSplatCenterIndex({
+  target: transformMesh,
+  scene: transformScene,
+  camera,
+  shape: { kind: "point", x: 0.5, y: 0.5, radiusPixels: 1 },
+  width: 100,
+  height: 100,
+  editorStateMode: "all",
+});
+assert.strictEqual(nearestTransformed?.index, 0);
+
+transformMesh.clearSplatStateSelection();
+transformMesh.selectSplatStateCandidates([2], "set");
+transformMesh.setSelectedSplatTransform({
+  translate: new THREE.Vector3(2, 0, 0),
+});
+const transformedOutIndices = await transformRenderer.pickSplatCandidateIndices(
+  {
+    target: transformMesh,
+    scene: transformScene,
+    camera,
+    candidateMode: "centers",
+    shape: { kind: "rect", x: 0.49, y: 0.49, width: 0.02, height: 0.02 },
+    width: 100,
+    height: 100,
+    editorStateMode: "all",
+  },
+);
+assert.deepStrictEqual([...(transformedOutIndices ?? [])], []);
+transformMesh.dispose();
+
 const capped = await sparkRenderer.pickSplatCandidateIndices({
   target: mesh,
   scene,
