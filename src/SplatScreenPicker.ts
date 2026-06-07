@@ -113,6 +113,9 @@ export type SplatScreenPickRenderMode = "viewport" | "shape";
 export type SplatScreenPickCandidateMode = "rendered-id" | "centers";
 export type SplatScreenPickCenterProcessor = "auto" | "cpu" | "gpu";
 export type SplatScreenPickCenterProcessorMode = "cpu" | "gpu";
+export type SplatCenterIntersectionOutputEncoding =
+  | "bytes-rgba8"
+  | "bitset-rgba8";
 export type SplatScreenPickCenterProcessorFallbackReason =
   | "requested-cpu"
   | "auto-cpu-estimated-faster"
@@ -284,6 +287,8 @@ export type SplatScreenPickCenterCollectStats = {
   viewRejectedCenterCount: number;
   duplicateCenterHitCount: number;
   uniqueHitCount: number;
+  processorOutputEncoding?: SplatCenterIntersectionOutputEncoding;
+  processorReadbackByteCount?: number;
   projectedBounds: SplatScreenPickCenterBounds | null;
   candidateBounds: SplatScreenPickCenterBounds | null;
   earlyExit: boolean;
@@ -882,6 +887,94 @@ export function compactSplatCenterIntersectionBytes(
     }
     indices[indexCount] = index;
     indexCount += 1;
+  }
+
+  return finish();
+}
+
+export function compactSplatCenterIntersectionBitsetBytes(
+  bytes: ArrayLike<number>,
+  options: {
+    bitCount?: number;
+    maxCandidates?: number;
+    indexBuffer?: SplatScreenPickIndexBuffer;
+    stats?: SplatCenterIntersectionCompactStats;
+  } = {},
+): Uint32Array {
+  const bitCount =
+    options.bitCount != null
+      ? Math.max(0, Math.floor(options.bitCount))
+      : bytes.length * 8;
+  const byteCount = Math.ceil(bitCount / 8);
+  if (bytes.length < byteCount) {
+    throw new Error(
+      `Splat center bitset buffer too small: ${bytes.length} < ${byteCount}`,
+    );
+  }
+
+  const maxCandidates =
+    options.maxCandidates != null
+      ? Math.max(0, Math.floor(options.maxCandidates))
+      : Number.POSITIVE_INFINITY;
+  let indices =
+    options.indexBuffer?.buffer ??
+    new Uint32Array(
+      Math.min(Number.isFinite(maxCandidates) ? maxCandidates : 1024, 1024),
+    );
+  let indexCount = 0;
+  const stats = createSplatCenterIntersectionCompactStats();
+  stats.byteCount = byteCount;
+
+  const finish = () => {
+    stats.uniqueHitCount = indexCount;
+    if (options.stats) {
+      Object.assign(options.stats, stats);
+    }
+    return indices.subarray(0, indexCount);
+  };
+
+  if (maxCandidates <= 0) {
+    stats.earlyExit = true;
+    return finish();
+  }
+
+  for (let byteIndex = 0; byteIndex < byteCount; byteIndex += 1) {
+    const packed = bytes[byteIndex] ?? 0;
+    if (packed === 0) {
+      continue;
+    }
+
+    for (let bit = 0; bit < 8; bit += 1) {
+      const sourceIndex = byteIndex * 8 + bit;
+      if (sourceIndex >= bitCount) {
+        return finish();
+      }
+      if ((packed & (1 << bit)) === 0) {
+        continue;
+      }
+
+      stats.candidateByteCount += 1;
+      if (indexCount >= maxCandidates) {
+        stats.earlyExit = true;
+        return finish();
+      }
+      if (indexCount >= indices.length) {
+        const nextCapacity = Math.min(
+          Number.isFinite(maxCandidates)
+            ? maxCandidates
+            : Number.POSITIVE_INFINITY,
+          Math.max(indices.length ? indices.length * 2 : 1024, indexCount + 1),
+        );
+        const next = new Uint32Array(nextCapacity);
+        next.set(indices.subarray(0, indexCount));
+        indices = next;
+        if (options.indexBuffer) {
+          options.indexBuffer.buffer = next;
+        }
+      }
+      indices[indexCount] = sourceIndex;
+      indexCount += 1;
+    }
   }
 
   return finish();

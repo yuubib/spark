@@ -12,6 +12,7 @@ export {
   type SparkRendererOptions,
 } from "./SparkRenderer";
 export {
+  compactSplatCenterIntersectionBitsetBytes,
   compactSplatCenterIntersectionBytes,
   createSplatCenterIntersectionCompactStats,
   collectSplatScreenPickHitsFromRgba8,
@@ -38,6 +39,7 @@ export {
   type SplatScreenPickCenterCollectStats,
   type SplatScreenPickCollectStats,
   type SplatCenterIntersectionCompactStats,
+  type SplatCenterIntersectionOutputEncoding,
   type SplatScreenPickHit,
   type SplatScreenPickIndexBuffer,
   type SplatScreenPickIndexOptions,

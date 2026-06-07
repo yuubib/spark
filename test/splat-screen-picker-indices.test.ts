@@ -48,7 +48,10 @@ camera.updateMatrixWorld(true);
 const sparkRenderer = Object.create(
   SparkRenderer.prototype,
 ) as SparkRenderer & {
-  renderer: { getDrawingBufferSize: (target: THREE.Vector2) => THREE.Vector2 };
+  renderer: {
+    capabilities?: { isWebGL2: boolean };
+    getDrawingBufferSize: (target: THREE.Vector2) => THREE.Vector2;
+  };
   display: { mapping: Array<{ node: SplatMesh; base: number; count: number }> };
 };
 sparkRenderer.renderer = {
@@ -160,6 +163,36 @@ assert.strictEqual(
   requestedGpuStats?.centerCollect?.fallbackReason,
   "webgl2-unavailable",
 );
+
+sparkRenderer.renderer.capabilities = { isWebGL2: true };
+let selectedIndexModeGpuStats: SplatScreenPickStats | null = null;
+const selectedIndexModeGpuIndices =
+  await sparkRenderer.pickSplatCandidateIndices({
+    target: mesh,
+    scene,
+    camera,
+    candidateMode: "centers",
+    centerProcessor: "gpu",
+    shape: { kind: "rect", x: 0, y: 0, width: 1, height: 1 },
+    width: 100,
+    height: 100,
+    operation: "remove",
+    onStats: (nextStats) => {
+      selectedIndexModeGpuStats = nextStats;
+    },
+  });
+
+assert.deepStrictEqual([...(selectedIndexModeGpuIndices ?? [])], []);
+assert.strictEqual(
+  selectedIndexModeGpuStats?.centerCollect?.requestedProcessor,
+  "gpu",
+);
+assert.strictEqual(selectedIndexModeGpuStats?.centerCollect?.processor, "cpu");
+assert.strictEqual(
+  selectedIndexModeGpuStats?.centerCollect?.fallbackReason,
+  "selected-index-mode",
+);
+sparkRenderer.renderer.capabilities = undefined;
 
 const capped = await sparkRenderer.pickSplatCandidateIndices({
   target: mesh,

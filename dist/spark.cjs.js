@@ -12417,6 +12417,69 @@ function compactSplatCenterIntersectionBytes(bytes, options = {}) {
   }
   return finish();
 }
+function compactSplatCenterIntersectionBitsetBytes(bytes, options = {}) {
+  var _a2;
+  const bitCount = options.bitCount != null ? Math.max(0, Math.floor(options.bitCount)) : bytes.length * 8;
+  const byteCount = Math.ceil(bitCount / 8);
+  if (bytes.length < byteCount) {
+    throw new Error(
+      `Splat center bitset buffer too small: ${bytes.length} < ${byteCount}`
+    );
+  }
+  const maxCandidates = options.maxCandidates != null ? Math.max(0, Math.floor(options.maxCandidates)) : Number.POSITIVE_INFINITY;
+  let indices = ((_a2 = options.indexBuffer) == null ? void 0 : _a2.buffer) ?? new Uint32Array(
+    Math.min(Number.isFinite(maxCandidates) ? maxCandidates : 1024, 1024)
+  );
+  let indexCount = 0;
+  const stats = createSplatCenterIntersectionCompactStats();
+  stats.byteCount = byteCount;
+  const finish = () => {
+    stats.uniqueHitCount = indexCount;
+    if (options.stats) {
+      Object.assign(options.stats, stats);
+    }
+    return indices.subarray(0, indexCount);
+  };
+  if (maxCandidates <= 0) {
+    stats.earlyExit = true;
+    return finish();
+  }
+  for (let byteIndex = 0; byteIndex < byteCount; byteIndex += 1) {
+    const packed = bytes[byteIndex] ?? 0;
+    if (packed === 0) {
+      continue;
+    }
+    for (let bit = 0; bit < 8; bit += 1) {
+      const sourceIndex = byteIndex * 8 + bit;
+      if (sourceIndex >= bitCount) {
+        return finish();
+      }
+      if ((packed & 1 << bit) === 0) {
+        continue;
+      }
+      stats.candidateByteCount += 1;
+      if (indexCount >= maxCandidates) {
+        stats.earlyExit = true;
+        return finish();
+      }
+      if (indexCount >= indices.length) {
+        const nextCapacity = Math.min(
+          Number.isFinite(maxCandidates) ? maxCandidates : Number.POSITIVE_INFINITY,
+          Math.max(indices.length ? indices.length * 2 : 1024, indexCount + 1)
+        );
+        const next = new Uint32Array(nextCapacity);
+        next.set(indices.subarray(0, indexCount));
+        indices = next;
+        if (options.indexBuffer) {
+          options.indexBuffer.buffer = next;
+        }
+      }
+      indices[indexCount] = sourceIndex;
+      indexCount += 1;
+    }
+  }
+  return finish();
+}
 function recordSplatScreenPickProjectedCenter(stats, center) {
   stats.projectedBounds = expandSplatScreenPickCenterBounds(
     stats.projectedBounds,
@@ -12749,16 +12812,20 @@ function canUseSelectedSplatCenterIndexMode(editorStateMode) {
 }
 const SPLAT_CENTER_INTERSECTION_OUTPUT_WIDTH = 4096;
 const SPLAT_CENTER_INTERSECTION_AUTO_CPU_MAX_SPLATS = 5e5;
-function getSplatCenterIntersectionOutputSize(numSplats) {
-  const byteCount = Math.max(0, Math.floor(numSplats));
+const SPLAT_CENTER_INTERSECTION_OUTPUT_ENCODING_BITSET = "bitset-rgba8";
+function getSplatCenterIntersectionOutputSizeForEncoding(numSplats, encoding) {
+  const splatCount = Math.max(0, Math.floor(numSplats));
+  const byteCount = Math.ceil(splatCount / 8);
   if (byteCount <= 0) {
-    return { width: 1, height: 1 };
+    return { width: 1, height: 1, byteCount: 0, pixelCount: 1 };
   }
   const pixelCount = Math.ceil(byteCount / 4);
   const width = Math.min(SPLAT_CENTER_INTERSECTION_OUTPUT_WIDTH, pixelCount);
   return {
     width,
-    height: Math.max(1, Math.ceil(pixelCount / width))
+    height: Math.max(1, Math.ceil(pixelCount / width)),
+    byteCount,
+    pixelCount
   };
 }
 function isSplatScreenPickTargetVisible(scene, target) {
@@ -14790,7 +14857,10 @@ const _SparkRenderer = class _SparkRenderer extends THREE__namespace.Mesh {
       camera.matrixWorldInverse
     );
     objectToClip.multiply(target.matrixWorld);
-    const { width, height } = getSplatCenterIntersectionOutputSize(numSplats);
+    const outputEncoding = SPLAT_CENTER_INTERSECTION_OUTPUT_ENCODING_BITSET;
+    const { width, height, byteCount } = getSplatCenterIntersectionOutputSizeForEncoding(
+      numSplats
+    );
     const outputTarget = this.ensureSplatCenterIntersectionTarget(
       width,
       height
@@ -14817,6 +14887,7 @@ const _SparkRenderer = class _SparkRenderer extends THREE__namespace.Mesh {
     uniforms.editorStateFilterMode.value = splatEditorStateFilterModeToPickUniform(editorStateMode);
     uniforms.numSplats.value = numSplats;
     uniforms.outputWidth.value = width;
+    uniforms.outputEncoding.value = 1;
     uniforms.objectToClip.value.copy(objectToClip);
     uniforms.viewportSize.value.set(viewportWidth, viewportHeight);
     uniforms.pickRect.value.set(rect.x, rect.y, rect.width, rect.height);
@@ -14848,7 +14919,15 @@ const _SparkRenderer = class _SparkRenderer extends THREE__namespace.Mesh {
         uniqueHitCount: 0,
         earlyExit: false
       };
-      const indices = compactSplatCenterIntersectionBytes(
+      const indices = outputEncoding === SPLAT_CENTER_INTERSECTION_OUTPUT_ENCODING_BITSET ? compactSplatCenterIntersectionBitsetBytes(
+        pass.pixels.subarray(0, byteCount),
+        {
+          bitCount: numSplats,
+          maxCandidates,
+          indexBuffer,
+          stats: compactStats
+        }
+      ) : compactSplatCenterIntersectionBytes(
         pass.pixels.subarray(0, numSplats),
         {
           maxCandidates,
@@ -14859,6 +14938,8 @@ const _SparkRenderer = class _SparkRenderer extends THREE__namespace.Mesh {
       stats.candidateCenterCount = compactStats.candidateByteCount;
       stats.uniqueHitCount = compactStats.uniqueHitCount;
       stats.earlyExit = compactStats.earlyExit;
+      stats.processorOutputEncoding = outputEncoding;
+      stats.processorReadbackByteCount = outputTarget.width * outputTarget.height * 4;
       return {
         indices,
         renderMs: pass.renderMs,
@@ -14961,6 +15042,7 @@ const _SparkRenderer = class _SparkRenderer extends THREE__namespace.Mesh {
         maskThreshold: { value: 0 },
         numSplats: { value: 0 },
         outputWidth: { value: 1 },
+        outputEncoding: { value: 0 },
         objectToClip: { value: new THREE__namespace.Matrix4() },
         viewportSize: { value: new THREE__namespace.Vector2(1, 1) },
         pickRect: { value: new THREE__namespace.Vector4(0, 0, 1, 1) },
@@ -14994,6 +15076,7 @@ const _SparkRenderer = class _SparkRenderer extends THREE__namespace.Mesh {
         uniform float maskThreshold;
         uniform int numSplats;
         uniform int outputWidth;
+        uniform int outputEncoding;
         uniform mat4 objectToClip;
         uniform vec2 viewportSize;
         uniform vec4 pickRect;
@@ -15112,9 +15195,38 @@ const _SparkRenderer = class _SparkRenderer extends THREE__namespace.Mesh {
           return isMaskEnabledAt(screen);
         }
 
+        float encodeByte(int value) {
+          return float(value) / 255.0;
+        }
+
+        int packCenterBitsetByte(int byteIndex) {
+          int baseIndex = byteIndex * 8;
+          int value = 0;
+          value += intersectsCenter(baseIndex) ? 1 : 0;
+          value += intersectsCenter(baseIndex + 1) ? 2 : 0;
+          value += intersectsCenter(baseIndex + 2) ? 4 : 0;
+          value += intersectsCenter(baseIndex + 3) ? 8 : 0;
+          value += intersectsCenter(baseIndex + 4) ? 16 : 0;
+          value += intersectsCenter(baseIndex + 5) ? 32 : 0;
+          value += intersectsCenter(baseIndex + 6) ? 64 : 0;
+          value += intersectsCenter(baseIndex + 7) ? 128 : 0;
+          return value;
+        }
+
         void main() {
           int pixelIndex = int(gl_FragCoord.y) * outputWidth +
             int(gl_FragCoord.x);
+          if (outputEncoding == 1) {
+            int baseByteIndex = pixelIndex * 4;
+            outColor = vec4(
+              encodeByte(packCenterBitsetByte(baseByteIndex)),
+              encodeByte(packCenterBitsetByte(baseByteIndex + 1)),
+              encodeByte(packCenterBitsetByte(baseByteIndex + 2)),
+              encodeByte(packCenterBitsetByte(baseByteIndex + 3))
+            );
+            return;
+          }
+
           int baseIndex = pixelIndex * 4;
           outColor = vec4(
             intersectsCenter(baseIndex) ? 1.0 : 0.0,
@@ -15147,9 +15259,12 @@ const _SparkRenderer = class _SparkRenderer extends THREE__namespace.Mesh {
     const scissorTest = renderer.getScissorTest();
     const clearColor = renderer.getClearColor(new THREE__namespace.Color());
     const clearAlpha = renderer.getClearAlpha();
+    const gl = renderer.getContext();
+    const ditherEnabled = gl.isEnabled(gl.DITHER);
     try {
       renderer.xr.enabled = false;
       renderer.autoClear = false;
+      gl.disable(gl.DITHER);
       renderer.setRenderTarget(target);
       renderer.setViewport(0, 0, target.width, target.height);
       renderer.setScissorTest(false);
@@ -15177,6 +15292,9 @@ const _SparkRenderer = class _SparkRenderer extends THREE__namespace.Mesh {
       renderer.setScissor(scissor);
       renderer.setScissorTest(scissorTest);
       renderer.setClearColor(clearColor, clearAlpha);
+      if (ditherEnabled) {
+        gl.enable(gl.DITHER);
+      }
       this.resetRenderState(renderer, renderState);
     }
   }
@@ -26655,6 +26773,7 @@ exports.Uint8ToFloat = Uint8ToFloat;
 exports.XrHand = XrHand;
 exports.XrHands = XrHands;
 exports.collectSplatScreenPickHitsFromRgba8 = collectSplatScreenPickHitsFromRgba8;
+exports.compactSplatCenterIntersectionBitsetBytes = compactSplatCenterIntersectionBitsetBytes;
 exports.compactSplatCenterIntersectionBytes = compactSplatCenterIntersectionBytes;
 exports.constructAxes = constructAxes;
 exports.constructGrid = constructGrid;

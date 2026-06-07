@@ -97,6 +97,7 @@ export type SplatScreenPickRenderMode = "viewport" | "shape";
 export type SplatScreenPickCandidateMode = "rendered-id" | "centers";
 export type SplatScreenPickCenterProcessor = "auto" | "cpu" | "gpu";
 export type SplatScreenPickCenterProcessorMode = "cpu" | "gpu";
+export type SplatCenterIntersectionOutputEncoding = "bytes-rgba8" | "bitset-rgba8";
 export type SplatScreenPickCenterProcessorFallbackReason = "requested-cpu" | "auto-cpu-estimated-faster" | "gpu-unavailable" | "webgl2-unavailable" | "unsupported-source" | "lod-or-paged" | "missing-center-texture" | "selected-index-mode" | "scene-wide-unsupported" | "nearest-unsupported" | "target-not-visible" | "gpu-readback-failed";
 export type SplatScreenPickOptions = {
     scene: THREE.Object3D;
@@ -229,6 +230,8 @@ export type SplatScreenPickCenterCollectStats = {
     viewRejectedCenterCount: number;
     duplicateCenterHitCount: number;
     uniqueHitCount: number;
+    processorOutputEncoding?: SplatCenterIntersectionOutputEncoding;
+    processorReadbackByteCount?: number;
     projectedBounds: SplatScreenPickCenterBounds | null;
     candidateBounds: SplatScreenPickCenterBounds | null;
     earlyExit: boolean;
@@ -286,6 +289,12 @@ export declare function createSplatScreenPickCenterCollectStats(): SplatScreenPi
 export declare function setSplatScreenPickCenterProcessorStats(stats: SplatScreenPickCenterCollectStats, requestedProcessor?: SplatScreenPickCenterProcessor, processor?: SplatScreenPickCenterProcessorMode, fallbackReason?: SplatScreenPickCenterProcessorFallbackReason): void;
 export declare function createSplatCenterIntersectionCompactStats(): SplatCenterIntersectionCompactStats;
 export declare function compactSplatCenterIntersectionBytes(bytes: ArrayLike<number>, options?: {
+    maxCandidates?: number;
+    indexBuffer?: SplatScreenPickIndexBuffer;
+    stats?: SplatCenterIntersectionCompactStats;
+}): Uint32Array;
+export declare function compactSplatCenterIntersectionBitsetBytes(bytes: ArrayLike<number>, options?: {
+    bitCount?: number;
     maxCandidates?: number;
     indexBuffer?: SplatScreenPickIndexBuffer;
     stats?: SplatCenterIntersectionCompactStats;

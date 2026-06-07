@@ -16,6 +16,7 @@ import {
 } from "./SplatEditorState";
 import { SplatGeometry } from "./SplatGeometry";
 import {
+  type SplatCenterIntersectionOutputEncoding,
   type SplatScreenFloodMaskRenderOptions,
   type SplatScreenFloodMaskResult,
   type SplatScreenFloodMaskWorkspace,
@@ -37,6 +38,7 @@ import {
   type SplatScreenPickRenderedIndexResult,
   type SplatScreenPickViewOffset,
   collectSplatScreenPickHitsFromRgba8,
+  compactSplatCenterIntersectionBitsetBytes,
   compactSplatCenterIntersectionBytes,
   createSplatScreenFloodMaskFromRgba8,
   createSplatScreenPickCenterCollectStats,
@@ -208,20 +210,33 @@ function canUseSelectedSplatCenterIndexMode(
 
 const SPLAT_CENTER_INTERSECTION_OUTPUT_WIDTH = 4096;
 const SPLAT_CENTER_INTERSECTION_AUTO_CPU_MAX_SPLATS = 500_000;
+const SPLAT_CENTER_INTERSECTION_OUTPUT_ENCODING_BITSET =
+  "bitset-rgba8" satisfies SplatCenterIntersectionOutputEncoding;
 
-function getSplatCenterIntersectionOutputSize(numSplats: number): {
+function getSplatCenterIntersectionOutputSizeForEncoding(
+  numSplats: number,
+  encoding: SplatCenterIntersectionOutputEncoding,
+): {
   width: number;
   height: number;
+  byteCount: number;
+  pixelCount: number;
 } {
-  const byteCount = Math.max(0, Math.floor(numSplats));
+  const splatCount = Math.max(0, Math.floor(numSplats));
+  const byteCount =
+    encoding === SPLAT_CENTER_INTERSECTION_OUTPUT_ENCODING_BITSET
+      ? Math.ceil(splatCount / 8)
+      : splatCount;
   if (byteCount <= 0) {
-    return { width: 1, height: 1 };
+    return { width: 1, height: 1, byteCount: 0, pixelCount: 1 };
   }
   const pixelCount = Math.ceil(byteCount / 4);
   const width = Math.min(SPLAT_CENTER_INTERSECTION_OUTPUT_WIDTH, pixelCount);
   return {
     width,
     height: Math.max(1, Math.ceil(pixelCount / width)),
+    byteCount,
+    pixelCount,
   };
 }
 
@@ -3208,7 +3223,12 @@ export class SparkRenderer extends THREE.Mesh {
     );
     objectToClip.multiply(target.matrixWorld);
 
-    const { width, height } = getSplatCenterIntersectionOutputSize(numSplats);
+    const outputEncoding = SPLAT_CENTER_INTERSECTION_OUTPUT_ENCODING_BITSET;
+    const { width, height, byteCount } =
+      getSplatCenterIntersectionOutputSizeForEncoding(
+        numSplats,
+        outputEncoding,
+      );
     const outputTarget = this.ensureSplatCenterIntersectionTarget(
       width,
       height,
@@ -3236,6 +3256,10 @@ export class SparkRenderer extends THREE.Mesh {
       splatEditorStateFilterModeToPickUniform(editorStateMode);
     uniforms.numSplats.value = numSplats;
     uniforms.outputWidth.value = width;
+    uniforms.outputEncoding.value =
+      outputEncoding === SPLAT_CENTER_INTERSECTION_OUTPUT_ENCODING_BITSET
+        ? 1
+        : 0;
     uniforms.objectToClip.value.copy(objectToClip);
     uniforms.viewportSize.value.set(viewportWidth, viewportHeight);
     uniforms.pickRect.value.set(rect.x, rect.y, rect.width, rect.height);
@@ -3269,17 +3293,31 @@ export class SparkRenderer extends THREE.Mesh {
         uniqueHitCount: 0,
         earlyExit: false,
       };
-      const indices = compactSplatCenterIntersectionBytes(
-        pass.pixels.subarray(0, numSplats),
-        {
-          maxCandidates,
-          indexBuffer,
-          stats: compactStats,
-        },
-      );
+      const indices =
+        outputEncoding === SPLAT_CENTER_INTERSECTION_OUTPUT_ENCODING_BITSET
+          ? compactSplatCenterIntersectionBitsetBytes(
+              pass.pixels.subarray(0, byteCount),
+              {
+                bitCount: numSplats,
+                maxCandidates,
+                indexBuffer,
+                stats: compactStats,
+              },
+            )
+          : compactSplatCenterIntersectionBytes(
+              pass.pixels.subarray(0, numSplats),
+              {
+                maxCandidates,
+                indexBuffer,
+                stats: compactStats,
+              },
+            );
       stats.candidateCenterCount = compactStats.candidateByteCount;
       stats.uniqueHitCount = compactStats.uniqueHitCount;
       stats.earlyExit = compactStats.earlyExit;
+      stats.processorOutputEncoding = outputEncoding;
+      stats.processorReadbackByteCount =
+        outputTarget.width * outputTarget.height * 4;
       return {
         indices,
         renderMs: pass.renderMs,
@@ -3398,6 +3436,7 @@ export class SparkRenderer extends THREE.Mesh {
         maskThreshold: { value: 0 },
         numSplats: { value: 0 },
         outputWidth: { value: 1 },
+        outputEncoding: { value: 0 },
         objectToClip: { value: new THREE.Matrix4() },
         viewportSize: { value: new THREE.Vector2(1, 1) },
         pickRect: { value: new THREE.Vector4(0, 0, 1, 1) },
@@ -3431,6 +3470,7 @@ export class SparkRenderer extends THREE.Mesh {
         uniform float maskThreshold;
         uniform int numSplats;
         uniform int outputWidth;
+        uniform int outputEncoding;
         uniform mat4 objectToClip;
         uniform vec2 viewportSize;
         uniform vec4 pickRect;
@@ -3549,9 +3589,38 @@ export class SparkRenderer extends THREE.Mesh {
           return isMaskEnabledAt(screen);
         }
 
+        float encodeByte(int value) {
+          return float(value) / 255.0;
+        }
+
+        int packCenterBitsetByte(int byteIndex) {
+          int baseIndex = byteIndex * 8;
+          int value = 0;
+          value += intersectsCenter(baseIndex) ? 1 : 0;
+          value += intersectsCenter(baseIndex + 1) ? 2 : 0;
+          value += intersectsCenter(baseIndex + 2) ? 4 : 0;
+          value += intersectsCenter(baseIndex + 3) ? 8 : 0;
+          value += intersectsCenter(baseIndex + 4) ? 16 : 0;
+          value += intersectsCenter(baseIndex + 5) ? 32 : 0;
+          value += intersectsCenter(baseIndex + 6) ? 64 : 0;
+          value += intersectsCenter(baseIndex + 7) ? 128 : 0;
+          return value;
+        }
+
         void main() {
           int pixelIndex = int(gl_FragCoord.y) * outputWidth +
             int(gl_FragCoord.x);
+          if (outputEncoding == 1) {
+            int baseByteIndex = pixelIndex * 4;
+            outColor = vec4(
+              encodeByte(packCenterBitsetByte(baseByteIndex)),
+              encodeByte(packCenterBitsetByte(baseByteIndex + 1)),
+              encodeByte(packCenterBitsetByte(baseByteIndex + 2)),
+              encodeByte(packCenterBitsetByte(baseByteIndex + 3))
+            );
+            return;
+          }
+
           int baseIndex = pixelIndex * 4;
           outColor = vec4(
             intersectsCenter(baseIndex) ? 1.0 : 0.0,
@@ -3596,10 +3665,13 @@ export class SparkRenderer extends THREE.Mesh {
     const scissorTest = renderer.getScissorTest();
     const clearColor = renderer.getClearColor(new THREE.Color());
     const clearAlpha = renderer.getClearAlpha();
+    const gl = renderer.getContext();
+    const ditherEnabled = gl.isEnabled(gl.DITHER);
 
     try {
       renderer.xr.enabled = false;
       renderer.autoClear = false;
+      gl.disable(gl.DITHER);
       renderer.setRenderTarget(target);
       renderer.setViewport(0, 0, target.width, target.height);
       renderer.setScissorTest(false);
@@ -3627,6 +3699,9 @@ export class SparkRenderer extends THREE.Mesh {
       renderer.setScissor(scissor);
       renderer.setScissorTest(scissorTest);
       renderer.setClearColor(clearColor, clearAlpha);
+      if (ditherEnabled) {
+        gl.enable(gl.DITHER);
+      }
       this.resetRenderState(renderer, renderState);
     }
   }
