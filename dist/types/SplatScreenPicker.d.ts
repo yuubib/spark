@@ -24,6 +24,34 @@ export type SplatScreenPickShape = {
     maskChannel?: 0 | 1 | 2 | 3;
     maskThreshold?: number;
 };
+export type SplatScreenRgba8RowOrder = "bottom-left" | "top-left";
+export type SplatScreenFloodMaskShape = Extract<SplatScreenPickShape, {
+    kind: "mask";
+}>;
+export type SplatScreenFloodMaskOptions = {
+    width: number;
+    height: number;
+    seedX: number;
+    seedY: number;
+    threshold?: number;
+    channel?: 0 | 1 | 2 | 3;
+    rowOrder?: SplatScreenRgba8RowOrder;
+};
+export type SplatScreenFloodMaskResult = {
+    data: Uint8Array;
+    width: number;
+    height: number;
+    sourceChannel: 0 | 1 | 2 | 3;
+    sourceThreshold: number;
+    seed: {
+        x: number;
+        y: number;
+        value: number;
+    };
+    matchedPixelCount: number;
+    bounds: Omit<SplatScreenPickRect, "mask"> | null;
+    shape: SplatScreenFloodMaskShape | null;
+};
 export type SplatScreenPickRenderMode = "viewport" | "shape";
 export type SplatScreenPickCandidateMode = "rendered-id" | "centers";
 export type SplatScreenPickOptions = {
@@ -172,6 +200,7 @@ export declare function editorSelectionOperationToPickFilterMode(operation: Spla
 export declare function splatEditorStateFilterModeToPickUniform(mode?: SplatEditorStateFilterMode): number;
 export declare function normalizeSplatScreenPickShape(shape: SplatScreenPickShape, targetWidth: number, targetHeight: number): SplatScreenPickRect;
 export declare function resolveSplatScreenPickRenderLayout(rect: SplatScreenPickRect, viewportWidth: number, viewportHeight: number, renderMode?: SplatScreenPickRenderMode): SplatScreenPickRenderLayout;
+export declare function createSplatScreenFloodMaskFromRgba8(pixels: ArrayLike<number>, options: SplatScreenFloodMaskOptions): SplatScreenFloodMaskResult;
 export declare function collectSplatScreenPickHitsFromRgba8(pixels: ArrayLike<number>, rect: SplatScreenPickRect, options?: {
     maxCandidates?: number;
     sort?: boolean;

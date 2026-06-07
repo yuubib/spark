@@ -11953,6 +11953,8 @@ function splatEditorStateFilterModeToPickUniform(mode) {
   }
 }
 const SPLAT_SCREEN_PICK_FILTER_PICK_SET = SPLAT_SCREEN_PICK_FILTER_EDITABLE;
+const DEFAULT_SPLAT_SCREEN_FLOOD_THRESHOLD = 0.2;
+const SPLAT_SCREEN_FLOOD_MASK_CHANNEL = 3;
 function normalizeSplatScreenPickShape(shape, targetWidth, targetHeight) {
   if (targetWidth <= 0 || targetHeight <= 0) {
     throw new Error("Splat screen picking target size must be positive");
@@ -12025,6 +12027,132 @@ function resolveSplatScreenPickRenderLayout(rect, viewportWidth, viewportHeight,
     targetHeight: fullHeight,
     readRect: { x, y, width, height },
     viewOffset: null
+  };
+}
+function createSplatScreenFloodMaskFromRgba8(pixels, options) {
+  const width = Math.floor(options.width);
+  const height = Math.floor(options.height);
+  if (width <= 0 || height <= 0) {
+    throw new Error("Splat flood mask dimensions must be positive");
+  }
+  const expectedLength = width * height * 4;
+  if (pixels.length < expectedLength) {
+    throw new Error(
+      `Splat flood pixel buffer too small: ${pixels.length} < ${expectedLength}`
+    );
+  }
+  const seedX = Math.floor(options.seedX);
+  const seedY = Math.floor(options.seedY);
+  if (!Number.isFinite(seedX) || !Number.isFinite(seedY) || seedX < 0 || seedX >= width || seedY < 0 || seedY >= height) {
+    throw new Error("Splat flood seed pixel must be inside the target");
+  }
+  const sourceChannel = options.channel ?? 3;
+  const sourceThreshold = normalizeSplatScreenFloodThreshold(
+    options.threshold ?? DEFAULT_SPLAT_SCREEN_FLOOD_THRESHOLD
+  );
+  const maxDelta = sourceThreshold * 255;
+  const rowOrder = options.rowOrder ?? "bottom-left";
+  const seedValue = readRgba8ChannelTopLeft(
+    pixels,
+    width,
+    height,
+    seedX,
+    seedY,
+    sourceChannel,
+    rowOrder
+  );
+  const data = new Uint8Array(expectedLength);
+  const visited = new Uint8Array(width * height);
+  const stack = [seedY * width + seedX];
+  let matchedPixelCount = 0;
+  let minX = width;
+  let minY = height;
+  let maxX = -1;
+  let maxY = -1;
+  const push = (x, y) => {
+    if (x < 0 || x >= width || y < 0 || y >= height) {
+      return;
+    }
+    const index = y * width + x;
+    if (!visited[index]) {
+      stack.push(index);
+    }
+  };
+  while (stack.length > 0) {
+    const index = stack.pop();
+    if (visited[index]) {
+      continue;
+    }
+    visited[index] = 1;
+    const x = index % width;
+    const y = Math.floor(index / width);
+    const value = readRgba8ChannelTopLeft(
+      pixels,
+      width,
+      height,
+      x,
+      y,
+      sourceChannel,
+      rowOrder
+    );
+    if (Math.abs(value - seedValue) >= maxDelta) {
+      continue;
+    }
+    const offset = index * 4;
+    data[offset] = 255;
+    data[offset + SPLAT_SCREEN_FLOOD_MASK_CHANNEL] = 255;
+    matchedPixelCount += 1;
+    minX = Math.min(minX, x);
+    minY = Math.min(minY, y);
+    maxX = Math.max(maxX, x);
+    maxY = Math.max(maxY, y);
+    push(x - 1, y);
+    push(x + 1, y);
+    push(x, y - 1);
+    push(x, y + 1);
+  }
+  if (matchedPixelCount === 0) {
+    return {
+      data,
+      width,
+      height,
+      sourceChannel,
+      sourceThreshold,
+      seed: { x: seedX, y: seedY, value: seedValue },
+      matchedPixelCount,
+      bounds: null,
+      shape: null
+    };
+  }
+  const bounds = {
+    x: minX,
+    y: minY,
+    width: maxX - minX + 1,
+    height: maxY - minY + 1
+  };
+  const croppedMask = cropRgba8TopLeft(data, width, bounds);
+  const shape = {
+    kind: "mask",
+    x: bounds.x / width,
+    y: bounds.y / height,
+    width: bounds.width / width,
+    height: bounds.height / height,
+    mask: croppedMask,
+    maskWidth: bounds.width,
+    maskHeight: bounds.height,
+    maskChannel: SPLAT_SCREEN_FLOOD_MASK_CHANNEL,
+    maskThreshold: 0
+  };
+  return {
+    data,
+    width,
+    height,
+    sourceChannel,
+    sourceThreshold,
+    seed: { x: seedX, y: seedY, value: seedValue },
+    matchedPixelCount,
+    bounds,
+    shape
   };
 }
 function collectSplatScreenPickHitsFromRgba8(pixels, rect, options = {}) {
@@ -12209,6 +12337,25 @@ function isPickMaskPixelEnabled(mask, x, y, rect) {
     Math.min(mask.height - 1, Math.floor(y / rect.height * mask.height))
   );
   return isPickMaskPixelEnabledAt(mask, maskX, maskY);
+}
+function normalizeSplatScreenFloodThreshold(threshold) {
+  if (!Number.isFinite(threshold)) {
+    return 0;
+  }
+  return Math.max(0, Math.min(1, threshold));
+}
+function readRgba8ChannelTopLeft(pixels, width, height, x, y, channel, rowOrder) {
+  const sourceY = rowOrder === "bottom-left" ? height - 1 - y : y;
+  return pixels[(sourceY * width + x) * 4 + channel] ?? 0;
+}
+function cropRgba8TopLeft(data, sourceWidth, bounds) {
+  const cropped = new Uint8Array(bounds.width * bounds.height * 4);
+  for (let y = 0; y < bounds.height; y++) {
+    const sourceStart = ((bounds.y + y) * sourceWidth + bounds.x) * 4;
+    const sourceEnd = sourceStart + bounds.width * 4;
+    cropped.set(data.subarray(sourceStart, sourceEnd), y * bounds.width * 4);
+  }
+  return cropped;
 }
 function maybeSortPixelHits(hits, sort = true) {
   if (sort) {
@@ -25258,6 +25405,7 @@ export {
   constructAxes,
   constructGrid,
   constructSpherePoints,
+  createSplatScreenFloodMaskFromRgba8,
   createSplatScreenPickCenterCollectStats,
   defines,
   dyno,

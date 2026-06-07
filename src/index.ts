@@ -13,6 +13,7 @@ export {
 } from "./SparkRenderer";
 export {
   collectSplatScreenPickHitsFromRgba8,
+  createSplatScreenFloodMaskFromRgba8,
   editorSelectionOperationToPickFilterMode,
   normalizeSplatScreenPickShape,
   projectSplatScreenPickCenter,
@@ -20,6 +21,9 @@ export {
   splatEditorStateFilterModeToPickUniform,
   testSplatScreenPickCenter,
   createSplatScreenPickCenterCollectStats,
+  type SplatScreenFloodMaskOptions,
+  type SplatScreenFloodMaskResult,
+  type SplatScreenFloodMaskShape,
   type SplatScreenPickCandidateMode,
   type SplatScreenPickCenterCollectStats,
   type SplatScreenPickCollectStats,
@@ -38,6 +42,7 @@ export {
   type SplatScreenPickShape,
   type SplatScreenPickStats,
   type SplatScreenPickViewOffset,
+  type SplatScreenRgba8RowOrder,
 } from "./SplatScreenPicker";
 export { SplatAccumulator, type GeneratorMapping } from "./SplatAccumulator";
 
