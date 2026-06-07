@@ -208,6 +208,40 @@ assert.deepStrictEqual(maskStats, {
   earlyExit: false,
 });
 
+const scaledMaskStats = emptyCollectStats();
+assert.deepStrictEqual(
+  collectSplatScreenPickHitsFromRgba8(
+    pixels,
+    {
+      x: 10,
+      y: 20,
+      width: 3,
+      height: 2,
+      mask: {
+        data: new Uint8Array([0, 0, 0, 0, 0, 0, 0, 255]),
+        width: 1,
+        height: 2,
+        channel: 3,
+        threshold: 0,
+      },
+    },
+    { stats: scaledMaskStats },
+  ),
+  [
+    { accumulatorIndex: 2, pixel: { x: 11, y: 21 } },
+    { accumulatorIndex: 7, pixel: { x: 10, y: 21 } },
+  ],
+);
+assert.deepStrictEqual(scaledMaskStats, {
+  pixelCount: 6,
+  candidatePixelCount: 3,
+  maskTestedPixelCount: 6,
+  encodedPixelCount: 3,
+  duplicatePixelHitCount: 1,
+  uniqueHitCount: 2,
+  earlyExit: false,
+});
+
 assert.throws(() =>
   collectSplatScreenPickHitsFromRgba8(new Uint8Array(3), {
     x: 0,

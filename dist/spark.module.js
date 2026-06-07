@@ -11757,6 +11757,8 @@ function collectSplatScreenPickHitsFromRgba8(pixels, rect, options = {}) {
   const seen = /* @__PURE__ */ new Set();
   const hits = [];
   const maxCandidates = options.maxCandidates != null ? Math.max(0, Math.floor(options.maxCandidates)) : Number.POSITIVE_INFINITY;
+  const mask = rect.mask;
+  const directMask = mask && mask.width === rect.width && mask.height === rect.height ? mask : null;
   const stats = {
     pixelCount: rect.width * rect.height,
     candidatePixelCount: 0,
@@ -11776,9 +11778,9 @@ function collectSplatScreenPickHitsFromRgba8(pixels, rect, options = {}) {
   for (let readY = 0; readY < rect.height; readY++) {
     const topY = rect.height - 1 - readY;
     for (let x = 0; x < rect.width; x++) {
-      if (rect.mask) {
+      if (mask) {
         stats.maskTestedPixelCount += 1;
-        if (!isPickMaskPixelEnabled(rect.mask, x, topY, rect)) {
+        if (directMask ? !isPickMaskPixelEnabledAt(directMask, x, topY) : !isPickMaskPixelEnabled(mask, x, topY, rect)) {
           continue;
         }
       }
@@ -11822,6 +11824,10 @@ function clipPickRect(rect, targetWidth, targetHeight) {
     height: Math.max(1, y1 - y0)
   };
 }
+function isPickMaskPixelEnabledAt(mask, x, y) {
+  const value = mask.data[(y * mask.width + x) * 4 + mask.channel] ?? 0;
+  return value > mask.threshold;
+}
 function isPickMaskPixelEnabled(mask, x, y, rect) {
   if (mask.width <= 0 || mask.height <= 0) {
     return false;
@@ -11834,8 +11840,7 @@ function isPickMaskPixelEnabled(mask, x, y, rect) {
     0,
     Math.min(mask.height - 1, Math.floor(y / rect.height * mask.height))
   );
-  const value = mask.data[(maskY * mask.width + maskX) * 4 + mask.channel] ?? 0;
-  return value > mask.threshold;
+  return isPickMaskPixelEnabledAt(mask, maskX, maskY);
 }
 function maybeSortPixelHits(hits, sort = true) {
   if (sort) {
