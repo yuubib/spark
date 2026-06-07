@@ -5,7 +5,7 @@ import type { RgbaArray } from "./RgbaArray";
 import { SplatEditorState } from "./SplatEditorState";
 import type { GsplatGenerator } from "./SplatGenerator";
 import { SplatLoader } from "./SplatLoader";
-import type { SplatSource } from "./SplatMesh";
+import type { SplatCenterRaw, SplatSource } from "./SplatMesh";
 import { workerPool } from "./SplatWorker";
 import {
   DEFAULT_SPLAT_ENCODING,
@@ -692,6 +692,24 @@ export class PackedSplats implements SplatSource {
         fromHalf(word2 & 0xffff),
       );
     }
+  }
+
+  getSplatCenterRaw(index: number, target: SplatCenterRaw): boolean {
+    if (
+      !this.packedArray ||
+      !Number.isInteger(index) ||
+      index < 0 ||
+      index >= this.numSplats
+    ) {
+      return false;
+    }
+    const i4 = index * 4;
+    const word1 = this.packedArray[i4 + 1];
+    const word2 = this.packedArray[i4 + 2];
+    target.x = fromHalf(word1 & 0xffff);
+    target.y = fromHalf((word1 >>> 16) & 0xffff);
+    target.z = fromHalf(word2 & 0xffff);
+    return true;
   }
 
   // Ensures our PackedSplats.target render target has enough space to generate

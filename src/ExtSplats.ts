@@ -2,7 +2,7 @@ import * as THREE from "three";
 import type { RgbaArray } from "./RgbaArray";
 import { SplatEditorState } from "./SplatEditorState";
 import { SplatLoader } from "./SplatLoader";
-import type { SplatSource } from "./SplatMesh";
+import type { SplatCenterRaw, SplatSource } from "./SplatMesh";
 import { workerPool } from "./SplatWorker";
 import { SPLAT_TEX_WIDTH, type SplatFileType } from "./defines";
 import {
@@ -636,6 +636,18 @@ export class ExtSplats implements SplatSource {
         uintBitsToFloat(extA[i4 + 2]),
       );
     }
+  }
+
+  getSplatCenterRaw(index: number, target: SplatCenterRaw): boolean {
+    if (!Number.isInteger(index) || index < 0 || index >= this.numSplats) {
+      return false;
+    }
+    const extA = this.extArrays[0];
+    const i4 = index * 4;
+    target.x = uintBitsToFloat(extA[i4]);
+    target.y = uintBitsToFloat(extA[i4 + 1]);
+    target.z = uintBitsToFloat(extA[i4 + 2]);
+    return true;
   }
 
   // Check if source texture needs to be created/updated

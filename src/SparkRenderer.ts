@@ -155,6 +155,12 @@ function nearlyEqual(a: number, b: number): boolean {
   return Math.abs(a - b) <= 1e-6;
 }
 
+function canUseSelectedSplatCenterIndexMode(
+  editorStateMode: NonNullable<SplatScreenPickOptions["editorStateMode"]>,
+): boolean {
+  return editorStateMode === "selected" || editorStateMode === "pick-remove";
+}
+
 export interface SparkRendererOptions {
   /**
    * Pass in your THREE.WebGLRenderer instance so Spark can perform work
@@ -2569,6 +2575,63 @@ export class SparkRenderer extends THREE.Mesh {
     return hits;
   }
 
+  private forEachSplatScreenPickTargetCenterRaw({
+    target,
+    editorStateMode,
+    stats,
+    callback,
+  }: {
+    target: SplatMesh;
+    editorStateMode: NonNullable<SplatScreenPickOptions["editorStateMode"]>;
+    stats: SplatScreenPickCenterCollectStats;
+    callback: (
+      index: number,
+      x: number,
+      y: number,
+      z: number,
+      bits: number,
+    ) => boolean | undefined;
+  }): void {
+    const editorState = target.getEditorState();
+    if (
+      editorState &&
+      target.hasIndexedSplatCenters() &&
+      canUseSelectedSplatCenterIndexMode(editorStateMode)
+    ) {
+      const center = { x: 0, y: 0, z: 0 };
+      for (const index of editorState.listIndices("selected")) {
+        stats.centerCount += 1;
+        const bits =
+          index < editorState.maxSplats ? (editorState.states[index] ?? 0) : 0;
+        if (!matchesSplatEditorStateBits(bits, editorStateMode)) {
+          stats.stateRejectedCenterCount += 1;
+          continue;
+        }
+        if (!target.getSplatCenterRaw(index, center)) {
+          stats.viewRejectedCenterCount += 1;
+          continue;
+        }
+        if (callback(index, center.x, center.y, center.z, bits) === false) {
+          break;
+        }
+      }
+      return;
+    }
+
+    target.forEachSplatCenterRaw((index, centerX, centerY, centerZ) => {
+      stats.centerCount += 1;
+      const bits =
+        editorState && index < editorState.maxSplats
+          ? (editorState.states[index] ?? 0)
+          : 0;
+      if (!matchesSplatEditorStateBits(bits, editorStateMode)) {
+        stats.stateRejectedCenterCount += 1;
+        return;
+      }
+      callback(index, centerX, centerY, centerZ, bits);
+    });
+  }
+
   private collectSplatScreenPickCenterIndices({
     scene,
     camera,
@@ -2644,57 +2707,52 @@ export class SparkRenderer extends THREE.Mesh {
         return;
       }
 
-      const editorState = target.getEditorState();
       target.updateMatrixWorld(true);
       objectToClip.multiplyMatrices(viewProjection, target.matrixWorld);
       const objectToClipElements = objectToClip.elements;
 
-      target.forEachSplatCenterRaw((index, centerX, centerY, centerZ) => {
-        if (indexCount >= max) {
-          stats.earlyExit = true;
-          return;
-        }
+      this.forEachSplatScreenPickTargetCenterRaw({
+        target,
+        editorStateMode,
+        stats,
+        callback: (index, centerX, centerY, centerZ) => {
+          if (indexCount >= max) {
+            stats.earlyExit = true;
+            return false;
+          }
 
-        stats.centerCount += 1;
-        const bits =
-          editorState && index < editorState.maxSplats
-            ? (editorState.states[index] ?? 0)
-            : 0;
-        if (!matchesSplatEditorStateBits(bits, editorStateMode)) {
-          stats.stateRejectedCenterCount += 1;
-          return;
-        }
+          if (
+            !projectSplatScreenPickCenter(
+              objectToClipElements,
+              centerX,
+              centerY,
+              centerZ,
+              viewportWidth,
+              viewportHeight,
+              projectedCenter,
+            )
+          ) {
+            stats.viewRejectedCenterCount += 1;
+            return;
+          }
+          recordSplatScreenPickProjectedCenter(stats, projectedCenter);
 
-        if (
-          !projectSplatScreenPickCenter(
-            objectToClipElements,
-            centerX,
-            centerY,
-            centerZ,
-            viewportWidth,
-            viewportHeight,
-            projectedCenter,
-          )
-        ) {
-          stats.viewRejectedCenterCount += 1;
-          return;
-        }
-        recordSplatScreenPickProjectedCenter(stats, projectedCenter);
+          if (
+            !testSplatScreenPickCenter(
+              rect,
+              projectedCenter.x,
+              projectedCenter.y,
+              stats,
+            )
+          ) {
+            return;
+          }
 
-        if (
-          !testSplatScreenPickCenter(
-            rect,
-            projectedCenter.x,
-            projectedCenter.y,
-            stats,
-          )
-        ) {
-          return;
-        }
-
-        stats.candidateCenterCount += 1;
-        recordSplatScreenPickCandidateCenter(stats, projectedCenter);
-        pushIndex(index);
+          stats.candidateCenterCount += 1;
+          recordSplatScreenPickCandidateCenter(stats, projectedCenter);
+          pushIndex(index);
+          return true;
+        },
       });
     });
 
@@ -2764,83 +2822,78 @@ export class SparkRenderer extends THREE.Mesh {
         return;
       }
 
-      const editorState = target.getEditorState();
       target.updateMatrixWorld(true);
       objectToClip.multiplyMatrices(viewProjection, target.matrixWorld);
       const objectToClipElements = objectToClip.elements;
 
-      target.forEachSplatCenterRaw((index, centerX, centerY, centerZ) => {
-        if (candidateCount >= max) {
-          stats.earlyExit = true;
-          return;
-        }
+      this.forEachSplatScreenPickTargetCenterRaw({
+        target,
+        editorStateMode,
+        stats,
+        callback: (index, centerX, centerY, centerZ) => {
+          if (candidateCount >= max) {
+            stats.earlyExit = true;
+            return false;
+          }
 
-        stats.centerCount += 1;
-        const bits =
-          editorState && index < editorState.maxSplats
-            ? (editorState.states[index] ?? 0)
-            : 0;
-        if (!matchesSplatEditorStateBits(bits, editorStateMode)) {
-          stats.stateRejectedCenterCount += 1;
-          return;
-        }
+          if (
+            !projectSplatScreenPickCenter(
+              objectToClipElements,
+              centerX,
+              centerY,
+              centerZ,
+              viewportWidth,
+              viewportHeight,
+              projectedCenter,
+            )
+          ) {
+            stats.viewRejectedCenterCount += 1;
+            return;
+          }
+          recordSplatScreenPickProjectedCenter(stats, projectedCenter);
 
-        if (
-          !projectSplatScreenPickCenter(
-            objectToClipElements,
-            centerX,
-            centerY,
-            centerZ,
-            viewportWidth,
-            viewportHeight,
-            projectedCenter,
-          )
-        ) {
-          stats.viewRejectedCenterCount += 1;
-          return;
-        }
-        recordSplatScreenPickProjectedCenter(stats, projectedCenter);
+          if (
+            !testSplatScreenPickCenter(
+              rect,
+              projectedCenter.x,
+              projectedCenter.y,
+              stats,
+            )
+          ) {
+            return;
+          }
 
-        if (
-          !testSplatScreenPickCenter(
-            rect,
-            projectedCenter.x,
-            projectedCenter.y,
-            stats,
-          )
-        ) {
-          return;
-        }
+          candidateCount += 1;
+          stats.candidateCenterCount += 1;
+          recordSplatScreenPickCandidateCenter(stats, projectedCenter);
 
-        candidateCount += 1;
-        stats.candidateCenterCount += 1;
-        recordSplatScreenPickCandidateCenter(stats, projectedCenter);
-
-        const screenDistanceSq =
-          (projectedCenter.x - rankPoint.x) ** 2 +
-          (projectedCenter.y - rankPoint.y) ** 2;
-        if (
-          !best ||
-          isBetterSplatScreenPickCenter(
-            {
+          const screenDistanceSq =
+            (projectedCenter.x - rankPoint.x) ** 2 +
+            (projectedCenter.y - rankPoint.y) ** 2;
+          if (
+            !best ||
+            isBetterSplatScreenPickCenter(
+              {
+                index,
+                screenDistanceSq,
+                ndcZ: projectedCenter.ndcZ,
+              },
+              best,
+              rankMode,
+            )
+          ) {
+            best = {
               index,
+              pixel: {
+                x: Math.floor(projectedCenter.x),
+                y: Math.floor(projectedCenter.y),
+              },
               screenDistanceSq,
               ndcZ: projectedCenter.ndcZ,
-            },
-            best,
-            rankMode,
-          )
-        ) {
-          best = {
-            index,
-            pixel: {
-              x: Math.floor(projectedCenter.x),
-              y: Math.floor(projectedCenter.y),
-            },
-            screenDistanceSq,
-            ndcZ: projectedCenter.ndcZ,
-          };
-        }
+            };
+          }
+          return true;
+        },
       });
     });
 

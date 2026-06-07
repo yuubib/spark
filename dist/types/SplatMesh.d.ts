@@ -119,6 +119,11 @@ export type SplatMeshContext = {
     enableLod: DynoBool<string>;
     lodIndices: DynoUsampler2D<"lodIndices", THREE.DataTexture>;
 };
+export interface SplatCenterRaw {
+    x: number;
+    y: number;
+    z: number;
+}
 export interface SplatSource {
     prepareFetchSplat(): void;
     dispose(): void;
@@ -136,6 +141,7 @@ export interface SplatSource {
     forEachSplat(callback: (index: number, center: THREE.Vector3, scales: THREE.Vector3, quaternion: THREE.Quaternion, opacity: number, color: THREE.Color) => void): void;
     forEachSplatCenter?(callback: (index: number, center: THREE.Vector3) => void): void;
     forEachSplatCenterRaw?(callback: (index: number, x: number, y: number, z: number) => void): void;
+    getSplatCenterRaw?(index: number, target: SplatCenterRaw): boolean;
 }
 export type SplatStateBoundingBoxOptions = {
     centersOnly?: boolean;
@@ -159,6 +165,7 @@ export declare class EmptySplatSource implements SplatSource {
     forEachSplat(): void;
     forEachSplatCenter(): void;
     forEachSplatCenterRaw(): void;
+    getSplatCenterRaw(): boolean;
 }
 export declare class SplatMesh extends SplatGenerator {
     initialized: Promise<SplatMesh>;
@@ -222,6 +229,8 @@ export declare class SplatMesh extends SplatGenerator {
     forEachSplatByState(callback: SplatMeshStateIterationCallback, { mode, applySelectedTransform, }?: SplatMeshStateIterationOptions): void;
     forEachSplatCenter(callback: (index: number, center: THREE.Vector3) => void): void;
     forEachSplatCenterRaw(callback: (index: number, x: number, y: number, z: number) => void): void;
+    hasIndexedSplatCenters(): boolean;
+    getSplatCenterRaw(index: number, target: SplatCenterRaw): boolean;
     getEditorState(): SplatEditorState | null;
     ensureEditorState(numSplats?: number): SplatEditorState;
     clearEditorState(): void;

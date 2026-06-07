@@ -289,6 +289,12 @@ export type SplatMeshContext = {
   lodIndices: DynoUsampler2D<"lodIndices", THREE.DataTexture>;
 };
 
+export interface SplatCenterRaw {
+  x: number;
+  y: number;
+  z: number;
+}
+
 export interface SplatSource {
   prepareFetchSplat(): void;
   dispose(): void;
@@ -327,6 +333,8 @@ export interface SplatSource {
   forEachSplatCenterRaw?(
     callback: (index: number, x: number, y: number, z: number) => void,
   ): void;
+
+  getSplatCenterRaw?(index: number, target: SplatCenterRaw): boolean;
 }
 
 type MutableSplatSource = SplatSource & {
@@ -391,6 +399,10 @@ export class EmptySplatSource implements SplatSource {
   forEachSplatCenter() {}
 
   forEachSplatCenterRaw() {}
+
+  getSplatCenterRaw() {
+    return false;
+  }
 }
 
 export class SplatMesh extends SplatGenerator {
@@ -840,6 +852,32 @@ export class SplatMesh extends SplatGenerator {
     this.forEachSplatCenter((index, center) =>
       callback(index, center.x, center.y, center.z),
     );
+  }
+
+  hasIndexedSplatCenters(): boolean {
+    return this.splats?.getSplatCenterRaw != null;
+  }
+
+  getSplatCenterRaw(index: number, target: SplatCenterRaw): boolean {
+    const source = this.splats;
+    if (!source || index < 0 || index >= source.getNumSplats()) {
+      return false;
+    }
+    if (source.getSplatCenterRaw) {
+      return source.getSplatCenterRaw(index, target);
+    }
+
+    let found = false;
+    this.forEachSplatCenterRaw((centerIndex, x, y, z) => {
+      if (found || centerIndex !== index) {
+        return;
+      }
+      target.x = x;
+      target.y = y;
+      target.z = z;
+      found = true;
+    });
+    return found;
   }
 
   getEditorState(): SplatEditorState | null {

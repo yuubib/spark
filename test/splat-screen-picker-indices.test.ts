@@ -196,6 +196,36 @@ const removeFilteredNearest = await sparkRenderer.pickNearestSplatCenterIndex({
 
 assert.strictEqual(removeFilteredNearest?.index, 1);
 
+let indexedCenterReadCount = 0;
+const originalIndexedCenter = mesh.getSplatCenterRaw.bind(mesh);
+mesh.getSplatCenterRaw = (index, target) => {
+  indexedCenterReadCount += 1;
+  return originalIndexedCenter(index, target);
+};
+mesh.forEachSplatCenterRaw = () => {
+  throw new Error("selected center picking should use indexed centers");
+};
+
+let selectedStats: SplatScreenPickStats | null = null;
+const selectedSparse = await sparkRenderer.pickSplatCandidateIndices({
+  target: mesh,
+  scene,
+  camera,
+  candidateMode: "centers",
+  shape: { kind: "rect", x: 0, y: 0, width: 1, height: 1 },
+  width: 100,
+  height: 100,
+  operation: "remove",
+  onStats: (nextStats) => {
+    selectedStats = nextStats;
+  },
+});
+
+assert.deepStrictEqual([...(selectedSparse ?? [])], [1]);
+assert.strictEqual(indexedCenterReadCount, 1);
+assert.strictEqual(selectedStats?.centerCollect?.centerCount, 1);
+assert.strictEqual(selectedStats?.centerCollect?.candidateCenterCount, 1);
+
 const depthMesh = new SplatMesh({
   constructSplats: (splats) => {
     splats.pushSplat(

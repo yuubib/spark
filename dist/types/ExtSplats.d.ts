@@ -1,6 +1,6 @@
 import { RgbaArray } from './RgbaArray';
 import { SplatEditorState } from './SplatEditorState';
-import { SplatSource } from './SplatMesh';
+import { SplatCenterRaw, SplatSource } from './SplatMesh';
 import { SplatFileType } from './defines';
 import { DynoInt, DynoUniform, DynoUsampler2DArray, DynoVal, Gsplat, TExtSplats } from './dyno';
 import * as THREE from "three";
@@ -68,6 +68,7 @@ export declare class ExtSplats implements SplatSource {
     forEachSplat(callback: (index: number, center: THREE.Vector3, scales: THREE.Vector3, quaternion: THREE.Quaternion, opacity: number, color: THREE.Color) => void): void;
     forEachSplatCenter(callback: (index: number, center: THREE.Vector3) => void): void;
     forEachSplatCenterRaw(callback: (index: number, x: number, y: number, z: number) => void): void;
+    getSplatCenterRaw(index: number, target: SplatCenterRaw): boolean;
     private updateTextures;
     extractSplats(indices: Uint32Array, pageColoring: boolean): ExtSplats;
     static emptyArray: THREE.DataArrayTexture;

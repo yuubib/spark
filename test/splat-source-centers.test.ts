@@ -65,6 +65,10 @@ const collectRawCenters = (
       [1, -4, 5, -6],
     ],
   );
+  const center = { x: 0, y: 0, z: 0 };
+  assert.strictEqual(packed.getSplatCenterRaw(1, center), true);
+  assert.deepStrictEqual(center, { x: -4, y: 5, z: -6 });
+  assert.strictEqual(packed.getSplatCenterRaw(2, center), false);
 }
 
 {
@@ -83,6 +87,10 @@ const collectRawCenters = (
       [1, 12, 13, 14],
     ],
   );
+  const center = { x: 0, y: 0, z: 0 };
+  assert.strictEqual(ext.getSplatCenterRaw(0, center), true);
+  assert.deepStrictEqual(center, { x: 0.25, y: -0.5, z: 1.5 });
+  assert.strictEqual(ext.getSplatCenterRaw(-1, center), false);
 }
 
 {
@@ -115,6 +123,7 @@ const collectRawCenters = (
     },
   };
   const mesh = new SplatMesh({ splats: source });
+  assert.strictEqual(mesh.hasIndexedSplatCenters(), false);
 
   assert.deepStrictEqual(collectCenters(mesh.forEachSplatCenter.bind(mesh)), [
     [0, 7, 8, 9],
@@ -127,6 +136,10 @@ const collectRawCenters = (
   );
   assert.strictEqual(rawCenterCount, 1);
   assert.strictEqual(fullDecodeCount, 1);
+
+  const center = { x: 0, y: 0, z: 0 };
+  assert.strictEqual(mesh.getSplatCenterRaw(0, center), true);
+  assert.deepStrictEqual(center, { x: 7, y: 8, z: 9 });
 }
 
 await SplatMesh.staticInitialized;
@@ -140,6 +153,10 @@ await SplatMesh.staticInitialized;
     },
   });
   await mesh.initialized;
+  assert.strictEqual(mesh.hasIndexedSplatCenters(), true);
+  const center = { x: 0, y: 0, z: 0 };
+  assert.strictEqual(mesh.getSplatCenterRaw(2, center), true);
+  assert.deepStrictEqual(center, { x: 5, y: 6, z: 7 });
 
   let rawCenterIteratorCount = 0;
   const originalRawCenterIterator = mesh.forEachSplatCenterRaw.bind(mesh);
