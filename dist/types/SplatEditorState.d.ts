@@ -64,6 +64,7 @@ export declare class SplatEditorState {
     private selected;
     private locked;
     private deleted;
+    private selectedIndices;
     private dirtyRanges;
     private renderDirtyRanges;
     private dirtyAll;
@@ -113,8 +114,11 @@ export declare class SplatEditorState {
     private commitMutation;
     private collectDirtyIndex;
     private setUnchecked;
+    private selectCandidateSetDense;
+    private selectCandidateSetSparse;
     private setMutationUnchecked;
     private updateCounts;
+    private updateSelectedIndex;
     static emptyTexture: THREE.DataArrayTexture;
 }
 export declare function applySplatEditorStateVisibility(gsplat: DynoVal<typeof Gsplat>, stateTexture: DynoVal<"usampler2DArray">, enabled: DynoVal<"bool">): DynoVal<typeof Gsplat>;

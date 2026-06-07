@@ -53,6 +53,31 @@ function readVersions(mesh: InstanceType<typeof SplatMesh>) {
 }
 
 {
+  const mesh = new SplatMesh({ editorStateRenderMode: "accumulator" });
+  mesh.ensureEditorState(8);
+  mesh.selectSplatStateCandidates([1, 6], "add");
+  const initial = readVersions(mesh);
+
+  const selectResult = mesh.selectSplatStateCandidates([3], "set", {
+    recordChanges: true,
+  });
+
+  assert.deepStrictEqual(selectResult.changes, [
+    { index: 1, previous: 1, next: 0 },
+    { index: 3, previous: 0, next: 1 },
+    { index: 6, previous: 1, next: 0 },
+  ]);
+  assert.deepStrictEqual(mesh.listSplatStateIndices("selected"), [3]);
+  assert.deepStrictEqual(readVersions(mesh), {
+    version: initial.version,
+    sortVersion: initial.sortVersion,
+    styleVersion: initial.styleVersion + 1,
+  });
+
+  mesh.dispose();
+}
+
+{
   const mesh = new SplatMesh({ editorStateRenderMode: "generator" });
   mesh.ensureEditorState(4);
   const initial = readVersions(mesh);

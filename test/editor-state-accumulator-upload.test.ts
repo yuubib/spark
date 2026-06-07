@@ -79,7 +79,7 @@ function createMockRenderer() {
   const texture = accumulator.editorStateTexture;
   assert.ok(texture);
   texture.needsUpdate = false;
-  state.selectCandidates([7], "add");
+  state.selectCandidates([7], "set");
   state.uploadDirtyWithResult();
   assert.deepStrictEqual(state.getDirtyRanges(), []);
   assert.ok(state.getRenderDirtyRanges().length > 0);
@@ -90,13 +90,20 @@ function createMockRenderer() {
     true,
   );
   assert.strictEqual(accumulator.editorStateData[7], 1);
+  assert.strictEqual(accumulator.editorStateData[2], 0);
+  assert.strictEqual(accumulator.editorStateData[4099], 0);
   assert.deepStrictEqual(state.getRenderDirtyRanges(), []);
-  assert.strictEqual(texSubImageCalls.length, 1);
+  assert.strictEqual(texSubImageCalls.length, 2);
   assert.deepStrictEqual(
     texSubImageCalls[0].slice(0, 10),
     [0x8c1a, 0, 0, 0, 0, 2048, 1, 1, 0x8d94, 0x1401],
   );
+  assert.deepStrictEqual(
+    texSubImageCalls[1].slice(0, 10),
+    [0x8c1a, 0, 0, 2, 0, 2048, 1, 1, 0x8d94, 0x1401],
+  );
   assert.strictEqual((texSubImageCalls[0][10] as Uint8Array).length, 2048);
+  assert.strictEqual((texSubImageCalls[1][10] as Uint8Array).length, 2048);
 
   accumulator.dispose();
   mesh.dispose();

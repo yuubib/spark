@@ -6817,6 +6817,7 @@ const SPLAT_EDITOR_STATE_NONE = 0;
 const DEFAULT_SELECTED_COLOR = new THREE.Vector4(0.38, 0.62, 1, 0.42);
 const DEFAULT_LOCKED_COLOR = new THREE.Vector4(0.58, 0.64, 0.72, 1);
 const MAX_DIRTY_UPLOAD_SPANS = 512;
+const SPARSE_SELECTION_SET_THRESHOLD_RATIO = 0.25;
 const _SplatEditorState = class _SplatEditorState {
   constructor(numSplats = 0, colors = {}) {
     var _a2, _b2;
@@ -6826,6 +6827,7 @@ const _SplatEditorState = class _SplatEditorState {
     this.selected = 0;
     this.locked = 0;
     this.deleted = 0;
+    this.selectedIndices = /* @__PURE__ */ new Set();
     this.dirtyRanges = [];
     this.renderDirtyRanges = [];
     this.dirtyAll = false;
@@ -6850,6 +6852,7 @@ const _SplatEditorState = class _SplatEditorState {
     this.selected = 0;
     this.locked = 0;
     this.deleted = 0;
+    this.selectedIndices.clear();
     this.visibilityVersion = 0;
     this.dirtyRanges = [];
     this.renderDirtyRanges = [];
@@ -6975,25 +6978,40 @@ const _SplatEditorState = class _SplatEditorState {
   selectCandidates(indices, operation = "set", options = {}) {
     const changes = createMutationChanges(options);
     if (operation === "set") {
-      const candidates = new Uint8Array(this.numSplats);
+      let sparseCandidates = /* @__PURE__ */ new Set();
+      let denseCandidates = null;
+      const sparseThreshold = Math.floor(
+        this.numSplats * SPARSE_SELECTION_SET_THRESHOLD_RATIO
+      );
       for (const rawIndex of indices) {
         const index = this.normalizeIndex(rawIndex);
-        if (index !== null) {
-          candidates[index] = 1;
+        if (index === null) {
+          continue;
+        }
+        if (denseCandidates) {
+          denseCandidates[index] = 1;
+          continue;
+        }
+        sparseCandidates.add(index);
+        if (sparseCandidates.size > sparseThreshold) {
+          denseCandidates = new Uint8Array(this.numSplats);
+          for (const candidate of sparseCandidates) {
+            denseCandidates[candidate] = 1;
+          }
+          sparseCandidates = /* @__PURE__ */ new Set();
         }
       }
-      const dirtyIndices2 = [];
-      let fullRange2 = false;
-      let changed2 = 0;
-      for (let index = 0; index < this.numSplats; index++) {
-        const previous = this.states[index];
-        const next = candidates[index] && previous === SPLAT_EDITOR_STATE_NONE ? SPLAT_EDITOR_STATE_SELECTED : !candidates[index] && previous === SPLAT_EDITOR_STATE_SELECTED ? SPLAT_EDITOR_STATE_NONE : previous;
-        if (this.setMutationUnchecked(index, next, changes)) {
-          changed2++;
-          fullRange2 || (fullRange2 = this.collectDirtyIndex(dirtyIndices2, index));
+      if (!denseCandidates && sparseCandidates.size + this.selectedIndices.size > sparseThreshold) {
+        denseCandidates = new Uint8Array(this.numSplats);
+        for (const candidate of sparseCandidates) {
+          denseCandidates[candidate] = 1;
         }
+        sparseCandidates = /* @__PURE__ */ new Set();
       }
-      return this.commitMutation(changed2, dirtyIndices2, fullRange2, changes);
+      if (denseCandidates) {
+        return this.selectCandidateSetDense(denseCandidates, changes);
+      }
+      return this.selectCandidateSetSparse(sparseCandidates, changes);
     }
     const dirtyIndices = [];
     let fullRange = false;
@@ -7166,6 +7184,7 @@ const _SplatEditorState = class _SplatEditorState {
     let selected = 0;
     let locked = 0;
     let deleted = 0;
+    this.selectedIndices.clear();
     for (let index = 0; index < this.maxSplats; index++) {
       const previous = this.states[index];
       const next = index < safeNumSplats ? Number(states[index] ?? SPLAT_EDITOR_STATE_NONE) & 255 : SPLAT_EDITOR_STATE_NONE;
@@ -7182,6 +7201,9 @@ const _SplatEditorState = class _SplatEditorState {
         locked++;
       } else if ((next & SPLAT_EDITOR_STATE_SELECTED) !== 0) {
         selected++;
+      }
+      if (next === SPLAT_EDITOR_STATE_SELECTED) {
+        this.selectedIndices.add(index);
       }
     }
     this.selected = selected;
@@ -7202,6 +7224,7 @@ const _SplatEditorState = class _SplatEditorState {
       this.selected = 0;
       this.locked = 0;
       this.deleted = 0;
+      this.selectedIndices.clear();
       this.markDirtyRange(0, this.maxSplats);
       this.version++;
       if (hadDeleted) {
@@ -7489,6 +7512,7 @@ const _SplatEditorState = class _SplatEditorState {
       return false;
     }
     this.updateCounts(previous, -1);
+    this.updateSelectedIndex(index, previous, next);
     this.states[index] = next;
     this.updateCounts(next, 1);
     if ((previous & SPLAT_EDITOR_STATE_DELETED) !== (next & SPLAT_EDITOR_STATE_DELETED)) {
@@ -7499,6 +7523,44 @@ const _SplatEditorState = class _SplatEditorState {
       this.version++;
     }
     return true;
+  }
+  selectCandidateSetDense(candidates, changes) {
+    const dirtyIndices = [];
+    let fullRange = false;
+    let changed = 0;
+    for (let index = 0; index < this.numSplats; index++) {
+      const previous = this.states[index];
+      const next = candidates[index] && previous === SPLAT_EDITOR_STATE_NONE ? SPLAT_EDITOR_STATE_SELECTED : !candidates[index] && previous === SPLAT_EDITOR_STATE_SELECTED ? SPLAT_EDITOR_STATE_NONE : previous;
+      if (this.setMutationUnchecked(index, next, changes)) {
+        changed++;
+        fullRange || (fullRange = this.collectDirtyIndex(dirtyIndices, index));
+      }
+    }
+    return this.commitMutation(changed, dirtyIndices, fullRange, changes);
+  }
+  selectCandidateSetSparse(candidates, changes) {
+    const mutations = [];
+    for (const index of this.selectedIndices) {
+      if (!candidates.has(index)) {
+        mutations.push({ index, next: SPLAT_EDITOR_STATE_NONE });
+      }
+    }
+    for (const index of candidates) {
+      if (this.states[index] === SPLAT_EDITOR_STATE_NONE) {
+        mutations.push({ index, next: SPLAT_EDITOR_STATE_SELECTED });
+      }
+    }
+    mutations.sort((a, b) => a.index - b.index);
+    const dirtyIndices = [];
+    let fullRange = false;
+    let changed = 0;
+    for (const { index, next } of mutations) {
+      if (this.setMutationUnchecked(index, next, changes)) {
+        changed++;
+        fullRange || (fullRange = this.collectDirtyIndex(dirtyIndices, index));
+      }
+    }
+    return this.commitMutation(changed, dirtyIndices, fullRange, changes);
   }
   setMutationUnchecked(index, bits2, changes) {
     const previous = this.states[index];
@@ -7516,6 +7578,17 @@ const _SplatEditorState = class _SplatEditorState {
       this.locked += delta;
     } else if ((bits2 & SPLAT_EDITOR_STATE_SELECTED) !== 0) {
       this.selected += delta;
+    }
+  }
+  updateSelectedIndex(index, previous, next) {
+    if (previous === next) {
+      return;
+    }
+    if (previous === SPLAT_EDITOR_STATE_SELECTED) {
+      this.selectedIndices.delete(index);
+    }
+    if (next === SPLAT_EDITOR_STATE_SELECTED) {
+      this.selectedIndices.add(index);
     }
   }
 };

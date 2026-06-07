@@ -262,6 +262,79 @@ import {
 }
 
 {
+  const state = new SplatEditorState(10000);
+  state.set(10, SPLAT_EDITOR_STATE_SELECTED);
+  state.set(20, SPLAT_EDITOR_STATE_SELECTED | SPLAT_EDITOR_STATE_LOCKED);
+  state.set(30, SPLAT_EDITOR_STATE_DELETED);
+  state.set(9000, SPLAT_EDITOR_STATE_SELECTED);
+  state.uploadDirty();
+  state.clearRenderDirtyRanges();
+  const visibilityVersion = state.visibilityVersion;
+
+  const result = state.selectCandidates([42, 20, 30, 42], "set", {
+    recordChanges: true,
+  });
+
+  assert.deepStrictEqual(result.changes, [
+    {
+      index: 10,
+      previous: SPLAT_EDITOR_STATE_SELECTED,
+      next: SPLAT_EDITOR_STATE_NONE,
+    },
+    {
+      index: 42,
+      previous: SPLAT_EDITOR_STATE_NONE,
+      next: SPLAT_EDITOR_STATE_SELECTED,
+    },
+    {
+      index: 9000,
+      previous: SPLAT_EDITOR_STATE_SELECTED,
+      next: SPLAT_EDITOR_STATE_NONE,
+    },
+  ]);
+  assert.deepStrictEqual(result.counts, {
+    selected: 1,
+    locked: 1,
+    deleted: 1,
+  });
+  assert.strictEqual(
+    state.get(20),
+    SPLAT_EDITOR_STATE_SELECTED | SPLAT_EDITOR_STATE_LOCKED,
+  );
+  assert.strictEqual(state.get(30), SPLAT_EDITOR_STATE_DELETED);
+  assert.deepStrictEqual(state.listIndices("selected"), [42]);
+  assert.deepStrictEqual(state.getDirtyRanges(), [
+    { start: 10, count: 1 },
+    { start: 42, count: 1 },
+    { start: 9000, count: 1 },
+  ]);
+  assert.strictEqual(state.visibilityVersion, visibilityVersion);
+}
+
+{
+  const state = new SplatEditorState(5000);
+  const states = new Uint8Array(5000);
+  states[4099] = SPLAT_EDITOR_STATE_SELECTED;
+  state.replace(states);
+  state.uploadDirty();
+  state.clearRenderDirtyRanges();
+
+  const result = state.selectCandidates([], "set", {
+    recordChanges: true,
+  });
+
+  assert.deepStrictEqual(result.changes, [
+    {
+      index: 4099,
+      previous: SPLAT_EDITOR_STATE_SELECTED,
+      next: SPLAT_EDITOR_STATE_NONE,
+    },
+  ]);
+  assert.deepStrictEqual(state.listIndices("selected"), []);
+  assert.deepStrictEqual(state.getDirtyRanges(), [{ start: 4099, count: 1 }]);
+}
+
+{
   const state = new SplatEditorState(64);
   state.uploadDirty();
   state.clearRenderDirtyRanges();
