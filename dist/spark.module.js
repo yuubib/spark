@@ -12856,6 +12856,30 @@ function nearlyEqual(a, b) {
 function canUseSelectedSplatCenterIndexMode(editorStateMode) {
   return editorStateMode === "selected" || editorStateMode === "pick-remove";
 }
+function canSkipSplatScreenPickEditorStateFilter(editorState, editorStateMode) {
+  switch (editorStateMode) {
+    case "all":
+      return true;
+    case "selected":
+    case "pick-remove":
+      return false;
+  }
+  if (!editorState) {
+    return true;
+  }
+  const counts = editorState.getCounts();
+  switch (editorStateMode) {
+    case "visible":
+      return counts.deleted === 0;
+    case "editable":
+    case "pick-set":
+      return counts.locked === 0 && counts.deleted === 0;
+    case "pick-add":
+      return counts.selected === 0 && counts.locked === 0 && counts.deleted === 0;
+    default:
+      return false;
+  }
+}
 const SPLAT_CENTER_INTERSECTION_OUTPUT_WIDTH = 4096;
 const SPLAT_CENTER_INTERSECTION_AUTO_CPU_MAX_SPLATS = 5e5;
 const SPLAT_CENTER_INTERSECTION_OUTPUT_ENCODING_BITSET = "bitset-rgba8";
@@ -14635,6 +14659,10 @@ const _SparkRenderer = class _SparkRenderer extends THREE.Mesh {
       }
       const mapping = mappings.get(object);
       const editorState = object.getEditorState();
+      const skipEditorStateFilter = canSkipSplatScreenPickEditorStateFilter(
+        editorState,
+        editorStateMode
+      );
       const sourceIndexStable = object.context.enableLod.value === false && !object.paged;
       object.updateMatrixWorld(true);
       objectToClip.multiplyMatrices(viewProjection, object.matrixWorld);
@@ -14645,8 +14673,8 @@ const _SparkRenderer = class _SparkRenderer extends THREE.Mesh {
           return;
         }
         stats.centerCount += 1;
-        const bits2 = editorState && index < editorState.maxSplats ? editorState.states[index] ?? 0 : 0;
-        if (!matchesSplatEditorStateBits(bits2, editorStateMode)) {
+        const bits2 = !skipEditorStateFilter && editorState && index < editorState.maxSplats ? editorState.states[index] ?? 0 : 0;
+        if (!skipEditorStateFilter && !matchesSplatEditorStateBits(bits2, editorStateMode)) {
           stats.stateRejectedCenterCount += 1;
           return;
         }
@@ -14706,6 +14734,10 @@ const _SparkRenderer = class _SparkRenderer extends THREE.Mesh {
     callback
   }) {
     const editorState = target.getEditorState();
+    const skipEditorStateFilter = canSkipSplatScreenPickEditorStateFilter(
+      editorState,
+      editorStateMode
+    );
     if (editorState && target.hasIndexedSplatCenters() && canUseSelectedSplatCenterIndexMode(editorStateMode)) {
       const center = { x: 0, y: 0, z: 0 };
       editorState.forEachSelectedIndex((index, bits2) => {
@@ -14726,8 +14758,8 @@ const _SparkRenderer = class _SparkRenderer extends THREE.Mesh {
     }
     target.forEachSplatCenterRaw((index, centerX, centerY, centerZ) => {
       stats.centerCount += 1;
-      const bits2 = editorState && index < editorState.maxSplats ? editorState.states[index] ?? 0 : 0;
-      if (!matchesSplatEditorStateBits(bits2, editorStateMode)) {
+      const bits2 = !skipEditorStateFilter && editorState && index < editorState.maxSplats ? editorState.states[index] ?? 0 : 0;
+      if (!skipEditorStateFilter && !matchesSplatEditorStateBits(bits2, editorStateMode)) {
         stats.stateRejectedCenterCount += 1;
         return;
       }
@@ -14899,8 +14931,12 @@ const _SparkRenderer = class _SparkRenderer extends THREE.Mesh {
       };
     }
     const editorState = target.getEditorState();
-    const editorStateTexture = editorState ? editorState.uploadDirtyWithResult(this.renderer).texture : SplatEditorState.emptyTexture;
-    const editorStateMaxSplats = (editorState == null ? void 0 : editorState.maxSplats) ?? 0;
+    const skipEditorStateFilter = canSkipSplatScreenPickEditorStateFilter(
+      editorState,
+      editorStateMode
+    );
+    const editorStateTexture = !skipEditorStateFilter && editorState ? editorState.uploadDirtyWithResult(this.renderer).texture : SplatEditorState.emptyTexture;
+    const editorStateMaxSplats = !skipEditorStateFilter && editorState ? editorState.maxSplats : 0;
     target.updateMatrixWorld(true);
     const objectToClip = new THREE.Matrix4().multiplyMatrices(
       camera.projectionMatrix,
@@ -14935,7 +14971,7 @@ const _SparkRenderer = class _SparkRenderer extends THREE.Mesh {
       stateImage.depth,
       editorStateMaxSplats
     );
-    uniforms.editorStateEnabled.value = editorState != null;
+    uniforms.editorStateEnabled.value = !skipEditorStateFilter && editorState != null;
     uniforms.editorStateFilterMode.value = splatEditorStateFilterModeToPickUniform(editorStateMode);
     uniforms.numSplats.value = numSplats;
     uniforms.outputWidth.value = width;

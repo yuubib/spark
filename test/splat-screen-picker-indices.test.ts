@@ -518,6 +518,51 @@ const maskedNearest = await sparkRenderer.pickNearestSplatCenterIndex({
 assert.strictEqual(maskedNearest?.index, 0);
 
 mesh.selectSplatStateCandidates([1], "set");
+
+let replaceSelectedStats: SplatScreenPickStats | null = null;
+const replaceSelectedCandidates = await sparkRenderer.pickSplatCandidateIndices(
+  {
+    target: mesh,
+    scene,
+    camera,
+    candidateMode: "centers",
+    shape: { kind: "rect", x: 0, y: 0, width: 1, height: 1 },
+    width: 100,
+    height: 100,
+    operation: "set",
+    onStats: (nextStats) => {
+      replaceSelectedStats = nextStats;
+    },
+  },
+);
+
+assert.deepStrictEqual([...(replaceSelectedCandidates ?? [])], [0, 1]);
+assert.strictEqual(
+  replaceSelectedStats?.centerCollect?.stateRejectedCenterCount,
+  0,
+);
+
+let addSelectedStats: SplatScreenPickStats | null = null;
+const addSelectedCandidates = await sparkRenderer.pickSplatCandidateIndices({
+  target: mesh,
+  scene,
+  camera,
+  candidateMode: "centers",
+  shape: { kind: "rect", x: 0, y: 0, width: 1, height: 1 },
+  width: 100,
+  height: 100,
+  operation: "add",
+  onStats: (nextStats) => {
+    addSelectedStats = nextStats;
+  },
+});
+
+assert.deepStrictEqual([...(addSelectedCandidates ?? [])], [0]);
+assert.strictEqual(
+  addSelectedStats?.centerCollect?.stateRejectedCenterCount,
+  1,
+);
+
 const addFilteredNearest = await sparkRenderer.pickNearestSplatCenterIndex({
   target: mesh,
   scene,

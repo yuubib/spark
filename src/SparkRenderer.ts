@@ -209,6 +209,40 @@ function canUseSelectedSplatCenterIndexMode(
   return editorStateMode === "selected" || editorStateMode === "pick-remove";
 }
 
+function canSkipSplatScreenPickEditorStateFilter(
+  editorState: SplatEditorState | null | undefined,
+  editorStateMode: NonNullable<SplatScreenPickOptions["editorStateMode"]>,
+): boolean {
+  switch (editorStateMode) {
+    case "all":
+      return true;
+    case "selected":
+    case "pick-remove":
+      return false;
+    default:
+      break;
+  }
+
+  if (!editorState) {
+    return true;
+  }
+
+  const counts = editorState.getCounts();
+  switch (editorStateMode) {
+    case "visible":
+      return counts.deleted === 0;
+    case "editable":
+    case "pick-set":
+      return counts.locked === 0 && counts.deleted === 0;
+    case "pick-add":
+      return (
+        counts.selected === 0 && counts.locked === 0 && counts.deleted === 0
+      );
+    default:
+      return false;
+  }
+}
+
 const SPLAT_CENTER_INTERSECTION_OUTPUT_WIDTH = 4096;
 const SPLAT_CENTER_INTERSECTION_AUTO_CPU_MAX_SPLATS = 500_000;
 const SPLAT_CENTER_INTERSECTION_OUTPUT_ENCODING_BITSET =
@@ -2860,6 +2894,10 @@ export class SparkRenderer extends THREE.Mesh {
 
       const mapping = mappings.get(object);
       const editorState = object.getEditorState();
+      const skipEditorStateFilter = canSkipSplatScreenPickEditorStateFilter(
+        editorState,
+        editorStateMode,
+      );
       const sourceIndexStable =
         object.context.enableLod.value === false && !object.paged;
       object.updateMatrixWorld(true);
@@ -2874,10 +2912,13 @@ export class SparkRenderer extends THREE.Mesh {
 
         stats.centerCount += 1;
         const bits =
-          editorState && index < editorState.maxSplats
+          !skipEditorStateFilter && editorState && index < editorState.maxSplats
             ? (editorState.states[index] ?? 0)
             : 0;
-        if (!matchesSplatEditorStateBits(bits, editorStateMode)) {
+        if (
+          !skipEditorStateFilter &&
+          !matchesSplatEditorStateBits(bits, editorStateMode)
+        ) {
           stats.stateRejectedCenterCount += 1;
           return;
         }
@@ -2961,6 +3002,10 @@ export class SparkRenderer extends THREE.Mesh {
     ) => boolean | undefined;
   }): void {
     const editorState = target.getEditorState();
+    const skipEditorStateFilter = canSkipSplatScreenPickEditorStateFilter(
+      editorState,
+      editorStateMode,
+    );
     if (
       editorState &&
       target.hasIndexedSplatCenters() &&
@@ -2987,10 +3032,13 @@ export class SparkRenderer extends THREE.Mesh {
     target.forEachSplatCenterRaw((index, centerX, centerY, centerZ) => {
       stats.centerCount += 1;
       const bits =
-        editorState && index < editorState.maxSplats
+        !skipEditorStateFilter && editorState && index < editorState.maxSplats
           ? (editorState.states[index] ?? 0)
           : 0;
-      if (!matchesSplatEditorStateBits(bits, editorStateMode)) {
+      if (
+        !skipEditorStateFilter &&
+        !matchesSplatEditorStateBits(bits, editorStateMode)
+      ) {
         stats.stateRejectedCenterCount += 1;
         return;
       }
@@ -3221,10 +3269,16 @@ export class SparkRenderer extends THREE.Mesh {
     }
 
     const editorState = target.getEditorState();
-    const editorStateTexture = editorState
-      ? editorState.uploadDirtyWithResult(this.renderer).texture
-      : SplatEditorState.emptyTexture;
-    const editorStateMaxSplats = editorState?.maxSplats ?? 0;
+    const skipEditorStateFilter = canSkipSplatScreenPickEditorStateFilter(
+      editorState,
+      editorStateMode,
+    );
+    const editorStateTexture =
+      !skipEditorStateFilter && editorState
+        ? editorState.uploadDirtyWithResult(this.renderer).texture
+        : SplatEditorState.emptyTexture;
+    const editorStateMaxSplats =
+      !skipEditorStateFilter && editorState ? editorState.maxSplats : 0;
 
     target.updateMatrixWorld(true);
     const objectToClip = new THREE.Matrix4().multiplyMatrices(
@@ -3264,7 +3318,8 @@ export class SparkRenderer extends THREE.Mesh {
       stateImage.depth,
       editorStateMaxSplats,
     );
-    uniforms.editorStateEnabled.value = editorState != null;
+    uniforms.editorStateEnabled.value =
+      !skipEditorStateFilter && editorState != null;
     uniforms.editorStateFilterMode.value =
       splatEditorStateFilterModeToPickUniform(editorStateMode);
     uniforms.numSplats.value = numSplats;
