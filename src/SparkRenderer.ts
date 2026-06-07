@@ -12,6 +12,7 @@ import { SplatAccumulator } from "./SplatAccumulator";
 import { SplatEditorState } from "./SplatEditorState";
 import { SplatGeometry } from "./SplatGeometry";
 import {
+  type SplatScreenPickCollectStats,
   type SplatScreenPickHit,
   type SplatScreenPickOptions,
   type SplatScreenPickRect,
@@ -40,6 +41,10 @@ import {
   isOculus,
   isVisionPro,
 } from "./utils";
+
+function readNowMs(): number {
+  return globalThis.performance?.now?.() ?? Date.now();
+}
 
 export interface SparkRendererOptions {
   /**
@@ -1936,26 +1941,32 @@ export class SparkRenderer extends THREE.Mesh {
   async pickSplatCandidates(
     options: SplatScreenPickOptions,
   ): Promise<SplatScreenPickHit[]> {
+    const totalStartedAt = readNowMs();
     const { scene, camera } = options;
     const size = this.renderer.getDrawingBufferSize(new THREE.Vector2());
     const width = Math.max(1, Math.floor(options.width ?? size.x));
     const height = Math.max(1, Math.floor(options.height ?? size.y));
+    const renderMode = options.renderMode ?? "viewport";
     const rect = normalizeSplatScreenPickShape(options.shape, width, height);
     const layout = resolveSplatScreenPickRenderLayout(
       rect,
       width,
       height,
-      options.renderMode ?? "viewport",
+      renderMode,
     );
 
+    let updateMs = 0;
     if (options.update !== false) {
+      const updateStartedAt = readNowMs();
       await this.update({ scene: scene as THREE.Scene, camera });
+      updateMs = readNowMs() - updateStartedAt;
     }
 
     const target = this.ensureScreenPickTarget(
       layout.targetWidth,
       layout.targetHeight,
     );
+    const renderStartedAt = readNowMs();
     const pixels = await this.renderSplatScreenPickPass({
       target,
       scene,
@@ -1966,12 +1977,55 @@ export class SparkRenderer extends THREE.Mesh {
         options.editorStateMode ??
         editorSelectionOperationToPickFilterMode(options.operation ?? "set"),
     });
+    const renderReadbackMs = readNowMs() - renderStartedAt;
+    const collectStats: SplatScreenPickCollectStats = {
+      pixelCount: 0,
+      candidatePixelCount: 0,
+      maskTestedPixelCount: 0,
+      encodedPixelCount: 0,
+      duplicatePixelHitCount: 0,
+      uniqueHitCount: 0,
+      earlyExit: false,
+    };
+    const decodeStartedAt = readNowMs();
     const pixelHits = collectSplatScreenPickHitsFromRgba8(pixels, rect, {
       maxCandidates: options.maxCandidates,
       sort: options.sort,
+      stats: collectStats,
+    });
+    const decodeMs = readNowMs() - decodeStartedAt;
+    const mapStartedAt = readNowMs();
+    const hits = this.mapSplatScreenPickHits(pixelHits);
+    const mapMs = readNowMs() - mapStartedAt;
+
+    options.onStats?.({
+      shapeKind: options.shape.kind,
+      renderMode,
+      viewportWidth: width,
+      viewportHeight: height,
+      targetWidth: layout.targetWidth,
+      targetHeight: layout.targetHeight,
+      normalizedRect: {
+        x: rect.x,
+        y: rect.y,
+        width: rect.width,
+        height: rect.height,
+      },
+      readRect: layout.readRect,
+      pixelHitCount: pixelHits.length,
+      mappedHitCount: hits.length,
+      sourceStableHitCount: hits.filter((hit) => hit.sourceIndexStable).length,
+      collect: collectStats,
+      timingsMs: {
+        update: updateMs,
+        renderReadback: renderReadbackMs,
+        decode: decodeMs,
+        map: mapMs,
+        total: readNowMs() - totalStartedAt,
+      },
     });
 
-    return this.mapSplatScreenPickHits(pixelHits);
+    return hits;
   }
 
   private ensureScreenPickTarget(width: number, height: number) {

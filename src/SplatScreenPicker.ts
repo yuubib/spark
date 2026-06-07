@@ -47,6 +47,7 @@ export type SplatScreenPickOptions = {
   maxCandidates?: number;
   sort?: boolean;
   renderMode?: SplatScreenPickRenderMode;
+  onStats?: (stats: SplatScreenPickStats) => void;
 };
 
 export type SplatScreenPickHit = {
@@ -98,6 +99,38 @@ export type SplatScreenPickRenderLayout = {
   targetHeight: number;
   readRect: Omit<SplatScreenPickRect, "mask">;
   viewOffset: SplatScreenPickViewOffset | null;
+};
+
+export type SplatScreenPickCollectStats = {
+  pixelCount: number;
+  candidatePixelCount: number;
+  maskTestedPixelCount: number;
+  encodedPixelCount: number;
+  duplicatePixelHitCount: number;
+  uniqueHitCount: number;
+  earlyExit: boolean;
+};
+
+export type SplatScreenPickStats = {
+  shapeKind: SplatScreenPickShape["kind"];
+  renderMode: SplatScreenPickRenderMode;
+  viewportWidth: number;
+  viewportHeight: number;
+  targetWidth: number;
+  targetHeight: number;
+  normalizedRect: Omit<SplatScreenPickRect, "mask">;
+  readRect: Omit<SplatScreenPickRect, "mask">;
+  pixelHitCount: number;
+  mappedHitCount: number;
+  sourceStableHitCount: number;
+  collect: SplatScreenPickCollectStats;
+  timingsMs: {
+    update: number;
+    renderReadback: number;
+    decode: number;
+    map: number;
+    total: number;
+  };
 };
 
 export const SPLAT_SCREEN_PICK_FILTER_OFF = 0;
@@ -246,6 +279,7 @@ export function collectSplatScreenPickHitsFromRgba8(
   options: {
     maxCandidates?: number;
     sort?: boolean;
+    stats?: SplatScreenPickCollectStats;
   } = {},
 ): SplatScreenPickPixelHit[] {
   const expectedLength = rect.width * rect.height * 4;
@@ -261,13 +295,33 @@ export function collectSplatScreenPickHitsFromRgba8(
     options.maxCandidates != null
       ? Math.max(0, Math.floor(options.maxCandidates))
       : Number.POSITIVE_INFINITY;
+  const stats = {
+    pixelCount: rect.width * rect.height,
+    candidatePixelCount: 0,
+    maskTestedPixelCount: 0,
+    encodedPixelCount: 0,
+    duplicatePixelHitCount: 0,
+    uniqueHitCount: 0,
+    earlyExit: false,
+  };
+  const finish = () => {
+    stats.uniqueHitCount = hits.length;
+    if (options.stats) {
+      Object.assign(options.stats, stats);
+    }
+    return maybeSortPixelHits(hits, options.sort);
+  };
 
   for (let readY = 0; readY < rect.height; readY++) {
     const topY = rect.height - 1 - readY;
     for (let x = 0; x < rect.width; x++) {
-      if (rect.mask && !isPickMaskPixelEnabled(rect.mask, x, topY, rect)) {
-        continue;
+      if (rect.mask) {
+        stats.maskTestedPixelCount += 1;
+        if (!isPickMaskPixelEnabled(rect.mask, x, topY, rect)) {
+          continue;
+        }
       }
+      stats.candidatePixelCount += 1;
 
       const offset = (readY * rect.width + x) * 4;
       const encoded =
@@ -279,9 +333,11 @@ export function collectSplatScreenPickHitsFromRgba8(
       if (encoded === 0) {
         continue;
       }
+      stats.encodedPixelCount += 1;
 
       const accumulatorIndex = encoded - 1;
       if (seen.has(accumulatorIndex)) {
+        stats.duplicatePixelHitCount += 1;
         continue;
       }
       seen.add(accumulatorIndex);
@@ -293,12 +349,13 @@ export function collectSplatScreenPickHitsFromRgba8(
         },
       });
       if (hits.length >= maxCandidates) {
-        return maybeSortPixelHits(hits, options.sort);
+        stats.earlyExit = true;
+        return finish();
       }
     }
   }
 
-  return maybeSortPixelHits(hits, options.sort);
+  return finish();
 }
 
 function clipPickRect(

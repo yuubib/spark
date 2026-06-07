@@ -1,6 +1,7 @@
 import assert from "node:assert";
 
 import {
+  type SplatScreenPickCollectStats,
   collectSplatScreenPickHitsFromRgba8,
   editorSelectionOperationToPickFilterMode,
   normalizeSplatScreenPickShape,
@@ -105,20 +106,17 @@ const pixels = new Uint8Array([
   ...encode(2),
 ]);
 
-assert.deepStrictEqual(
-  collectSplatScreenPickHitsFromRgba8(pixels, {
-    x: 10,
-    y: 20,
-    width: 3,
-    height: 2,
-  }),
-  [
-    { accumulatorIndex: 2, pixel: { x: 11, y: 21 } },
-    { accumulatorIndex: 7, pixel: { x: 10, y: 21 } },
-    { accumulatorIndex: 300, pixel: { x: 11, y: 20 } },
-  ],
-);
+const emptyCollectStats = (): SplatScreenPickCollectStats => ({
+  pixelCount: 0,
+  candidatePixelCount: 0,
+  maskTestedPixelCount: 0,
+  encodedPixelCount: 0,
+  duplicatePixelHitCount: 0,
+  uniqueHitCount: 0,
+  earlyExit: false,
+});
 
+const stats = emptyCollectStats();
 assert.deepStrictEqual(
   collectSplatScreenPickHitsFromRgba8(
     pixels,
@@ -128,36 +126,87 @@ assert.deepStrictEqual(
       width: 3,
       height: 2,
     },
-    { maxCandidates: 2, sort: false },
+    { stats },
+  ),
+  [
+    { accumulatorIndex: 2, pixel: { x: 11, y: 21 } },
+    { accumulatorIndex: 7, pixel: { x: 10, y: 21 } },
+    { accumulatorIndex: 300, pixel: { x: 11, y: 20 } },
+  ],
+);
+assert.deepStrictEqual(stats, {
+  pixelCount: 6,
+  candidatePixelCount: 6,
+  maskTestedPixelCount: 0,
+  encodedPixelCount: 5,
+  duplicatePixelHitCount: 2,
+  uniqueHitCount: 3,
+  earlyExit: false,
+});
+
+const earlyStats = emptyCollectStats();
+assert.deepStrictEqual(
+  collectSplatScreenPickHitsFromRgba8(
+    pixels,
+    {
+      x: 10,
+      y: 20,
+      width: 3,
+      height: 2,
+    },
+    { maxCandidates: 2, sort: false, stats: earlyStats },
   ),
   [
     { accumulatorIndex: 7, pixel: { x: 10, y: 21 } },
     { accumulatorIndex: 2, pixel: { x: 11, y: 21 } },
   ],
 );
+assert.deepStrictEqual(earlyStats, {
+  pixelCount: 6,
+  candidatePixelCount: 2,
+  maskTestedPixelCount: 0,
+  encodedPixelCount: 2,
+  duplicatePixelHitCount: 0,
+  uniqueHitCount: 2,
+  earlyExit: true,
+});
 
+const maskStats = emptyCollectStats();
 assert.deepStrictEqual(
-  collectSplatScreenPickHitsFromRgba8(pixels, {
-    x: 10,
-    y: 20,
-    width: 3,
-    height: 2,
-    mask: {
-      data: new Uint8Array([
-        0, 0, 0, 0, 0, 0, 0, 255, 0, 0, 0, 0, 0, 0, 0, 255, 0, 0, 0, 0, 0, 0, 0,
-        0,
-      ]),
+  collectSplatScreenPickHitsFromRgba8(
+    pixels,
+    {
+      x: 10,
+      y: 20,
       width: 3,
       height: 2,
-      channel: 3,
-      threshold: 0,
+      mask: {
+        data: new Uint8Array([
+          0, 0, 0, 0, 0, 0, 0, 255, 0, 0, 0, 0, 0, 0, 0, 255, 0, 0, 0, 0, 0, 0,
+          0, 0,
+        ]),
+        width: 3,
+        height: 2,
+        channel: 3,
+        threshold: 0,
+      },
     },
-  }),
+    { stats: maskStats },
+  ),
   [
     { accumulatorIndex: 7, pixel: { x: 10, y: 21 } },
     { accumulatorIndex: 300, pixel: { x: 11, y: 20 } },
   ],
 );
+assert.deepStrictEqual(maskStats, {
+  pixelCount: 6,
+  candidatePixelCount: 2,
+  maskTestedPixelCount: 6,
+  encodedPixelCount: 2,
+  duplicatePixelHitCount: 0,
+  uniqueHitCount: 2,
+  earlyExit: false,
+});
 
 assert.throws(() =>
   collectSplatScreenPickHitsFromRgba8(new Uint8Array(3), {

@@ -17,6 +17,7 @@ export {
   normalizeSplatScreenPickShape,
   resolveSplatScreenPickRenderLayout,
   splatEditorStateFilterModeToPickUniform,
+  type SplatScreenPickCollectStats,
   type SplatScreenPickHit,
   type SplatScreenPickMask,
   type SplatScreenPickOptions,
@@ -25,6 +26,7 @@ export {
   type SplatScreenPickRenderLayout,
   type SplatScreenPickRenderMode,
   type SplatScreenPickShape,
+  type SplatScreenPickStats,
   type SplatScreenPickViewOffset,
 } from "./SplatScreenPicker";
 export { SplatAccumulator, type GeneratorMapping } from "./SplatAccumulator";

@@ -37,6 +37,7 @@ export type SplatScreenPickOptions = {
     maxCandidates?: number;
     sort?: boolean;
     renderMode?: SplatScreenPickRenderMode;
+    onStats?: (stats: SplatScreenPickStats) => void;
 };
 export type SplatScreenPickHit = {
     object: SplatGenerator;
@@ -83,6 +84,36 @@ export type SplatScreenPickRenderLayout = {
     readRect: Omit<SplatScreenPickRect, "mask">;
     viewOffset: SplatScreenPickViewOffset | null;
 };
+export type SplatScreenPickCollectStats = {
+    pixelCount: number;
+    candidatePixelCount: number;
+    maskTestedPixelCount: number;
+    encodedPixelCount: number;
+    duplicatePixelHitCount: number;
+    uniqueHitCount: number;
+    earlyExit: boolean;
+};
+export type SplatScreenPickStats = {
+    shapeKind: SplatScreenPickShape["kind"];
+    renderMode: SplatScreenPickRenderMode;
+    viewportWidth: number;
+    viewportHeight: number;
+    targetWidth: number;
+    targetHeight: number;
+    normalizedRect: Omit<SplatScreenPickRect, "mask">;
+    readRect: Omit<SplatScreenPickRect, "mask">;
+    pixelHitCount: number;
+    mappedHitCount: number;
+    sourceStableHitCount: number;
+    collect: SplatScreenPickCollectStats;
+    timingsMs: {
+        update: number;
+        renderReadback: number;
+        decode: number;
+        map: number;
+        total: number;
+    };
+};
 export declare const SPLAT_SCREEN_PICK_FILTER_OFF = 0;
 export declare const SPLAT_SCREEN_PICK_FILTER_ALL = 1;
 export declare const SPLAT_SCREEN_PICK_FILTER_VISIBLE = 2;
@@ -97,4 +128,5 @@ export declare function resolveSplatScreenPickRenderLayout(rect: SplatScreenPick
 export declare function collectSplatScreenPickHitsFromRgba8(pixels: ArrayLike<number>, rect: SplatScreenPickRect, options?: {
     maxCandidates?: number;
     sort?: boolean;
+    stats?: SplatScreenPickCollectStats;
 }): SplatScreenPickPixelHit[];

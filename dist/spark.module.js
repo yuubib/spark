@@ -11757,19 +11757,41 @@ function collectSplatScreenPickHitsFromRgba8(pixels, rect, options = {}) {
   const seen = /* @__PURE__ */ new Set();
   const hits = [];
   const maxCandidates = options.maxCandidates != null ? Math.max(0, Math.floor(options.maxCandidates)) : Number.POSITIVE_INFINITY;
+  const stats = {
+    pixelCount: rect.width * rect.height,
+    candidatePixelCount: 0,
+    maskTestedPixelCount: 0,
+    encodedPixelCount: 0,
+    duplicatePixelHitCount: 0,
+    uniqueHitCount: 0,
+    earlyExit: false
+  };
+  const finish = () => {
+    stats.uniqueHitCount = hits.length;
+    if (options.stats) {
+      Object.assign(options.stats, stats);
+    }
+    return maybeSortPixelHits(hits, options.sort);
+  };
   for (let readY = 0; readY < rect.height; readY++) {
     const topY = rect.height - 1 - readY;
     for (let x = 0; x < rect.width; x++) {
-      if (rect.mask && !isPickMaskPixelEnabled(rect.mask, x, topY, rect)) {
-        continue;
+      if (rect.mask) {
+        stats.maskTestedPixelCount += 1;
+        if (!isPickMaskPixelEnabled(rect.mask, x, topY, rect)) {
+          continue;
+        }
       }
+      stats.candidatePixelCount += 1;
       const offset = (readY * rect.width + x) * 4;
       const encoded = (pixels[offset] | pixels[offset + 1] << 8 | pixels[offset + 2] << 16 | pixels[offset + 3] << 24) >>> 0;
       if (encoded === 0) {
         continue;
       }
+      stats.encodedPixelCount += 1;
       const accumulatorIndex = encoded - 1;
       if (seen.has(accumulatorIndex)) {
+        stats.duplicatePixelHitCount += 1;
         continue;
       }
       seen.add(accumulatorIndex);
@@ -11781,11 +11803,12 @@ function collectSplatScreenPickHitsFromRgba8(pixels, rect, options = {}) {
         }
       });
       if (hits.length >= maxCandidates) {
-        return maybeSortPixelHits(hits, options.sort);
+        stats.earlyExit = true;
+        return finish();
       }
     }
   }
-  return maybeSortPixelHits(hits, options.sort);
+  return finish();
 }
 function clipPickRect(rect, targetWidth, targetHeight) {
   const x0 = Math.max(0, Math.min(targetWidth, rect.x));
@@ -11906,6 +11929,10 @@ function remapCompactSplatOrdering(ordering, activeSplats, sourceIndices) {
   for (let index = 0; index < count; index += 1) {
     ordering[index] = sourceIndices[ordering[index]] ?? 0;
   }
+}
+function readNowMs() {
+  var _a2, _b2;
+  return ((_b2 = (_a2 = globalThis.performance) == null ? void 0 : _a2.now) == null ? void 0 : _b2.call(_a2)) ?? Date.now();
 }
 const _SparkRenderer = class _SparkRenderer extends THREE.Mesh {
   constructor(options) {
@@ -13044,24 +13071,31 @@ const _SparkRenderer = class _SparkRenderer extends THREE.Mesh {
     }
   }
   async pickSplatCandidates(options) {
+    var _a2;
+    const totalStartedAt = readNowMs();
     const { scene, camera } = options;
     const size = this.renderer.getDrawingBufferSize(new THREE.Vector2());
     const width = Math.max(1, Math.floor(options.width ?? size.x));
     const height = Math.max(1, Math.floor(options.height ?? size.y));
+    const renderMode = options.renderMode ?? "viewport";
     const rect = normalizeSplatScreenPickShape(options.shape, width, height);
     const layout = resolveSplatScreenPickRenderLayout(
       rect,
       width,
       height,
-      options.renderMode ?? "viewport"
+      renderMode
     );
+    let updateMs = 0;
     if (options.update !== false) {
+      const updateStartedAt = readNowMs();
       await this.update({ scene, camera });
+      updateMs = readNowMs() - updateStartedAt;
     }
     const target = this.ensureScreenPickTarget(
       layout.targetWidth,
       layout.targetHeight
     );
+    const renderStartedAt = readNowMs();
     const pixels = await this.renderSplatScreenPickPass({
       target,
       scene,
@@ -13070,11 +13104,53 @@ const _SparkRenderer = class _SparkRenderer extends THREE.Mesh {
       viewOffset: layout.viewOffset,
       editorStateMode: options.editorStateMode ?? editorSelectionOperationToPickFilterMode(options.operation ?? "set")
     });
+    const renderReadbackMs = readNowMs() - renderStartedAt;
+    const collectStats = {
+      pixelCount: 0,
+      candidatePixelCount: 0,
+      maskTestedPixelCount: 0,
+      encodedPixelCount: 0,
+      duplicatePixelHitCount: 0,
+      uniqueHitCount: 0,
+      earlyExit: false
+    };
+    const decodeStartedAt = readNowMs();
     const pixelHits = collectSplatScreenPickHitsFromRgba8(pixels, rect, {
       maxCandidates: options.maxCandidates,
-      sort: options.sort
+      sort: options.sort,
+      stats: collectStats
     });
-    return this.mapSplatScreenPickHits(pixelHits);
+    const decodeMs = readNowMs() - decodeStartedAt;
+    const mapStartedAt = readNowMs();
+    const hits = this.mapSplatScreenPickHits(pixelHits);
+    const mapMs = readNowMs() - mapStartedAt;
+    (_a2 = options.onStats) == null ? void 0 : _a2.call(options, {
+      shapeKind: options.shape.kind,
+      renderMode,
+      viewportWidth: width,
+      viewportHeight: height,
+      targetWidth: layout.targetWidth,
+      targetHeight: layout.targetHeight,
+      normalizedRect: {
+        x: rect.x,
+        y: rect.y,
+        width: rect.width,
+        height: rect.height
+      },
+      readRect: layout.readRect,
+      pixelHitCount: pixelHits.length,
+      mappedHitCount: hits.length,
+      sourceStableHitCount: hits.filter((hit) => hit.sourceIndexStable).length,
+      collect: collectStats,
+      timingsMs: {
+        update: updateMs,
+        renderReadback: renderReadbackMs,
+        decode: decodeMs,
+        map: mapMs,
+        total: readNowMs() - totalStartedAt
+      }
+    });
+    return hits;
   }
   ensureScreenPickTarget(width, height) {
     const current = this.screenPickTarget;
