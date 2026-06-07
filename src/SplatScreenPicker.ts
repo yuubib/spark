@@ -115,6 +115,7 @@ export type SplatScreenPickCenterProcessor = "auto" | "cpu" | "gpu";
 export type SplatScreenPickCenterProcessorMode = "cpu" | "gpu";
 export type SplatScreenPickCenterProcessorFallbackReason =
   | "requested-cpu"
+  | "auto-cpu-estimated-faster"
   | "gpu-unavailable"
   | "webgl2-unavailable"
   | "unsupported-source"

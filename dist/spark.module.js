@@ -12729,6 +12729,7 @@ function canUseSelectedSplatCenterIndexMode(editorStateMode) {
   return editorStateMode === "selected" || editorStateMode === "pick-remove";
 }
 const SPLAT_CENTER_INTERSECTION_OUTPUT_WIDTH = 4096;
+const SPLAT_CENTER_INTERSECTION_AUTO_CPU_MAX_SPLATS = 5e5;
 function getSplatCenterIntersectionOutputSize(numSplats) {
   const byteCount = Math.max(0, Math.floor(numSplats));
   if (byteCount <= 0) {
@@ -12749,6 +12750,9 @@ function isSplatScreenPickTargetVisible(scene, target) {
     }
   });
   return visible;
+}
+function shouldPreferCpuSplatCenterProcessor(numSplats) {
+  return Number.isFinite(numSplats) && numSplats > 0 && numSplats <= SPLAT_CENTER_INTERSECTION_AUTO_CPU_MAX_SPLATS;
 }
 const _SparkRenderer = class _SparkRenderer extends THREE.Mesh {
   constructor(options) {
@@ -14140,13 +14144,20 @@ const _SparkRenderer = class _SparkRenderer extends THREE.Mesh {
     }
     const collectStats = createSplatScreenPickCenterCollectStats();
     const requestedProcessor = options.centerProcessor ?? "auto";
-    if (requestedProcessor !== "cpu") {
+    if (requestedProcessor === "auto" && shouldPreferCpuSplatCenterProcessor(target.numSplats)) {
+      setSplatScreenPickCenterProcessorStats(
+        collectStats,
+        requestedProcessor,
+        "cpu",
+        "auto-cpu-estimated-faster"
+      );
+    } else if (requestedProcessor !== "cpu") {
       setSplatScreenPickCenterProcessorStats(
         collectStats,
         requestedProcessor,
         "gpu"
       );
-      const gpuResult = this.tryCollectSplatScreenPickCenterIndicesGpu({
+      const gpuResult = await this.tryCollectSplatScreenPickCenterIndicesGpu({
         scene,
         camera,
         target,
@@ -14697,7 +14708,7 @@ const _SparkRenderer = class _SparkRenderer extends THREE.Mesh {
     }
     return result;
   }
-  tryCollectSplatScreenPickCenterIndicesGpu({
+  async tryCollectSplatScreenPickCenterIndicesGpu({
     scene,
     camera,
     target,
@@ -14810,7 +14821,7 @@ const _SparkRenderer = class _SparkRenderer extends THREE.Mesh {
       uniforms.maskEnabled.value = false;
     }
     try {
-      const pass = this.renderSplatCenterIntersectionPass(outputTarget);
+      const pass = await this.renderSplatCenterIntersectionPass(outputTarget);
       const compactStartedAt = readNowMs();
       const compactStats = {
         byteCount: 0,
@@ -15100,7 +15111,7 @@ const _SparkRenderer = class _SparkRenderer extends THREE.Mesh {
     );
     return this.centerIntersectionMaterial;
   }
-  renderSplatCenterIntersectionPass(target) {
+  async renderSplatCenterIntersectionPass(target) {
     const renderer = this.renderer;
     const byteLength = target.width * target.height * 4;
     if (!this.centerIntersectionPixels || this.centerIntersectionPixels.length < byteLength) {
@@ -15129,7 +15140,7 @@ const _SparkRenderer = class _SparkRenderer extends THREE.Mesh {
       quad.render(renderer);
       const renderMs = readNowMs() - renderStartedAt;
       const readbackStartedAt = readNowMs();
-      renderer.readRenderTargetPixels(
+      await renderer.readRenderTargetPixelsAsync(
         target,
         0,
         0,

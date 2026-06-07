@@ -92,7 +92,10 @@ assert.strictEqual(stats?.centerCollect?.candidateCenterCount, 2);
 assert.strictEqual(stats?.centerCollect?.viewRejectedCenterCount, 1);
 assert.strictEqual(stats?.centerCollect?.requestedProcessor, "auto");
 assert.strictEqual(stats?.centerCollect?.processor, "cpu");
-assert.strictEqual(stats?.centerCollect?.fallbackReason, "webgl2-unavailable");
+assert.strictEqual(
+  stats?.centerCollect?.fallbackReason,
+  "auto-cpu-estimated-faster",
+);
 assert.deepStrictEqual(stats?.centerCollect?.projectedBounds, {
   minX: 25,
   minY: 50,
