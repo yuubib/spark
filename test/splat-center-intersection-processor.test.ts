@@ -103,6 +103,22 @@ import {
 {
   const stats = createSplatCenterIntersectionCompactStats();
   const compact = compactSplatCenterIntersectionBitsetBytes(
+    new Uint8Array([0x80, 0, 0, 0, 0, 0, 0x40, 0x01]),
+    { bitCount: 57, stats },
+  );
+
+  assert.deepStrictEqual([...compact], [7, 54, 56]);
+  assert.deepStrictEqual(stats, {
+    byteCount: 8,
+    candidateByteCount: 3,
+    uniqueHitCount: 3,
+    earlyExit: false,
+  });
+}
+
+{
+  const stats = createSplatCenterIntersectionCompactStats();
+  const compact = compactSplatCenterIntersectionBitsetBytes(
     new Uint8Array([0b1111_0000]),
     { bitCount: 4, stats },
   );
@@ -113,6 +129,30 @@ import {
     candidateByteCount: 0,
     uniqueHitCount: 0,
     earlyExit: false,
+  });
+}
+
+{
+  const stats = createSplatCenterIntersectionCompactStats();
+  const holder = { buffer: new Uint32Array(1).fill(999) };
+  const compact = compactSplatCenterIntersectionBitsetBytes(
+    new Uint8Array([0x81, 0x80]),
+    {
+      bitCount: 16,
+      maxCandidates: 1,
+      indexBuffer: holder,
+      stats,
+    },
+  );
+
+  assert.deepStrictEqual([...compact], [0]);
+  assert.strictEqual(compact.buffer, holder.buffer.buffer);
+  assert.strictEqual(holder.buffer[0], 0);
+  assert.deepStrictEqual(stats, {
+    byteCount: 2,
+    candidateByteCount: 2,
+    uniqueHitCount: 1,
+    earlyExit: true,
   });
 }
 

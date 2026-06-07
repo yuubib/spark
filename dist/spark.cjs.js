@@ -12371,6 +12371,14 @@ function createSplatCenterIntersectionCompactStats() {
     earlyExit: false
   };
 }
+const SPLAT_CENTER_INTERSECTION_LOW_BIT_INDEX = (() => {
+  const table = new Int8Array(256);
+  table.fill(-1);
+  for (let bit = 0; bit < 8; bit += 1) {
+    table[1 << bit] = bit;
+  }
+  return table;
+})();
 function compactSplatCenterIntersectionBytes(bytes, options = {}) {
   var _a2;
   const maxCandidates = options.maxCandidates != null ? Math.max(0, Math.floor(options.maxCandidates)) : Number.POSITIVE_INFINITY;
@@ -12445,17 +12453,17 @@ function compactSplatCenterIntersectionBitsetBytes(bytes, options = {}) {
     return finish();
   }
   for (let byteIndex = 0; byteIndex < byteCount; byteIndex += 1) {
-    const packed = bytes[byteIndex] ?? 0;
+    const packed = (bytes[byteIndex] ?? 0) & 255;
     if (packed === 0) {
       continue;
     }
-    for (let bit = 0; bit < 8; bit += 1) {
+    let remaining = packed;
+    while (remaining !== 0) {
+      const lowBit = remaining & -remaining;
+      const bit = SPLAT_CENTER_INTERSECTION_LOW_BIT_INDEX[lowBit] ?? -1;
       const sourceIndex = byteIndex * 8 + bit;
       if (sourceIndex >= bitCount) {
         return finish();
-      }
-      if ((packed & 1 << bit) === 0) {
-        continue;
       }
       stats.candidateByteCount += 1;
       if (indexCount >= maxCandidates) {
@@ -12476,6 +12484,7 @@ function compactSplatCenterIntersectionBitsetBytes(bytes, options = {}) {
       }
       indices[indexCount] = sourceIndex;
       indexCount += 1;
+      remaining &= remaining - 1;
     }
   }
   return finish();

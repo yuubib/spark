@@ -830,6 +830,15 @@ export function createSplatCenterIntersectionCompactStats(): SplatCenterIntersec
   };
 }
 
+const SPLAT_CENTER_INTERSECTION_LOW_BIT_INDEX = (() => {
+  const table = new Int8Array(256);
+  table.fill(-1);
+  for (let bit = 0; bit < 8; bit += 1) {
+    table[1 << bit] = bit;
+  }
+  return table;
+})();
+
 export function compactSplatCenterIntersectionBytes(
   bytes: ArrayLike<number>,
   options: {
@@ -941,18 +950,18 @@ export function compactSplatCenterIntersectionBitsetBytes(
   }
 
   for (let byteIndex = 0; byteIndex < byteCount; byteIndex += 1) {
-    const packed = bytes[byteIndex] ?? 0;
+    const packed = (bytes[byteIndex] ?? 0) & 0xff;
     if (packed === 0) {
       continue;
     }
 
-    for (let bit = 0; bit < 8; bit += 1) {
+    let remaining = packed;
+    while (remaining !== 0) {
+      const lowBit = remaining & -remaining;
+      const bit = SPLAT_CENTER_INTERSECTION_LOW_BIT_INDEX[lowBit] ?? -1;
       const sourceIndex = byteIndex * 8 + bit;
       if (sourceIndex >= bitCount) {
         return finish();
-      }
-      if ((packed & (1 << bit)) === 0) {
-        continue;
       }
 
       stats.candidateByteCount += 1;
@@ -976,6 +985,7 @@ export function compactSplatCenterIntersectionBitsetBytes(
       }
       indices[indexCount] = sourceIndex;
       indexCount += 1;
+      remaining &= remaining - 1;
     }
   }
 
