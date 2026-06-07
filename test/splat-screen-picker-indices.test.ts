@@ -140,6 +140,35 @@ assert.strictEqual(
   "requested-cpu",
 );
 
+const originalAutoNumSplats = mesh.numSplats;
+const originalAutoCapabilities = sparkRenderer.renderer.capabilities;
+sparkRenderer.renderer.capabilities = { isWebGL2: true };
+mesh.numSplats = 1_100_000;
+let mediumAutoStats: SplatScreenPickStats | null = null;
+const mediumAutoIndices = await sparkRenderer.pickSplatCandidateIndices({
+  target: mesh,
+  scene,
+  camera,
+  candidateMode: "centers",
+  shape: { kind: "rect", x: 0, y: 0, width: 1, height: 1 },
+  width: 100,
+  height: 100,
+  operation: "set",
+  onStats: (nextStats) => {
+    mediumAutoStats = nextStats;
+  },
+});
+mesh.numSplats = originalAutoNumSplats;
+sparkRenderer.renderer.capabilities = originalAutoCapabilities;
+
+assert.deepStrictEqual([...(mediumAutoIndices ?? [])], [0, 1]);
+assert.strictEqual(mediumAutoStats?.centerCollect?.requestedProcessor, "auto");
+assert.strictEqual(mediumAutoStats?.centerCollect?.processor, "cpu");
+assert.strictEqual(
+  mediumAutoStats?.centerCollect?.fallbackReason,
+  "auto-cpu-estimated-faster",
+);
+
 let requestedGpuStats: SplatScreenPickStats | null = null;
 const requestedGpuIndices = await sparkRenderer.pickSplatCandidateIndices({
   target: mesh,

@@ -12900,7 +12900,7 @@ function canSkipSplatScreenPickEditorStateFilter(editorState, editorStateMode) {
   }
 }
 const SPLAT_CENTER_INTERSECTION_OUTPUT_WIDTH = 4096;
-const SPLAT_CENTER_INTERSECTION_AUTO_CPU_MAX_SPLATS = 5e5;
+const SPLAT_CENTER_INTERSECTION_AUTO_CPU_MAX_SPLATS = 125e4;
 const SPLAT_CENTER_INTERSECTION_OUTPUT_ENCODING_BITSET = "bitset-rgba8";
 const SPLAT_CENTER_INTERSECTION_SYNC_READBACK_MAX_BYTES = 256 * 1024;
 function getSplatCenterIntersectionOutputSizeForEncoding(numSplats, encoding) {
