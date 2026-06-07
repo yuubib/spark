@@ -3,10 +3,12 @@ import assert from "node:assert";
 import {
   type SplatScreenPickCollectStats,
   collectSplatScreenPickHitsFromRgba8,
+  createSplatScreenPickCenterCollectStats,
   editorSelectionOperationToPickFilterMode,
   normalizeSplatScreenPickShape,
   resolveSplatScreenPickRenderLayout,
   splatEditorStateFilterModeToPickUniform,
+  testSplatScreenPickCenter,
 } from "../src/SplatScreenPicker.js";
 
 assert.strictEqual(editorSelectionOperationToPickFilterMode("add"), "pick-add");
@@ -241,6 +243,79 @@ assert.deepStrictEqual(scaledMaskStats, {
   uniqueHitCount: 2,
   earlyExit: false,
 });
+
+const centerStats = createSplatScreenPickCenterCollectStats();
+assert.strictEqual(
+  testSplatScreenPickCenter(
+    { x: 10, y: 20, width: 10, height: 5 },
+    12.5,
+    22.5,
+    centerStats,
+  ),
+  true,
+);
+assert.strictEqual(centerStats.viewRejectedCenterCount, 0);
+assert.strictEqual(centerStats.maskTestedCenterCount, 0);
+assert.strictEqual(
+  testSplatScreenPickCenter(
+    { x: 10, y: 20, width: 10, height: 5 },
+    20,
+    22.5,
+    centerStats,
+  ),
+  false,
+);
+assert.strictEqual(centerStats.viewRejectedCenterCount, 1);
+
+const centerMask = new Uint8Array([
+  0, 0, 0, 0, 0, 0, 0, 255, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0,
+]);
+const centerMaskStats = createSplatScreenPickCenterCollectStats();
+assert.strictEqual(
+  testSplatScreenPickCenter(
+    {
+      x: 10,
+      y: 20,
+      width: 4,
+      height: 2,
+      mask: {
+        data: centerMask,
+        width: 4,
+        height: 2,
+        channel: 3,
+        threshold: 0,
+      },
+    },
+    11.2,
+    20.7,
+    centerMaskStats,
+  ),
+  true,
+);
+assert.strictEqual(
+  testSplatScreenPickCenter(
+    {
+      x: 10,
+      y: 20,
+      width: 4,
+      height: 2,
+      mask: {
+        data: centerMask,
+        width: 4,
+        height: 2,
+        channel: 3,
+        threshold: 0,
+      },
+    },
+    12.2,
+    20.7,
+    centerMaskStats,
+  ),
+  false,
+);
+assert.strictEqual(centerMaskStats.maskTestedCenterCount, 2);
+assert.strictEqual(centerMaskStats.viewRejectedCenterCount, 1);
 
 assert.throws(() =>
   collectSplatScreenPickHitsFromRgba8(new Uint8Array(3), {

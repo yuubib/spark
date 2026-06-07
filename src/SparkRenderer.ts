@@ -9,19 +9,25 @@ import {
   SplatPager,
 } from ".";
 import { SplatAccumulator } from "./SplatAccumulator";
-import { SplatEditorState } from "./SplatEditorState";
+import {
+  SplatEditorState,
+  matchesSplatEditorStateBits,
+} from "./SplatEditorState";
 import { SplatGeometry } from "./SplatGeometry";
 import {
+  type SplatScreenPickCenterCollectStats,
   type SplatScreenPickCollectStats,
   type SplatScreenPickHit,
   type SplatScreenPickOptions,
   type SplatScreenPickRect,
   type SplatScreenPickViewOffset,
   collectSplatScreenPickHitsFromRgba8,
+  createSplatScreenPickCenterCollectStats,
   editorSelectionOperationToPickFilterMode,
   normalizeSplatScreenPickShape,
   resolveSplatScreenPickRenderLayout,
   splatEditorStateFilterModeToPickUniform,
+  testSplatScreenPickCenter,
 } from "./SplatScreenPicker";
 import {
   type SplatSortInputForEditorState,
@@ -1954,8 +1960,82 @@ export class SparkRenderer extends THREE.Mesh {
       height,
       renderMode,
     );
+    const candidateMode = options.candidateMode ?? "rendered-id";
+    const editorStateMode =
+      options.editorStateMode ??
+      editorSelectionOperationToPickFilterMode(options.operation ?? "set");
 
     let updateMs = 0;
+    if (candidateMode === "centers") {
+      if (options.update !== false) {
+        const updateStartedAt = readNowMs();
+        scene.updateMatrixWorld(true);
+        camera.updateMatrixWorld(true);
+        updateMs = readNowMs() - updateStartedAt;
+      }
+
+      const collectStats = createSplatScreenPickCenterCollectStats();
+      const collectStartedAt = readNowMs();
+      const hits = this.collectSplatScreenPickCenterHits({
+        scene,
+        camera,
+        rect,
+        viewportWidth: width,
+        viewportHeight: height,
+        editorStateMode,
+        maxCandidates: options.maxCandidates,
+        sort: options.sort,
+        stats: collectStats,
+      });
+      const collectMs = readNowMs() - collectStartedAt;
+
+      options.onStats?.({
+        shapeKind: options.shape.kind,
+        candidateMode,
+        renderMode,
+        viewportWidth: width,
+        viewportHeight: height,
+        targetWidth: layout.targetWidth,
+        targetHeight: layout.targetHeight,
+        normalizedRect: {
+          x: rect.x,
+          y: rect.y,
+          width: rect.width,
+          height: rect.height,
+        },
+        readRect: layout.readRect,
+        pixelHitCount: 0,
+        mappedHitCount: hits.length,
+        sourceStableHitCount: hits.filter((hit) => hit.sourceIndexStable)
+          .length,
+        collect: {
+          pixelCount: 0,
+          candidatePixelCount: 0,
+          maskTestedPixelCount: 0,
+          encodedPixelCount: 0,
+          duplicatePixelHitCount: 0,
+          uniqueHitCount: 0,
+          earlyExit: collectStats.earlyExit,
+        },
+        centerCollect: collectStats,
+        timingsMs: {
+          update: updateMs,
+          renderReadback: 0,
+          decode: 0,
+          map: collectMs,
+          total: readNowMs() - totalStartedAt,
+        },
+      });
+
+      return hits;
+    }
+
+    if (candidateMode !== "rendered-id") {
+      throw new Error(
+        `Unsupported splat screen pick candidate mode: ${candidateMode}`,
+      );
+    }
+
     if (options.update !== false) {
       const updateStartedAt = readNowMs();
       if (this.accumulators.length > 0) {
@@ -1975,9 +2055,7 @@ export class SparkRenderer extends THREE.Mesh {
       camera,
       readRect: layout.readRect,
       viewOffset: layout.viewOffset,
-      editorStateMode:
-        options.editorStateMode ??
-        editorSelectionOperationToPickFilterMode(options.operation ?? "set"),
+      editorStateMode,
     });
     const renderReadbackMs = readNowMs() - renderStartedAt;
     const { pixels } = pickPass;
@@ -2003,6 +2081,7 @@ export class SparkRenderer extends THREE.Mesh {
 
     options.onStats?.({
       shapeKind: options.shape.kind,
+      candidateMode,
       renderMode,
       viewportWidth: width,
       viewportHeight: height,
@@ -2030,6 +2109,138 @@ export class SparkRenderer extends THREE.Mesh {
       },
     });
 
+    return hits;
+  }
+
+  private collectSplatScreenPickCenterHits({
+    scene,
+    camera,
+    rect,
+    viewportWidth,
+    viewportHeight,
+    editorStateMode,
+    maxCandidates,
+    sort,
+    stats,
+  }: {
+    scene: THREE.Object3D;
+    camera: THREE.Camera;
+    rect: SplatScreenPickRect;
+    viewportWidth: number;
+    viewportHeight: number;
+    editorStateMode: NonNullable<SplatScreenPickOptions["editorStateMode"]>;
+    maxCandidates?: number;
+    sort?: boolean;
+    stats: SplatScreenPickCenterCollectStats;
+  }): SplatScreenPickHit[] {
+    const max =
+      maxCandidates != null
+        ? Math.max(0, Math.floor(maxCandidates))
+        : Number.POSITIVE_INFINITY;
+    if (max <= 0) {
+      stats.earlyExit = true;
+      return [];
+    }
+
+    const viewProjection = new THREE.Matrix4().multiplyMatrices(
+      camera.projectionMatrix,
+      camera.matrixWorldInverse,
+    );
+    const clip = new THREE.Vector4();
+    const mappings = new Map<SplatGenerator, { base: number; count: number }>();
+    for (const mapping of this.display.mapping) {
+      mappings.set(mapping.node, { base: mapping.base, count: mapping.count });
+    }
+
+    const seen = new Set<string>();
+    const hits: SplatScreenPickHit[] = [];
+
+    scene.traverseVisible((object) => {
+      if (hits.length >= max || !(object instanceof SplatMesh)) {
+        return;
+      }
+      if (!object.isInitialized) {
+        return;
+      }
+
+      const mapping = mappings.get(object);
+      const editorState = object.getEditorState();
+      const sourceIndexStable =
+        object.context.enableLod.value === false && !object.paged;
+      object.updateMatrixWorld(true);
+      const matrixWorld = object.matrixWorld;
+
+      object.forEachSplat((index, center) => {
+        if (hits.length >= max) {
+          stats.earlyExit = true;
+          return;
+        }
+
+        stats.centerCount += 1;
+        const bits =
+          editorState && index < editorState.maxSplats
+            ? (editorState.states[index] ?? 0)
+            : 0;
+        if (!matchesSplatEditorStateBits(bits, editorStateMode)) {
+          stats.stateRejectedCenterCount += 1;
+          return;
+        }
+
+        clip
+          .set(center.x, center.y, center.z, 1)
+          .applyMatrix4(matrixWorld)
+          .applyMatrix4(viewProjection);
+        const ndcX = clip.x / clip.w;
+        const ndcY = clip.y / clip.w;
+        const ndcZ = clip.z / clip.w;
+        if (
+          !Number.isFinite(ndcX) ||
+          !Number.isFinite(ndcY) ||
+          !Number.isFinite(ndcZ) ||
+          Math.abs(ndcX) > 1 ||
+          Math.abs(ndcY) > 1 ||
+          Math.abs(ndcZ) > 1
+        ) {
+          stats.viewRejectedCenterCount += 1;
+          return;
+        }
+
+        const x = (ndcX * 0.5 + 0.5) * viewportWidth;
+        const y = (-ndcY * 0.5 + 0.5) * viewportHeight;
+        if (!testSplatScreenPickCenter(rect, x, y, stats)) {
+          return;
+        }
+
+        stats.candidateCenterCount += 1;
+        const key = `${object.uuid}:${index}`;
+        if (seen.has(key)) {
+          stats.duplicateCenterHitCount += 1;
+          return;
+        }
+        seen.add(key);
+        hits.push({
+          object,
+          index,
+          accumulatorIndex:
+            mapping && index < mapping.count ? mapping.base + index : index,
+          sourceIndexStable,
+          pixel: {
+            x: Math.floor(x),
+            y: Math.floor(y),
+          },
+        });
+      });
+    });
+
+    stats.uniqueHitCount = hits.length;
+    if (sort !== false) {
+      hits.sort(
+        (a, b) =>
+          a.accumulatorIndex - b.accumulatorIndex ||
+          a.object.uuid.localeCompare(b.object.uuid) ||
+          a.index - b.index,
+      );
+    }
     return hits;
   }
 

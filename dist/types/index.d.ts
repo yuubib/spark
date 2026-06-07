@@ -1,7 +1,7 @@
 export { OldSparkRenderer, type OldSparkRendererOptions, } from './OldSparkRenderer';
 export { OldSparkViewpoint, type OldSparkViewpointOptions, } from './OldSparkViewpoint';
 export { SparkRenderer, type SparkRendererOptions, } from './SparkRenderer';
-export { collectSplatScreenPickHitsFromRgba8, editorSelectionOperationToPickFilterMode, normalizeSplatScreenPickShape, resolveSplatScreenPickRenderLayout, splatEditorStateFilterModeToPickUniform, type SplatScreenPickCollectStats, type SplatScreenPickHit, type SplatScreenPickMask, type SplatScreenPickOptions, type SplatScreenPickPixelHit, type SplatScreenPickRect, type SplatScreenPickRenderLayout, type SplatScreenPickRenderMode, type SplatScreenPickShape, type SplatScreenPickStats, type SplatScreenPickViewOffset, } from './SplatScreenPicker';
+export { collectSplatScreenPickHitsFromRgba8, editorSelectionOperationToPickFilterMode, normalizeSplatScreenPickShape, resolveSplatScreenPickRenderLayout, splatEditorStateFilterModeToPickUniform, testSplatScreenPickCenter, createSplatScreenPickCenterCollectStats, type SplatScreenPickCandidateMode, type SplatScreenPickCenterCollectStats, type SplatScreenPickCollectStats, type SplatScreenPickHit, type SplatScreenPickMask, type SplatScreenPickOptions, type SplatScreenPickPixelHit, type SplatScreenPickRect, type SplatScreenPickRenderLayout, type SplatScreenPickRenderMode, type SplatScreenPickShape, type SplatScreenPickStats, type SplatScreenPickViewOffset, } from './SplatScreenPicker';
 export { SplatAccumulator, type GeneratorMapping } from './SplatAccumulator';
 export * as dyno from './dyno';
 export { RgbaArray, readRgbaArray } from './RgbaArray';

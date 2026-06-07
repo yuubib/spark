@@ -34,6 +34,7 @@ export type SplatScreenPickShape =
     };
 
 export type SplatScreenPickRenderMode = "viewport" | "shape";
+export type SplatScreenPickCandidateMode = "rendered-id" | "centers";
 
 export type SplatScreenPickOptions = {
   scene: THREE.Object3D;
@@ -46,6 +47,7 @@ export type SplatScreenPickOptions = {
   update?: boolean;
   maxCandidates?: number;
   sort?: boolean;
+  candidateMode?: SplatScreenPickCandidateMode;
   renderMode?: SplatScreenPickRenderMode;
   onStats?: (stats: SplatScreenPickStats) => void;
 };
@@ -111,8 +113,20 @@ export type SplatScreenPickCollectStats = {
   earlyExit: boolean;
 };
 
+export type SplatScreenPickCenterCollectStats = {
+  centerCount: number;
+  candidateCenterCount: number;
+  maskTestedCenterCount: number;
+  stateRejectedCenterCount: number;
+  viewRejectedCenterCount: number;
+  duplicateCenterHitCount: number;
+  uniqueHitCount: number;
+  earlyExit: boolean;
+};
+
 export type SplatScreenPickStats = {
   shapeKind: SplatScreenPickShape["kind"];
+  candidateMode?: SplatScreenPickCandidateMode;
   renderMode: SplatScreenPickRenderMode;
   viewportWidth: number;
   viewportHeight: number;
@@ -124,6 +138,7 @@ export type SplatScreenPickStats = {
   mappedHitCount: number;
   sourceStableHitCount: number;
   collect: SplatScreenPickCollectStats;
+  centerCollect?: SplatScreenPickCenterCollectStats;
   timingsMs: {
     update: number;
     render?: number;
@@ -367,6 +382,61 @@ export function collectSplatScreenPickHitsFromRgba8(
   }
 
   return finish();
+}
+
+export function createSplatScreenPickCenterCollectStats(): SplatScreenPickCenterCollectStats {
+  return {
+    centerCount: 0,
+    candidateCenterCount: 0,
+    maskTestedCenterCount: 0,
+    stateRejectedCenterCount: 0,
+    viewRejectedCenterCount: 0,
+    duplicateCenterHitCount: 0,
+    uniqueHitCount: 0,
+    earlyExit: false,
+  };
+}
+
+export function testSplatScreenPickCenter(
+  rect: SplatScreenPickRect,
+  x: number,
+  y: number,
+  stats?: SplatScreenPickCenterCollectStats,
+): boolean {
+  if (
+    !Number.isFinite(x) ||
+    !Number.isFinite(y) ||
+    x < rect.x ||
+    y < rect.y ||
+    x >= rect.x + rect.width ||
+    y >= rect.y + rect.height
+  ) {
+    if (stats) {
+      stats.viewRejectedCenterCount += 1;
+    }
+    return false;
+  }
+
+  const mask = rect.mask;
+  if (mask) {
+    if (stats) {
+      stats.maskTestedCenterCount += 1;
+    }
+    const localX = Math.floor(x - rect.x);
+    const localY = Math.floor(y - rect.y);
+    if (
+      mask.width === rect.width && mask.height === rect.height
+        ? !isPickMaskPixelEnabledAt(mask, localX, localY)
+        : !isPickMaskPixelEnabled(mask, localX, localY, rect)
+    ) {
+      if (stats) {
+        stats.viewRejectedCenterCount += 1;
+      }
+      return false;
+    }
+  }
+
+  return true;
 }
 
 function clipPickRect(

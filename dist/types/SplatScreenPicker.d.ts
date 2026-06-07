@@ -25,6 +25,7 @@ export type SplatScreenPickShape = {
     maskThreshold?: number;
 };
 export type SplatScreenPickRenderMode = "viewport" | "shape";
+export type SplatScreenPickCandidateMode = "rendered-id" | "centers";
 export type SplatScreenPickOptions = {
     scene: THREE.Object3D;
     camera: THREE.Camera;
@@ -36,6 +37,7 @@ export type SplatScreenPickOptions = {
     update?: boolean;
     maxCandidates?: number;
     sort?: boolean;
+    candidateMode?: SplatScreenPickCandidateMode;
     renderMode?: SplatScreenPickRenderMode;
     onStats?: (stats: SplatScreenPickStats) => void;
 };
@@ -93,8 +95,19 @@ export type SplatScreenPickCollectStats = {
     uniqueHitCount: number;
     earlyExit: boolean;
 };
+export type SplatScreenPickCenterCollectStats = {
+    centerCount: number;
+    candidateCenterCount: number;
+    maskTestedCenterCount: number;
+    stateRejectedCenterCount: number;
+    viewRejectedCenterCount: number;
+    duplicateCenterHitCount: number;
+    uniqueHitCount: number;
+    earlyExit: boolean;
+};
 export type SplatScreenPickStats = {
     shapeKind: SplatScreenPickShape["kind"];
+    candidateMode?: SplatScreenPickCandidateMode;
     renderMode: SplatScreenPickRenderMode;
     viewportWidth: number;
     viewportHeight: number;
@@ -106,6 +119,7 @@ export type SplatScreenPickStats = {
     mappedHitCount: number;
     sourceStableHitCount: number;
     collect: SplatScreenPickCollectStats;
+    centerCollect?: SplatScreenPickCenterCollectStats;
     timingsMs: {
         update: number;
         render?: number;
@@ -132,3 +146,5 @@ export declare function collectSplatScreenPickHitsFromRgba8(pixels: ArrayLike<nu
     sort?: boolean;
     stats?: SplatScreenPickCollectStats;
 }): SplatScreenPickPixelHit[];
+export declare function createSplatScreenPickCenterCollectStats(): SplatScreenPickCenterCollectStats;
+export declare function testSplatScreenPickCenter(rect: SplatScreenPickRect, x: number, y: number, stats?: SplatScreenPickCenterCollectStats): boolean;
