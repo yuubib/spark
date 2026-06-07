@@ -407,6 +407,59 @@ assert.strictEqual(indexedCenterReadCount, 1);
 assert.strictEqual(selectedStats?.centerCollect?.centerCount, 1);
 assert.strictEqual(selectedStats?.centerCollect?.candidateCenterCount, 1);
 
+const cacheMesh = new SplatMesh({
+  constructSplats: (splats) => {
+    for (let index = 0; index < 5; index += 1) {
+      splats.pushSplat(
+        new THREE.Vector3(-0.8 + index * 0.4, 0, 0),
+        new THREE.Vector3(0.1, 0.1, 0.1),
+        new THREE.Quaternion(),
+        1,
+        new THREE.Color(1, 1, 1),
+      );
+    }
+  },
+});
+await cacheMesh.initialized;
+scene.add(cacheMesh);
+cacheMesh.selectSplatStateCandidates([3], "set");
+
+const cacheEditorState = cacheMesh.getEditorState();
+assert.ok(cacheEditorState);
+cacheEditorState.listIndices = () => {
+  throw new Error("cache-backed selected picking should not list indices");
+};
+cacheEditorState.forEachIndex = () => {
+  throw new Error("cache-backed selected picking should not scan state");
+};
+
+let cacheIndexedCenterReadCount = 0;
+const originalCacheIndexedCenter = cacheMesh.getSplatCenterRaw.bind(cacheMesh);
+cacheMesh.getSplatCenterRaw = (index, target) => {
+  cacheIndexedCenterReadCount += 1;
+  return originalCacheIndexedCenter(index, target);
+};
+
+let cacheSelectedStats: SplatScreenPickStats | null = null;
+const cacheSelectedSparse = await sparkRenderer.pickSplatCandidateIndices({
+  target: cacheMesh,
+  scene,
+  camera,
+  candidateMode: "centers",
+  shape: { kind: "rect", x: 0, y: 0, width: 1, height: 1 },
+  width: 100,
+  height: 100,
+  operation: "remove",
+  onStats: (nextStats) => {
+    cacheSelectedStats = nextStats;
+  },
+});
+
+assert.deepStrictEqual([...(cacheSelectedSparse ?? [])], [3]);
+assert.strictEqual(cacheIndexedCenterReadCount, 1);
+assert.strictEqual(cacheSelectedStats?.centerCollect?.centerCount, 1);
+assert.strictEqual(cacheSelectedStats?.centerCollect?.candidateCenterCount, 1);
+
 const depthMesh = new SplatMesh({
   constructSplats: (splats) => {
     splats.pushSplat(
@@ -455,6 +508,7 @@ const screenOnlyNearest = await sparkRenderer.pickNearestSplatCenterIndex({
 assert.strictEqual(screenOnlyNearest?.index, 0);
 
 depthMesh.dispose();
+cacheMesh.dispose();
 mesh.dispose();
 
 console.log("Splat screen picker index tests passed");

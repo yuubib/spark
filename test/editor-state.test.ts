@@ -86,6 +86,27 @@ import {
 }
 
 {
+  const state = new SplatEditorState(8);
+  state.set(5, SPLAT_EDITOR_STATE_SELECTED);
+  state.set(1, SPLAT_EDITOR_STATE_SELECTED);
+
+  const trackedSelected: number[] = [];
+  state.forEachSelectedIndex((index, bits) => {
+    trackedSelected.push(index);
+    assert.strictEqual(bits, SPLAT_EDITOR_STATE_SELECTED);
+  });
+  assert.deepStrictEqual(trackedSelected, [5, 1]);
+  assert.deepStrictEqual(state.listIndices("selected"), [1, 5]);
+
+  const firstTrackedSelected: number[] = [];
+  state.forEachSelectedIndex((index) => {
+    firstTrackedSelected.push(index);
+    return false;
+  });
+  assert.deepStrictEqual(firstTrackedSelected, [5]);
+}
+
+{
   const state = new SplatEditorState(4);
   state.uploadDirty();
 

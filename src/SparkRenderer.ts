@@ -2732,7 +2732,7 @@ export class SparkRenderer extends THREE.Mesh {
       canUseSelectedSplatCenterIndexMode(editorStateMode)
     ) {
       const center = { x: 0, y: 0, z: 0 };
-      editorState.forEachIndex("selected", (index, bits) => {
+      editorState.forEachSelectedIndex((index, bits) => {
         stats.centerCount += 1;
         if (!matchesSplatEditorStateBits(bits, editorStateMode)) {
           stats.stateRejectedCenterCount += 1;

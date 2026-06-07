@@ -6967,6 +6967,21 @@ const _SplatEditorState = class _SplatEditorState {
       }
     }
   }
+  forEachSelectedIndex(callback) {
+    if (!this.selectedIndicesComplete) {
+      this.forEachIndex("selected", callback);
+      return;
+    }
+    for (const index of this.selectedIndices) {
+      const bits2 = this.states[index] ?? SPLAT_EDITOR_STATE_NONE;
+      if (bits2 !== SPLAT_EDITOR_STATE_SELECTED) {
+        continue;
+      }
+      if (callback(index, bits2) === false) {
+        return;
+      }
+    }
+  }
   listIndices(mode) {
     const indices = [];
     this.forEachIndex(mode, (index) => {
@@ -14285,7 +14300,7 @@ const _SparkRenderer = class _SparkRenderer extends THREE__namespace.Mesh {
     const editorState = target.getEditorState();
     if (editorState && target.hasIndexedSplatCenters() && canUseSelectedSplatCenterIndexMode(editorStateMode)) {
       const center = { x: 0, y: 0, z: 0 };
-      editorState.forEachIndex("selected", (index, bits2) => {
+      editorState.forEachSelectedIndex((index, bits2) => {
         stats.centerCount += 1;
         if (!matchesSplatEditorStateBits(bits2, editorStateMode)) {
           stats.stateRejectedCenterCount += 1;

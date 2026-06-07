@@ -289,6 +289,25 @@ export class SplatEditorState {
     }
   }
 
+  forEachSelectedIndex(
+    callback: (index: number, bits: SplatEditorStateBits) => unknown,
+  ): void {
+    if (!this.selectedIndicesComplete) {
+      this.forEachIndex("selected", callback);
+      return;
+    }
+
+    for (const index of this.selectedIndices) {
+      const bits = this.states[index] ?? SPLAT_EDITOR_STATE_NONE;
+      if (bits !== SPLAT_EDITOR_STATE_SELECTED) {
+        continue;
+      }
+      if (callback(index, bits) === false) {
+        return;
+      }
+    }
+  }
+
   listIndices(mode: SplatEditorStateIndexMode): number[] {
     const indices: number[] = [];
     this.forEachIndex(mode, (index) => {
