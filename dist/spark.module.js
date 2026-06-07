@@ -7393,6 +7393,16 @@ const _SplatEditorState = class _SplatEditorState {
       deleted: this.deleted
     };
   }
+  getSummary() {
+    return {
+      total: this.numSplats,
+      visible: Math.max(0, this.numSplats - this.deleted),
+      selectable: Math.max(0, this.numSplats - this.locked - this.deleted),
+      selected: this.selected,
+      locked: this.locked,
+      deleted: this.deleted
+    };
+  }
   setColors(colors) {
     let changed = false;
     if (colors.selected && !colors.selected.equals(this.selectedColor)) {
@@ -14882,6 +14892,17 @@ const _SplatMesh = class _SplatMesh extends SplatGenerator {
   getSplatStateCounts() {
     var _a2;
     return ((_a2 = this.getEditorState()) == null ? void 0 : _a2.getCounts()) ?? {
+      selected: 0,
+      locked: 0,
+      deleted: 0
+    };
+  }
+  getSplatStateSummary() {
+    var _a2;
+    return ((_a2 = this.getEditorState()) == null ? void 0 : _a2.getSummary()) ?? {
+      total: this.numSplats,
+      visible: this.numSplats,
+      selectable: this.numSplats,
       selected: 0,
       locked: 0,
       deleted: 0

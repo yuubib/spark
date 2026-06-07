@@ -26,6 +26,7 @@ import {
   type SplatEditorStateMutationOptions,
   type SplatEditorStateMutationResult,
   type SplatEditorStateOperation,
+  type SplatEditorStateSummary,
   type SplatEditorStateUploadResult,
   applyCovSplatEditorStateColor,
   applySplatEditorStateColor,
@@ -1027,6 +1028,19 @@ export class SplatMesh extends SplatGenerator {
   getSplatStateCounts(): SplatEditorStateCounts {
     return (
       this.getEditorState()?.getCounts() ?? {
+        selected: 0,
+        locked: 0,
+        deleted: 0,
+      }
+    );
+  }
+
+  getSplatStateSummary(): SplatEditorStateSummary {
+    return (
+      this.getEditorState()?.getSummary() ?? {
+        total: this.numSplats,
+        visible: this.numSplats,
+        selectable: this.numSplats,
         selected: 0,
         locked: 0,
         deleted: 0,

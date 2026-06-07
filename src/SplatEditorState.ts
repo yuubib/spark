@@ -42,6 +42,12 @@ export interface SplatEditorStateCounts {
   readonly deleted: number;
 }
 
+export interface SplatEditorStateSummary extends SplatEditorStateCounts {
+  readonly total: number;
+  readonly visible: number;
+  readonly selectable: number;
+}
+
 export interface SplatEditorStateMutationResult {
   readonly changed: number;
   readonly counts: SplatEditorStateCounts;
@@ -888,6 +894,17 @@ export class SplatEditorState {
 
   getCounts(): SplatEditorStateCounts {
     return {
+      selected: this.selected,
+      locked: this.locked,
+      deleted: this.deleted,
+    };
+  }
+
+  getSummary(): SplatEditorStateSummary {
+    return {
+      total: this.numSplats,
+      visible: Math.max(0, this.numSplats - this.deleted),
+      selectable: Math.max(0, this.numSplats - this.locked - this.deleted),
       selected: this.selected,
       locked: this.locked,
       deleted: this.deleted,

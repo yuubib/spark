@@ -43,6 +43,14 @@ import {
     locked: 1,
     deleted: 2,
   });
+  assert.deepStrictEqual(state.getSummary(), {
+    total: 5,
+    visible: 3,
+    selectable: 2,
+    selected: 0,
+    locked: 1,
+    deleted: 2,
+  });
 
   assert.ok(state.getDirtyRanges().length > 0);
   const texture = state.uploadDirty();

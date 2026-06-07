@@ -2,7 +2,7 @@ import { ExtSplats } from './ExtSplats';
 import { PackedSplats } from './PackedSplats';
 import { RgbaArray, TRgbaArray } from './RgbaArray';
 import { SplatEdit, SplatEdits } from './SplatEdit';
-import { SplatEditorSelectionOperation, SplatEditorState, SplatEditorStateBits, SplatEditorStateChange, SplatEditorStateChangeSet, SplatEditorStateChangeSide, SplatEditorStateCounts, SplatEditorStateFilterMode, SplatEditorStateIndexMode, SplatEditorStateMutationOptions, SplatEditorStateMutationResult, SplatEditorStateOperation, SplatEditorStateUploadResult } from './SplatEditorState';
+import { SplatEditorSelectionOperation, SplatEditorState, SplatEditorStateBits, SplatEditorStateChange, SplatEditorStateChangeSet, SplatEditorStateChangeSide, SplatEditorStateCounts, SplatEditorStateFilterMode, SplatEditorStateIndexMode, SplatEditorStateMutationOptions, SplatEditorStateMutationResult, SplatEditorStateOperation, SplatEditorStateSummary, SplatEditorStateUploadResult } from './SplatEditorState';
 import { CovSplatModifier, CovSplatTransformer, FrameUpdateContext, GsplatModifier, SplatGenerator, SplatTransformer } from './SplatGenerator';
 import { PagedSplats, SplatPager } from './SplatPager';
 import { SplatSkinning } from './SplatSkinning';
@@ -224,6 +224,7 @@ export declare class SplatMesh extends SplatGenerator {
     clearSelectedSplatTransform(): boolean;
     getSelectedSplatTransform(): SplatMeshSelectedTransformSnapshot | null;
     getSplatStateCounts(): SplatEditorStateCounts;
+    getSplatStateSummary(): SplatEditorStateSummary;
     listSplatStateIndices(mode: SplatEditorStateIndexMode): number[];
     uploadDirtySplatState(renderer?: THREE.WebGLRenderer): THREE.DataArrayTexture;
     uploadDirtySplatStateWithResult(renderer?: THREE.WebGLRenderer): SplatEditorStateUploadResult;

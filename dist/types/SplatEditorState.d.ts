@@ -16,6 +16,11 @@ export interface SplatEditorStateCounts {
     readonly locked: number;
     readonly deleted: number;
 }
+export interface SplatEditorStateSummary extends SplatEditorStateCounts {
+    readonly total: number;
+    readonly visible: number;
+    readonly selectable: number;
+}
 export interface SplatEditorStateMutationResult {
     readonly changed: number;
     readonly counts: SplatEditorStateCounts;
@@ -115,6 +120,7 @@ export declare class SplatEditorState {
     clear(mask?: SplatEditorStateBits): void;
     reset(): void;
     getCounts(): SplatEditorStateCounts;
+    getSummary(): SplatEditorStateSummary;
     setColors(colors: SplatEditorStateColors): void;
     markDirtyRange(start: number, count: number): void;
     markDirtyList(indices: Iterable<number>): void;

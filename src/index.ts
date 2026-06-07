@@ -67,6 +67,7 @@ export {
   type SplatEditorStateMutationOptions,
   type SplatEditorStateMutationResult,
   type SplatEditorStateOperation,
+  type SplatEditorStateSummary,
   type SplatEditorStateUniformChangeSet,
   type SplatEditorStateUploadMode,
   type SplatEditorStateUploadResult,
