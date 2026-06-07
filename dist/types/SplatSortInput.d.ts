@@ -9,6 +9,11 @@ export declare function shouldSkipSplatSortReadbackForEditorState({ numSplats, e
     editorStateData?: Uint8Array | null;
     editorStateVisibleCount?: number | null;
 }): boolean;
+export declare function shouldRestoreSplatSortForEditorStateVisibility({ previousVisibleCount, nextVisibleCount, activeSplats, }: {
+    previousVisibleCount?: number | null;
+    nextVisibleCount?: number | null;
+    activeSplats: number;
+}): boolean;
 export declare function compactSplatSortInputForEditorState({ numSplats, readback, editorStateData, editorStateUniformValue, compactReadback, sourceIndices, }: {
     numSplats: number;
     readback: Uint32Array;

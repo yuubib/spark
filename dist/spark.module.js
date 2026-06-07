@@ -11842,6 +11842,13 @@ function shouldSkipSplatSortReadbackForEditorState({
   }
   return true;
 }
+function shouldRestoreSplatSortForEditorStateVisibility({
+  previousVisibleCount,
+  nextVisibleCount,
+  activeSplats
+}) {
+  return previousVisibleCount === 0 && nextVisibleCount != null && nextVisibleCount > 0 && activeSplats === 0;
+}
 function compactSplatSortInputForEditorState({
   numSplats,
   readback,
@@ -12362,8 +12369,10 @@ const _SparkRenderer = class _SparkRenderer extends THREE.Mesh {
     }
     if (!doUpdate) {
       if (needsStyleUpdate) {
+        const previousVisibleCount = this.display.editorStateVisibleCount;
         this.display.updateEditorStateTexture({ renderer });
         this.display.styleVersion = styleVersion;
+        this.updateActiveSplatsForDisplayedEditorState(previousVisibleCount);
         this.setDirty();
       }
       if (sortUpdated) {
@@ -12388,12 +12397,27 @@ const _SparkRenderer = class _SparkRenderer extends THREE.Mesh {
       }
       this.current = next;
       this.sortDirty || (this.sortDirty = viewChanged || sortUpdated);
+      this.updateActiveSplatsForDisplayedEditorState(null);
       this.setDirty();
     }
     if (this.enableDriveLod) {
       this.driveLod({ visibleGenerators, camera, scene });
     }
     await this.driveSort();
+  }
+  updateActiveSplatsForDisplayedEditorState(previousVisibleCount) {
+    const nextVisibleCount = this.display.editorStateEnabled ? this.display.editorStateVisibleCount : null;
+    if (nextVisibleCount === 0) {
+      this.activeSplats = 0;
+      return;
+    }
+    if (shouldRestoreSplatSortForEditorStateVisibility({
+      previousVisibleCount,
+      nextVisibleCount,
+      activeSplats: this.activeSplats
+    })) {
+      this.sortDirty = true;
+    }
   }
   async driveSort() {
     if (this.sorting || !this.sortDirty) {

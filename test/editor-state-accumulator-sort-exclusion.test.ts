@@ -5,6 +5,7 @@ import { SPLAT_EDITOR_STATE_DELETED } from "../src/SplatEditorState.js";
 import {
   compactSplatSortInputForEditorState,
   remapCompactSplatOrdering,
+  shouldRestoreSplatSortForEditorStateVisibility,
   shouldSkipSplatSortReadbackForEditorState,
 } from "../src/SplatSortInput.js";
 
@@ -77,6 +78,42 @@ assert.strictEqual(
       0,
       SPLAT_EDITOR_STATE_DELETED,
     ]),
+  }),
+  false,
+);
+
+assert.strictEqual(
+  shouldRestoreSplatSortForEditorStateVisibility({
+    previousVisibleCount: 0,
+    nextVisibleCount: 3,
+    activeSplats: 0,
+  }),
+  true,
+);
+
+assert.strictEqual(
+  shouldRestoreSplatSortForEditorStateVisibility({
+    previousVisibleCount: 0,
+    nextVisibleCount: 3,
+    activeSplats: 2,
+  }),
+  false,
+);
+
+assert.strictEqual(
+  shouldRestoreSplatSortForEditorStateVisibility({
+    previousVisibleCount: 1,
+    nextVisibleCount: 3,
+    activeSplats: 0,
+  }),
+  false,
+);
+
+assert.strictEqual(
+  shouldRestoreSplatSortForEditorStateVisibility({
+    previousVisibleCount: 0,
+    nextVisibleCount: 0,
+    activeSplats: 0,
   }),
   false,
 );

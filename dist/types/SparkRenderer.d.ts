@@ -545,6 +545,7 @@ export declare class SparkRenderer extends THREE.Mesh {
         camera: THREE.Camera;
     }): Promise<void>;
     private updateInternal;
+    private updateActiveSplatsForDisplayedEditorState;
     private driveSort;
     private finishDriveSort;
     private ensureLodWorker;

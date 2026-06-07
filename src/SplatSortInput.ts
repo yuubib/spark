@@ -34,6 +34,23 @@ export function shouldSkipSplatSortReadbackForEditorState({
   return true;
 }
 
+export function shouldRestoreSplatSortForEditorStateVisibility({
+  previousVisibleCount,
+  nextVisibleCount,
+  activeSplats,
+}: {
+  previousVisibleCount?: number | null;
+  nextVisibleCount?: number | null;
+  activeSplats: number;
+}): boolean {
+  return (
+    previousVisibleCount === 0 &&
+    nextVisibleCount != null &&
+    nextVisibleCount > 0 &&
+    activeSplats === 0
+  );
+}
+
 export function compactSplatSortInputForEditorState({
   numSplats,
   readback,

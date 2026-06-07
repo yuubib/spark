@@ -26,6 +26,7 @@ import {
   type SplatSortInputForEditorState,
   compactSplatSortInputForEditorState,
   remapCompactSplatOrdering,
+  shouldRestoreSplatSortForEditorStateVisibility,
   shouldSkipSplatSortReadbackForEditorState,
 } from "./SplatSortInput";
 import { SplatWorker } from "./SplatWorker";
@@ -999,8 +1000,10 @@ export class SparkRenderer extends THREE.Mesh {
 
     if (!doUpdate) {
       if (needsStyleUpdate) {
+        const previousVisibleCount = this.display.editorStateVisibleCount;
         this.display.updateEditorStateTexture({ renderer });
         this.display.styleVersion = styleVersion;
+        this.updateActiveSplatsForDisplayedEditorState(previousVisibleCount);
         this.setDirty();
       }
       if (sortUpdated) {
@@ -1032,6 +1035,7 @@ export class SparkRenderer extends THREE.Mesh {
 
       this.current = next;
       this.sortDirty ||= viewChanged || sortUpdated;
+      this.updateActiveSplatsForDisplayedEditorState(null);
       this.setDirty();
     }
 
@@ -1039,6 +1043,27 @@ export class SparkRenderer extends THREE.Mesh {
       this.driveLod({ visibleGenerators, camera, scene });
     }
     await this.driveSort();
+  }
+
+  private updateActiveSplatsForDisplayedEditorState(
+    previousVisibleCount: number | null,
+  ) {
+    const nextVisibleCount = this.display.editorStateEnabled
+      ? this.display.editorStateVisibleCount
+      : null;
+    if (nextVisibleCount === 0) {
+      this.activeSplats = 0;
+      return;
+    }
+    if (
+      shouldRestoreSplatSortForEditorStateVisibility({
+        previousVisibleCount,
+        nextVisibleCount,
+        activeSplats: this.activeSplats,
+      })
+    ) {
+      this.sortDirty = true;
+    }
   }
 
   private async driveSort() {
