@@ -8,6 +8,7 @@ export type SplatEditorStateBits = number;
 export type SplatEditorStateOperation = "replace" | "set" | "clear" | "toggle";
 export type SplatEditorSelectionOperation = "set" | "add" | "remove";
 export type SplatEditorStateIndexMode = "selected" | "unselected-selectable" | "locked" | "deleted";
+export type SplatEditorStateChangeSide = "previous" | "next";
 export type SplatEditorStateFilterMode = "all" | "visible" | "selected" | "editable" | "pick-add" | "pick-remove" | "pick-set";
 export interface SplatEditorStateCounts {
     readonly selected: number;
@@ -19,6 +20,15 @@ export interface SplatEditorStateMutationResult {
     readonly counts: SplatEditorStateCounts;
     readonly version: number;
     readonly visibilityVersion: number;
+    readonly changes?: readonly SplatEditorStateChange[];
+}
+export interface SplatEditorStateChange {
+    readonly index: number;
+    readonly previous: SplatEditorStateBits;
+    readonly next: SplatEditorStateBits;
+}
+export interface SplatEditorStateMutationOptions {
+    readonly recordChanges?: boolean;
 }
 export interface SplatEditorStateDirtyRange {
     readonly start: number;
@@ -72,15 +82,16 @@ export declare class SplatEditorState {
     listIndices(mode: SplatEditorStateIndexMode): number[];
     setRange(start: number, count: number, bits: SplatEditorStateBits, operation?: SplatEditorStateOperation): void;
     setList(indices: Iterable<number>, bits: SplatEditorStateBits, operation?: SplatEditorStateOperation): void;
-    selectCandidates(indices: Iterable<number>, operation?: SplatEditorSelectionOperation): SplatEditorStateMutationResult;
-    selectAll(): SplatEditorStateMutationResult;
-    clearSelection(): SplatEditorStateMutationResult;
-    invertSelection(): SplatEditorStateMutationResult;
-    hideSelected(): SplatEditorStateMutationResult;
-    unhideAll(): SplatEditorStateMutationResult;
-    deleteSelected(): SplatEditorStateMutationResult;
-    resetDeleted(): SplatEditorStateMutationResult;
-    cropToSelection(): SplatEditorStateMutationResult;
+    selectCandidates(indices: Iterable<number>, operation?: SplatEditorSelectionOperation, options?: SplatEditorStateMutationOptions): SplatEditorStateMutationResult;
+    selectAll(options?: SplatEditorStateMutationOptions): SplatEditorStateMutationResult;
+    clearSelection(options?: SplatEditorStateMutationOptions): SplatEditorStateMutationResult;
+    invertSelection(options?: SplatEditorStateMutationOptions): SplatEditorStateMutationResult;
+    hideSelected(options?: SplatEditorStateMutationOptions): SplatEditorStateMutationResult;
+    unhideAll(options?: SplatEditorStateMutationOptions): SplatEditorStateMutationResult;
+    deleteSelected(options?: SplatEditorStateMutationOptions): SplatEditorStateMutationResult;
+    resetDeleted(options?: SplatEditorStateMutationOptions): SplatEditorStateMutationResult;
+    cropToSelection(options?: SplatEditorStateMutationOptions): SplatEditorStateMutationResult;
+    applyChanges(changes: Iterable<SplatEditorStateChange>, side?: SplatEditorStateChangeSide): SplatEditorStateMutationResult;
     replace(states: ArrayLike<number>, numSplats?: number): void;
     clear(mask?: SplatEditorStateBits): void;
     reset(): void;
@@ -102,6 +113,7 @@ export declare class SplatEditorState {
     private commitMutation;
     private collectDirtyIndex;
     private setUnchecked;
+    private setMutationUnchecked;
     private updateCounts;
     static emptyTexture: THREE.DataArrayTexture;
 }

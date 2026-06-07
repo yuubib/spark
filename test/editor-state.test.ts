@@ -270,6 +270,105 @@ import {
 }
 
 {
+  const state = new SplatEditorState(32);
+  state.replace(
+    new Uint8Array([
+      SPLAT_EDITOR_STATE_SELECTED,
+      SPLAT_EDITOR_STATE_NONE,
+      SPLAT_EDITOR_STATE_SELECTED,
+      SPLAT_EDITOR_STATE_DELETED,
+      SPLAT_EDITOR_STATE_NONE,
+      SPLAT_EDITOR_STATE_LOCKED,
+      SPLAT_EDITOR_STATE_NONE,
+      SPLAT_EDITOR_STATE_NONE,
+    ]),
+    32,
+  );
+  state.uploadDirty();
+  state.clearRenderDirtyRanges();
+
+  const noRecordResult = state.selectCandidates([1, 4], "set");
+  assert.strictEqual(noRecordResult.changes, undefined);
+
+  state.applyChanges(
+    [
+      {
+        index: 0,
+        previous: SPLAT_EDITOR_STATE_SELECTED,
+        next: SPLAT_EDITOR_STATE_NONE,
+      },
+      {
+        index: 1,
+        previous: SPLAT_EDITOR_STATE_NONE,
+        next: SPLAT_EDITOR_STATE_SELECTED,
+      },
+      {
+        index: 2,
+        previous: SPLAT_EDITOR_STATE_SELECTED,
+        next: SPLAT_EDITOR_STATE_NONE,
+      },
+      {
+        index: 4,
+        previous: SPLAT_EDITOR_STATE_NONE,
+        next: SPLAT_EDITOR_STATE_SELECTED,
+      },
+    ],
+    "previous",
+  );
+  state.uploadDirty();
+  state.clearRenderDirtyRanges();
+
+  const recordResult = state.selectCandidates([1, 4], "set", {
+    recordChanges: true,
+  });
+  assert.deepStrictEqual(recordResult.changes, [
+    {
+      index: 0,
+      previous: SPLAT_EDITOR_STATE_SELECTED,
+      next: SPLAT_EDITOR_STATE_NONE,
+    },
+    {
+      index: 1,
+      previous: SPLAT_EDITOR_STATE_NONE,
+      next: SPLAT_EDITOR_STATE_SELECTED,
+    },
+    {
+      index: 2,
+      previous: SPLAT_EDITOR_STATE_SELECTED,
+      next: SPLAT_EDITOR_STATE_NONE,
+    },
+    {
+      index: 4,
+      previous: SPLAT_EDITOR_STATE_NONE,
+      next: SPLAT_EDITOR_STATE_SELECTED,
+    },
+  ]);
+  assert.deepStrictEqual(state.listIndices("selected"), [1, 4]);
+  assert.deepStrictEqual(state.getDirtyRanges(), [
+    { start: 0, count: 3 },
+    { start: 4, count: 1 },
+  ]);
+
+  const versionAfterRecord = state.version;
+  const undoResult = state.applyChanges(recordResult.changes ?? [], "previous");
+  assert.strictEqual(undoResult.changed, 4);
+  assert.ok(state.version > versionAfterRecord);
+  assert.deepStrictEqual(state.listIndices("selected"), [0, 2]);
+  assert.strictEqual(state.get(1), SPLAT_EDITOR_STATE_NONE);
+  assert.strictEqual(state.get(4), SPLAT_EDITOR_STATE_NONE);
+
+  const redoResult = state.applyChanges(recordResult.changes ?? [], "next");
+  assert.strictEqual(redoResult.changed, 4);
+  assert.deepStrictEqual(state.listIndices("selected"), [1, 4]);
+
+  const emptyResult = state.selectCandidates([1, 4], "add", {
+    recordChanges: true,
+  });
+  assert.strictEqual(emptyResult.changed, 0);
+  assert.deepStrictEqual(emptyResult.changes, []);
+}
+
+{
   const state = new SplatEditorState(6);
   state.replace(
     new Uint8Array([

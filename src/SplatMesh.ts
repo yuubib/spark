@@ -17,9 +17,12 @@ import {
   type SplatEditorSelectionOperation,
   SplatEditorState,
   type SplatEditorStateBits,
+  type SplatEditorStateChange,
+  type SplatEditorStateChangeSide,
   type SplatEditorStateCounts,
   type SplatEditorStateFilterMode,
   type SplatEditorStateIndexMode,
+  type SplatEditorStateMutationOptions,
   type SplatEditorStateMutationResult,
   type SplatEditorStateOperation,
   type SplatEditorStateUploadResult,
@@ -813,42 +816,66 @@ export class SplatMesh extends SplatGenerator {
   selectSplatStateCandidates(
     indices: Iterable<number>,
     operation: SplatEditorSelectionOperation = "set",
+    options: SplatEditorStateMutationOptions = {},
   ): SplatEditorStateMutationResult {
     return this.mutateEditorState((state) =>
-      state.selectCandidates(indices, operation),
+      state.selectCandidates(indices, operation, options),
     );
   }
 
-  selectAllSplatState(): SplatEditorStateMutationResult {
-    return this.mutateEditorState((state) => state.selectAll());
+  selectAllSplatState(
+    options: SplatEditorStateMutationOptions = {},
+  ): SplatEditorStateMutationResult {
+    return this.mutateEditorState((state) => state.selectAll(options));
   }
 
-  clearSplatStateSelection(): SplatEditorStateMutationResult {
-    return this.mutateEditorState((state) => state.clearSelection());
+  clearSplatStateSelection(
+    options: SplatEditorStateMutationOptions = {},
+  ): SplatEditorStateMutationResult {
+    return this.mutateEditorState((state) => state.clearSelection(options));
   }
 
-  invertSplatStateSelection(): SplatEditorStateMutationResult {
-    return this.mutateEditorState((state) => state.invertSelection());
+  invertSplatStateSelection(
+    options: SplatEditorStateMutationOptions = {},
+  ): SplatEditorStateMutationResult {
+    return this.mutateEditorState((state) => state.invertSelection(options));
   }
 
-  hideSelectedSplatState(): SplatEditorStateMutationResult {
-    return this.mutateEditorState((state) => state.hideSelected());
+  hideSelectedSplatState(
+    options: SplatEditorStateMutationOptions = {},
+  ): SplatEditorStateMutationResult {
+    return this.mutateEditorState((state) => state.hideSelected(options));
   }
 
-  unhideAllSplatState(): SplatEditorStateMutationResult {
-    return this.mutateEditorState((state) => state.unhideAll());
+  unhideAllSplatState(
+    options: SplatEditorStateMutationOptions = {},
+  ): SplatEditorStateMutationResult {
+    return this.mutateEditorState((state) => state.unhideAll(options));
   }
 
-  deleteSelectedSplatState(): SplatEditorStateMutationResult {
-    return this.mutateEditorState((state) => state.deleteSelected());
+  deleteSelectedSplatState(
+    options: SplatEditorStateMutationOptions = {},
+  ): SplatEditorStateMutationResult {
+    return this.mutateEditorState((state) => state.deleteSelected(options));
   }
 
-  resetDeletedSplatState(): SplatEditorStateMutationResult {
-    return this.mutateEditorState((state) => state.resetDeleted());
+  resetDeletedSplatState(
+    options: SplatEditorStateMutationOptions = {},
+  ): SplatEditorStateMutationResult {
+    return this.mutateEditorState((state) => state.resetDeleted(options));
   }
 
-  cropSplatStateToSelection(): SplatEditorStateMutationResult {
-    return this.mutateEditorState((state) => state.cropToSelection());
+  cropSplatStateToSelection(
+    options: SplatEditorStateMutationOptions = {},
+  ): SplatEditorStateMutationResult {
+    return this.mutateEditorState((state) => state.cropToSelection(options));
+  }
+
+  applySplatStateChanges(
+    changes: Iterable<SplatEditorStateChange>,
+    side: SplatEditorStateChangeSide = "next",
+  ): SplatEditorStateMutationResult {
+    return this.mutateEditorState((state) => state.applyChanges(changes, side));
   }
 
   getSplatStateCounts(): SplatEditorStateCounts {
