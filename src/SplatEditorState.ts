@@ -95,6 +95,14 @@ export interface SplatEditorStateMutationOptions {
   readonly changeFormat?: SplatEditorStateChangeFormat;
 }
 
+export type SplatEditorStateCandidateConsumer = (
+  index: number,
+) => boolean | undefined;
+
+export type SplatEditorStateCandidateProducer = (
+  consumer: SplatEditorStateCandidateConsumer,
+) => void;
+
 export interface SplatEditorStateDirtyRange {
   readonly start: number;
   readonly count: number;
@@ -430,10 +438,28 @@ export class SplatEditorState {
       }
     }
 
+    return this.selectCandidatesFromProducer(
+      (consume) => {
+        for (const rawIndex of indices) {
+          if (consume(rawIndex) === false) {
+            break;
+          }
+        }
+      },
+      operation,
+      options,
+    );
+  }
+
+  selectCandidatesFromProducer(
+    produce: SplatEditorStateCandidateProducer,
+    operation: SplatEditorSelectionOperation = "set",
+    options: SplatEditorStateMutationOptions = {},
+  ): SplatEditorStateMutationResult {
     const changes = createMutationChanges(options);
     if (operation === "set") {
       if (this.selected === 0) {
-        return this.selectCandidateSetFromEmpty(indices, changes);
+        return this.selectCandidateSetFromEmptyProducer(produce, changes);
       }
 
       let sparseCandidates = new Set<number>();
@@ -442,14 +468,14 @@ export class SplatEditorState {
       const sparseThreshold = Math.floor(
         this.numSplats * SPARSE_SELECTION_SET_THRESHOLD_RATIO,
       );
-      for (const rawIndex of indices) {
+      produce((rawIndex) => {
         const index = this.normalizeIndex(rawIndex);
         if (index === null) {
-          continue;
+          return true;
         }
         if (denseCandidates) {
           this.markDenseCandidate(denseCandidates, index);
-          continue;
+          return true;
         }
         sparseCandidates.add(index);
         if (sparseCandidates.size > sparseThreshold) {
@@ -459,7 +485,8 @@ export class SplatEditorState {
           }
           sparseCandidates = new Set<number>();
         }
-      }
+        return true;
+      });
       const selectedCandidateCount = this.selectedIndicesComplete
         ? this.selectedIndices.size
         : this.selected;
@@ -490,10 +517,10 @@ export class SplatEditorState {
     const dirtyIndices: number[] = [];
     let fullRange = false;
     let changed = 0;
-    for (const rawIndex of indices) {
+    produce((rawIndex) => {
       const index = this.normalizeIndex(rawIndex);
       if (index === null) {
-        continue;
+        return true;
       }
       const previous = this.states[index];
       const next =
@@ -506,7 +533,8 @@ export class SplatEditorState {
         changed++;
         fullRange ||= this.collectDirtyIndex(dirtyIndices, index);
       }
-    }
+      return true;
+    });
     return this.commitMutation(changed, dirtyIndices, fullRange, changes);
   }
 
@@ -1835,17 +1863,17 @@ export class SplatEditorState {
     return true;
   }
 
-  private selectCandidateSetFromEmpty(
-    indices: Iterable<number>,
+  private selectCandidateSetFromEmptyProducer(
+    produce: SplatEditorStateCandidateProducer,
     changes?: SplatEditorStateMutationChangeBuffer,
   ): SplatEditorStateMutationResult {
     const dirtyIndices: number[] = [];
     let fullRange = false;
     let changed = 0;
-    for (const rawIndex of indices) {
+    produce((rawIndex) => {
       const index = this.normalizeIndex(rawIndex);
       if (index === null || this.states[index] !== SPLAT_EDITOR_STATE_NONE) {
-        continue;
+        return true;
       }
       if (
         this.setMutationUnchecked(index, SPLAT_EDITOR_STATE_SELECTED, changes)
@@ -1853,7 +1881,8 @@ export class SplatEditorState {
         changed++;
         fullRange ||= this.collectDirtyIndex(dirtyIndices, index);
       }
-    }
+      return true;
+    });
     return this.commitMutation(changed, dirtyIndices, fullRange, changes);
   }
 

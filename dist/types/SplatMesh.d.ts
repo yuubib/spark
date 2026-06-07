@@ -145,12 +145,24 @@ export interface SplatMeshColorMatchResult {
     stateRejected: number;
     earlyExit: boolean;
 }
+export interface SplatMeshColorMatchSummary {
+    seedColor: SplatColorRaw;
+    threshold: number;
+    tested: number;
+    matched: number;
+    stateRejected: number;
+    earlyExit: boolean;
+}
 export interface SplatMeshColorMatchSelectionOptions extends SplatMeshColorMatchOptions {
     operation?: SplatEditorSelectionOperation;
     mutationOptions?: SplatEditorStateMutationOptions;
 }
 export interface SplatMeshColorMatchSelectionResult {
     match: SplatMeshColorMatchResult;
+    mutation: SplatEditorStateMutationResult;
+}
+export interface SplatMeshColorMatchStreamSelectionResult {
+    match: SplatMeshColorMatchSummary;
     mutation: SplatEditorStateMutationResult;
 }
 export interface SplatSource {
@@ -268,8 +280,10 @@ export declare class SplatMesh extends SplatGenerator {
     hasIndexedSplatColorMatches(): boolean;
     getSplatColorRaw(index: number, target: SplatColorRaw): boolean;
     getSplatColorMatchRaw(index: number, target: SplatColorRaw): boolean;
+    private scanSplatColorMatches;
     findSplatColorMatches({ seedIndex, threshold, mode, maxMatches, }: SplatMeshColorMatchOptions): SplatMeshColorMatchResult | null;
     selectSplatStateColorMatches({ operation, mutationOptions, ...matchOptions }: SplatMeshColorMatchSelectionOptions): SplatMeshColorMatchSelectionResult | null;
+    selectSplatStateColorMatchesStream({ operation, mutationOptions, ...matchOptions }: SplatMeshColorMatchSelectionOptions): SplatMeshColorMatchStreamSelectionResult | null;
     getEditorState(): SplatEditorState | null;
     ensureEditorState(numSplats?: number): SplatEditorState;
     clearEditorState(): void;

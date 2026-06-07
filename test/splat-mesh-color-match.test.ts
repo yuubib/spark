@@ -8,6 +8,8 @@ import {
   PlyReader,
   SPLAT_EDITOR_STATE_DELETED,
   SPLAT_EDITOR_STATE_LOCKED,
+  SPLAT_EDITOR_STATE_NONE,
+  SPLAT_EDITOR_STATE_SELECTED,
   SplatMesh,
 } from "../dist/spark.module.js";
 
@@ -279,6 +281,107 @@ assert.strictEqual(
 );
 
 mesh.dispose();
+
+{
+  const streamMesh = new SplatMesh({
+    constructSplats: (splats) => {
+      pushSplat(splats, new THREE.Color(0.8, 0.1, 0.1));
+      pushSplat(splats, new THREE.Color(0.78, 0.12, 0.11));
+      pushSplat(splats, new THREE.Color(0.2, 0.8, 0.2));
+      pushSplat(splats, new THREE.Color(0.79, 0.1, 0.13));
+      pushSplat(splats, new THREE.Color(0.81, 0.08, 0.1));
+    },
+  });
+  await streamMesh.initialized;
+  streamMesh.setSplatStateBits(2, SPLAT_EDITOR_STATE_SELECTED);
+  streamMesh.setSplatStateBits(3, SPLAT_EDITOR_STATE_LOCKED);
+  streamMesh.setSplatStateBits(4, SPLAT_EDITOR_STATE_DELETED);
+
+  const streamSource = streamMesh.splats;
+  assert.ok(streamSource);
+  streamSource.forEachSplat = () => {
+    throw new Error("streaming color matching should not fully decode splats");
+  };
+
+  let streamIndexedReads = 0;
+  const originalStreamIndexed =
+    streamSource.getSplatColorMatchRaw?.bind(streamSource);
+  assert.ok(originalStreamIndexed);
+  streamSource.getSplatColorMatchRaw = (index, target) => {
+    streamIndexedReads += 1;
+    return originalStreamIndexed(index, target);
+  };
+  let streamBulkReads = 0;
+  const originalStreamBulk =
+    streamSource.forEachSplatColorMatchRaw?.bind(streamSource);
+  assert.ok(originalStreamBulk);
+  streamSource.forEachSplatColorMatchRaw = (callback) => {
+    originalStreamBulk((index, r, g, b) => {
+      streamBulkReads += 1;
+      return callback(index, r, g, b);
+    });
+  };
+
+  const streamed = streamMesh.selectSplatStateColorMatchesStream({
+    seedIndex: 0,
+    threshold: 0.035,
+    mode: "all",
+    operation: "set",
+    mutationOptions: {
+      recordChanges: true,
+      changeFormat: "packed",
+    },
+  });
+
+  assert.ok(streamed);
+  assert.strictEqual(
+    (streamed.match as { indices?: unknown }).indices,
+    undefined,
+  );
+  assert.deepStrictEqual(streamed.match.seedColor, {
+    r: rawColor.r,
+    g: rawColor.g,
+    b: rawColor.b,
+  });
+  assert.strictEqual(streamed.match.threshold, 0.035);
+  assert.strictEqual(streamed.match.tested, 5);
+  assert.strictEqual(streamed.match.matched, 4);
+  assert.strictEqual(streamed.match.stateRejected, 0);
+  assert.strictEqual(streamed.match.earlyExit, false);
+  assert.strictEqual(streamIndexedReads, 1);
+  assert.strictEqual(streamBulkReads, 5);
+  assert.strictEqual(streamed.mutation.changed, 3);
+  assert.strictEqual(streamed.mutation.changeSet?.kind, "packed-list");
+  assert.ok(
+    streamed.mutation.changeSet &&
+      streamed.mutation.changeSet.kind === "packed-list",
+  );
+  assert.deepStrictEqual(
+    Array.from(streamed.mutation.changeSet.indices),
+    [0, 1, 2],
+  );
+  assert.deepStrictEqual(Array.from(streamed.mutation.changeSet.previous), [
+    SPLAT_EDITOR_STATE_NONE,
+    SPLAT_EDITOR_STATE_NONE,
+    SPLAT_EDITOR_STATE_SELECTED,
+  ]);
+  assert.deepStrictEqual(Array.from(streamed.mutation.changeSet.next), [
+    SPLAT_EDITOR_STATE_SELECTED,
+    SPLAT_EDITOR_STATE_SELECTED,
+    SPLAT_EDITOR_STATE_NONE,
+  ]);
+  assert.deepStrictEqual(streamMesh.listSplatStateIndices("selected"), [0, 1]);
+  assert.deepStrictEqual(streamMesh.listSplatStateIndices("locked"), [3]);
+  assert.deepStrictEqual(streamMesh.listSplatStateIndices("deleted"), [4]);
+  assert.strictEqual(
+    streamMesh.selectSplatStateColorMatchesStream({
+      seedIndex: 99,
+      threshold: 0.1,
+    }),
+    null,
+  );
+  streamMesh.dispose();
+}
 
 {
   const packedBase = new PackedSplats();

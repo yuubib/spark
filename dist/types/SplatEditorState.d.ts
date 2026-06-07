@@ -58,6 +58,8 @@ export interface SplatEditorStateMutationOptions {
     readonly recordChanges?: boolean;
     readonly changeFormat?: SplatEditorStateChangeFormat;
 }
+export type SplatEditorStateCandidateConsumer = (index: number) => boolean | undefined;
+export type SplatEditorStateCandidateProducer = (consumer: SplatEditorStateCandidateConsumer) => void;
 export interface SplatEditorStateDirtyRange {
     readonly start: number;
     readonly count: number;
@@ -120,6 +122,7 @@ export declare class SplatEditorState {
     setRange(start: number, count: number, bits: SplatEditorStateBits, operation?: SplatEditorStateOperation): void;
     setList(indices: Iterable<number>, bits: SplatEditorStateBits, operation?: SplatEditorStateOperation): void;
     selectCandidates(indices: Iterable<number>, operation?: SplatEditorSelectionOperation, options?: SplatEditorStateMutationOptions): SplatEditorStateMutationResult;
+    selectCandidatesFromProducer(produce: SplatEditorStateCandidateProducer, operation?: SplatEditorSelectionOperation, options?: SplatEditorStateMutationOptions): SplatEditorStateMutationResult;
     selectAll(options?: SplatEditorStateMutationOptions): SplatEditorStateMutationResult;
     clearSelection(options?: SplatEditorStateMutationOptions): SplatEditorStateMutationResult;
     invertSelection(options?: SplatEditorStateMutationOptions): SplatEditorStateMutationResult;
@@ -172,7 +175,7 @@ export declare class SplatEditorState {
     private resetSelectedIndexTrackingForUniform;
     private resetDeletedIndexTrackingForUniform;
     private setUnchecked;
-    private selectCandidateSetFromEmpty;
+    private selectCandidateSetFromEmptyProducer;
     private selectCandidateSetFromEmptyPackedArrayLike;
     private selectCandidateSetDense;
     private beginDenseCandidateWorkspace;

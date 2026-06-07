@@ -1342,6 +1342,52 @@ import {
 }
 
 {
+  const state = new SplatEditorState(16);
+  state.set(2, SPLAT_EDITOR_STATE_SELECTED);
+  state.set(6, SPLAT_EDITOR_STATE_LOCKED);
+  state.uploadDirty();
+  state.clearRenderDirtyRanges();
+  const produced: number[] = [];
+  const result = state.selectCandidatesFromProducer(
+    (consume) => {
+      for (const index of [4, -1, 8, 4, 6]) {
+        produced.push(index);
+        consume(index);
+      }
+    },
+    "set",
+    {
+      recordChanges: true,
+      changeFormat: "packed",
+    },
+  );
+
+  assert.deepStrictEqual(produced, [4, -1, 8, 4, 6]);
+  assert.strictEqual(result.changed, 3);
+  assert.strictEqual(result.changes, undefined);
+  assert.strictEqual(result.changeSet?.kind, "packed-list");
+  assert.ok(result.changeSet && result.changeSet.kind === "packed-list");
+  assert.deepStrictEqual(Array.from(result.changeSet.indices), [2, 4, 8]);
+  assert.deepStrictEqual(Array.from(result.changeSet.previous), [
+    SPLAT_EDITOR_STATE_SELECTED,
+    SPLAT_EDITOR_STATE_NONE,
+    SPLAT_EDITOR_STATE_NONE,
+  ]);
+  assert.deepStrictEqual(Array.from(result.changeSet.next), [
+    SPLAT_EDITOR_STATE_NONE,
+    SPLAT_EDITOR_STATE_SELECTED,
+    SPLAT_EDITOR_STATE_SELECTED,
+  ]);
+  assert.deepStrictEqual(state.listIndices("selected"), [4, 8]);
+  assert.strictEqual(state.get(6), SPLAT_EDITOR_STATE_LOCKED);
+
+  state.applyChangeSet(result.changeSet, "previous");
+  assert.deepStrictEqual(state.listIndices("selected"), [2]);
+  state.applyChangeSet(result.changeSet, "next");
+  assert.deepStrictEqual(state.listIndices("selected"), [4, 8]);
+}
+
+{
   const state = new SplatEditorState(24);
   state.set(3, SPLAT_EDITOR_STATE_LOCKED);
   state.set(5, SPLAT_EDITOR_STATE_DELETED);
