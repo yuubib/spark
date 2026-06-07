@@ -1,6 +1,6 @@
 import assert from "node:assert";
 
-import { SplatMesh } from "../dist/spark.module.js";
+import { SplatAccumulator, SplatMesh } from "../dist/spark.module.js";
 
 function readVersions(mesh: InstanceType<typeof SplatMesh>) {
   return {
@@ -9,6 +9,74 @@ function readVersions(mesh: InstanceType<typeof SplatMesh>) {
     styleVersion: mesh.styleVersion,
   };
 }
+
+type GeneratorConstructableMesh = InstanceType<typeof SplatMesh> & {
+  constructGenerator(context: unknown): void;
+  context: unknown;
+  generator?: unknown;
+  covGenerator?: unknown;
+};
+
+type ProgramPreparingAccumulator = InstanceType<typeof SplatAccumulator> & {
+  prepareProgramMaterial(
+    generator?: unknown,
+    covGenerator?: unknown,
+  ): { program: { shader: string } };
+};
+
+function compileGeneratedShader(mesh: InstanceType<typeof SplatMesh>): string {
+  const generatorMesh = mesh as GeneratorConstructableMesh;
+  generatorMesh.constructGenerator(generatorMesh.context);
+
+  const accumulator = new SplatAccumulator({
+    extSplats: Boolean((mesh as { extSplats?: unknown }).extSplats),
+    covSplats: Boolean((mesh as { covSplats?: unknown }).covSplats),
+  }) as ProgramPreparingAccumulator;
+  const { program } = accumulator.prepareProgramMaterial(
+    generatorMesh.generator,
+    generatorMesh.covGenerator,
+  );
+  accumulator.dispose();
+  return program.shader;
+}
+
+function assertGeneratorVisibilityBaking({
+  mode,
+  covSplats = false,
+  expected,
+}: {
+  mode: "generator" | "accumulator";
+  covSplats?: boolean;
+  expected: boolean;
+}) {
+  const mesh = new SplatMesh({
+    editorStateRenderMode: mode,
+    extSplats: covSplats,
+    covSplats,
+  });
+  const shader = compileGeneratedShader(mesh);
+
+  assert.strictEqual(
+    shader.includes("& 4u"),
+    expected,
+    `${mode} ${covSplats ? "covariance" : "standard"} generator visibility bake`,
+  );
+
+  mesh.dispose();
+}
+
+assertGeneratorVisibilityBaking({ mode: "generator", expected: true });
+assertGeneratorVisibilityBaking({ mode: "accumulator", expected: false });
+assertGeneratorVisibilityBaking({
+  mode: "generator",
+  covSplats: true,
+  expected: true,
+});
+assertGeneratorVisibilityBaking({
+  mode: "accumulator",
+  covSplats: true,
+  expected: false,
+});
 
 {
   const mesh = new SplatMesh({ editorStateRenderMode: "accumulator" });

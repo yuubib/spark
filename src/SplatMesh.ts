@@ -149,8 +149,8 @@ export type SplatMeshOptions = {
   // Controls where selected/locked editor-state styling is applied.
   // "generator" preserves Spark's default generated-output path.
   // "accumulator" lets the final draw shader sample accumulator-local state,
-  // avoiding generated splat output updates for selected/locked-only changes.
-  // Deleted visibility remains generator/sort-affecting in both modes.
+  // avoiding generated splat output updates for selected/locked/deleted changes.
+  // Generator mode keeps deleted visibility baked into generated output.
   // (default: "generator")
   editorStateRenderMode?: SplatEditorStateRenderMode;
   // Callback function that is called every frame to update the mesh.
@@ -1318,11 +1318,13 @@ export class SplatMesh extends SplatGenerator {
           index,
           viewOrigin: viewToObject.translate,
         });
-        gsplat = applySplatEditorStateVisibility(
-          gsplat,
-          context.editorStateTexture,
-          context.editorStateEnabled,
-        );
+        if (this.editorStateRenderMode === "generator") {
+          gsplat = applySplatEditorStateVisibility(
+            gsplat,
+            context.editorStateTexture,
+            context.editorStateEnabled,
+          );
+        }
         gsplat = applySplatEditorStateTransform(
           gsplat,
           context.editorStateTexture,
@@ -1418,11 +1420,13 @@ export class SplatMesh extends SplatGenerator {
           index,
           viewOrigin: covViewToObject.offset,
         });
-        gsplat = applySplatEditorStateVisibility(
-          gsplat,
-          context.editorStateTexture,
-          context.editorStateEnabled,
-        );
+        if (this.editorStateRenderMode === "generator") {
+          gsplat = applySplatEditorStateVisibility(
+            gsplat,
+            context.editorStateTexture,
+            context.editorStateEnabled,
+          );
+        }
         gsplat = applySplatEditorStateTransform(
           gsplat,
           context.editorStateTexture,

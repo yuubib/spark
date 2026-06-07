@@ -15028,11 +15028,13 @@ const _SplatMesh = class _SplatMesh extends SplatGenerator {
           index,
           viewOrigin: viewToObject.translate
         });
-        gsplat = applySplatEditorStateVisibility(
-          gsplat,
-          context.editorStateTexture,
-          context.editorStateEnabled
-        );
+        if (this.editorStateRenderMode === "generator") {
+          gsplat = applySplatEditorStateVisibility(
+            gsplat,
+            context.editorStateTexture,
+            context.editorStateEnabled
+          );
+        }
         gsplat = applySplatEditorStateTransform(
           gsplat,
           context.editorStateTexture,
@@ -15106,11 +15108,13 @@ const _SplatMesh = class _SplatMesh extends SplatGenerator {
           index,
           viewOrigin: covViewToObject.offset
         });
-        gsplat = applySplatEditorStateVisibility(
-          gsplat,
-          context.editorStateTexture,
-          context.editorStateEnabled
-        );
+        if (this.editorStateRenderMode === "generator") {
+          gsplat = applySplatEditorStateVisibility(
+            gsplat,
+            context.editorStateTexture,
+            context.editorStateEnabled
+          );
+        }
         gsplat = applySplatEditorStateTransform(
           gsplat,
           context.editorStateTexture,
