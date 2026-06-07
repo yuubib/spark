@@ -16183,6 +16183,7 @@ const _SplatMesh = class _SplatMesh extends SplatGenerator {
   getSplatStateBoundingBox({
     centersOnly = true,
     mode = "visible",
+    applySelectedTransform = false,
     target
   } = {}) {
     var _a2;
@@ -16194,32 +16195,37 @@ const _SplatMesh = class _SplatMesh extends SplatGenerator {
     const box = target ?? new THREE__namespace.Box3();
     box.makeEmpty();
     const editorState = this.getEditorState();
+    const selectedTransform = applySelectedTransform ? this.getSelectedSplatTransform() : null;
     const corners = new THREE__namespace.Vector3();
     const signs = [-1, 1];
     if (centersOnly) {
+      const center = new THREE__namespace.Vector3();
       this.forEachSplatCenterRaw((index, x, y, z) => {
-        if (!matchesSplatEditorStateBits(
-          this.getEditorStateBits(editorState, index),
-          mode
-        )) {
+        const bits2 = this.getEditorStateBits(editorState, index);
+        if (!matchesSplatEditorStateBits(bits2, mode)) {
           return;
         }
-        box.min.x = Math.min(box.min.x, x);
-        box.min.y = Math.min(box.min.y, y);
-        box.min.z = Math.min(box.min.z, z);
-        box.max.x = Math.max(box.max.x, x);
-        box.max.y = Math.max(box.max.y, y);
-        box.max.z = Math.max(box.max.z, z);
+        center.set(x, y, z);
+        if (selectedTransform && bits2 === SPLAT_EDITOR_STATE_SELECTED) {
+          applySelectedTransformToCenter(center, selectedTransform);
+        }
+        box.expandByPoint(center);
       });
       return box;
     }
     (_a2 = this.splats) == null ? void 0 : _a2.forEachSplat(
       (index, center, scales, quaternion, _opacity, _color) => {
-        if (!matchesSplatEditorStateBits(
-          this.getEditorStateBits(editorState, index),
-          mode
-        )) {
+        const bits2 = this.getEditorStateBits(editorState, index);
+        if (!matchesSplatEditorStateBits(bits2, mode)) {
           return;
+        }
+        if (selectedTransform && bits2 === SPLAT_EDITOR_STATE_SELECTED) {
+          applySelectedTransformToDecodedSplat(
+            center,
+            scales,
+            quaternion,
+            selectedTransform
+          );
         }
         for (const x of signs) {
           for (const y of signs) {
@@ -17003,6 +17009,10 @@ function applySelectedTransformToDecodedSplat(center, scales, quaternion, { pivo
   center.add(pivot).add(translate);
   scales.multiplyScalar(scale);
   quaternion.premultiply(rotate);
+}
+function applySelectedTransformToCenter(center, { pivot, translate, rotate, scale }) {
+  center.sub(pivot).multiplyScalar(scale).applyQuaternion(rotate);
+  center.add(pivot).add(translate);
 }
 const PLY_PROPERTY_TYPES = [
   "char",

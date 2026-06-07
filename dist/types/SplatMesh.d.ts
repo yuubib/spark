@@ -140,6 +140,7 @@ export interface SplatSource {
 export type SplatStateBoundingBoxOptions = {
     centersOnly?: boolean;
     mode?: SplatEditorStateFilterMode;
+    applySelectedTransform?: boolean;
     target?: THREE.Box3;
 };
 export declare class EmptySplatSource implements SplatSource {
@@ -257,7 +258,7 @@ export declare class SplatMesh extends SplatGenerator {
     uploadDirtySplatStateWithResult(renderer?: THREE.WebGLRenderer): SplatEditorStateUploadResult;
     dispose(): void;
     getBoundingBox(centers_only?: boolean): THREE.Box3;
-    getSplatStateBoundingBox({ centersOnly, mode, target, }?: SplatStateBoundingBoxOptions): THREE.Box3;
+    getSplatStateBoundingBox({ centersOnly, mode, applySelectedTransform, target, }?: SplatStateBoundingBoxOptions): THREE.Box3;
     private getEditorStateSource;
     private getEditorStateBits;
     private matchesEditorStateMode;

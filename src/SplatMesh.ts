@@ -352,6 +352,7 @@ type MutableSplatSource = SplatSource & {
 export type SplatStateBoundingBoxOptions = {
   centersOnly?: boolean;
   mode?: SplatEditorStateFilterMode;
+  applySelectedTransform?: boolean;
   target?: THREE.Box3;
 };
 
@@ -1360,6 +1361,7 @@ export class SplatMesh extends SplatGenerator {
   getSplatStateBoundingBox({
     centersOnly = true,
     mode = "visible",
+    applySelectedTransform = false,
     target,
   }: SplatStateBoundingBoxOptions = {}) {
     if (!this.initialized) {
@@ -1371,39 +1373,43 @@ export class SplatMesh extends SplatGenerator {
     const box = target ?? new THREE.Box3();
     box.makeEmpty();
     const editorState = this.getEditorState();
+    const selectedTransform = applySelectedTransform
+      ? this.getSelectedSplatTransform()
+      : null;
     const corners = new THREE.Vector3();
     const signs = [-1, 1];
 
     if (centersOnly) {
+      const center = new THREE.Vector3();
       this.forEachSplatCenterRaw((index, x, y, z) => {
-        if (
-          !matchesSplatEditorStateBits(
-            this.getEditorStateBits(editorState, index),
-            mode,
-          )
-        ) {
+        const bits = this.getEditorStateBits(editorState, index);
+        if (!matchesSplatEditorStateBits(bits, mode)) {
           return;
         }
 
-        box.min.x = Math.min(box.min.x, x);
-        box.min.y = Math.min(box.min.y, y);
-        box.min.z = Math.min(box.min.z, z);
-        box.max.x = Math.max(box.max.x, x);
-        box.max.y = Math.max(box.max.y, y);
-        box.max.z = Math.max(box.max.z, z);
+        center.set(x, y, z);
+        if (selectedTransform && bits === SPLAT_EDITOR_STATE_SELECTED) {
+          applySelectedTransformToCenter(center, selectedTransform);
+        }
+
+        box.expandByPoint(center);
       });
       return box;
     }
 
     this.splats?.forEachSplat(
       (index, center, scales, quaternion, _opacity, _color) => {
-        if (
-          !matchesSplatEditorStateBits(
-            this.getEditorStateBits(editorState, index),
-            mode,
-          )
-        ) {
+        const bits = this.getEditorStateBits(editorState, index);
+        if (!matchesSplatEditorStateBits(bits, mode)) {
           return;
+        }
+        if (selectedTransform && bits === SPLAT_EDITOR_STATE_SELECTED) {
+          applySelectedTransformToDecodedSplat(
+            center,
+            scales,
+            quaternion,
+            selectedTransform,
+          );
         }
         for (const x of signs) {
           for (const y of signs) {
@@ -2435,6 +2441,14 @@ function applySelectedTransformToDecodedSplat(
   center.add(pivot).add(translate);
   scales.multiplyScalar(scale);
   quaternion.premultiply(rotate);
+}
+
+function applySelectedTransformToCenter(
+  center: THREE.Vector3,
+  { pivot, translate, rotate, scale }: SplatMeshSelectedTransformSnapshot,
+): void {
+  center.sub(pivot).multiplyScalar(scale).applyQuaternion(rotate);
+  center.add(pivot).add(translate);
 }
 
 // Creates an empty mesh to hook into Three.js rendering.
