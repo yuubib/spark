@@ -60,6 +60,12 @@ export interface SplatEditorStateMutationOptions {
 }
 export type SplatEditorStateCandidateConsumer = (index: number) => boolean | undefined;
 export type SplatEditorStateCandidateProducer = (consumer: SplatEditorStateCandidateConsumer) => void;
+export type SplatEditorStateCandidateCommitGuard = (candidateCount: number) => boolean;
+export interface SplatEditorStateCandidateSetMutationResult {
+    readonly candidateCount: number;
+    readonly canceled?: boolean;
+    readonly mutation?: SplatEditorStateMutationResult;
+}
 export interface SplatEditorStateDirtyRange {
     readonly start: number;
     readonly count: number;
@@ -123,6 +129,7 @@ export declare class SplatEditorState {
     setList(indices: Iterable<number>, bits: SplatEditorStateBits, operation?: SplatEditorStateOperation): void;
     selectCandidates(indices: Iterable<number>, operation?: SplatEditorSelectionOperation, options?: SplatEditorStateMutationOptions): SplatEditorStateMutationResult;
     selectCandidatesFromProducer(produce: SplatEditorStateCandidateProducer, operation?: SplatEditorSelectionOperation, options?: SplatEditorStateMutationOptions): SplatEditorStateMutationResult;
+    selectCandidateSetFromProducerGuarded(produce: SplatEditorStateCandidateProducer, options?: SplatEditorStateMutationOptions, shouldCommit?: SplatEditorStateCandidateCommitGuard): SplatEditorStateCandidateSetMutationResult;
     selectAll(options?: SplatEditorStateMutationOptions): SplatEditorStateMutationResult;
     clearSelection(options?: SplatEditorStateMutationOptions): SplatEditorStateMutationResult;
     invertSelection(options?: SplatEditorStateMutationOptions): SplatEditorStateMutationResult;
@@ -178,6 +185,8 @@ export declare class SplatEditorState {
     private selectCandidateSetFromEmptyProducer;
     private selectCandidateSetFromEmptyPackedArrayLike;
     private selectCandidateSetDense;
+    private collectCandidateSetWorkspace;
+    private commitCandidateSetWorkspace;
     private beginDenseCandidateWorkspace;
     private markDenseCandidate;
     private hasDenseCandidate;

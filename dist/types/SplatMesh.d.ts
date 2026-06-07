@@ -2,7 +2,7 @@ import { ExtSplats } from './ExtSplats';
 import { PackedSplats } from './PackedSplats';
 import { RgbaArray, TRgbaArray } from './RgbaArray';
 import { SplatEdit, SplatEdits } from './SplatEdit';
-import { SplatEditorSelectionOperation, SplatEditorState, SplatEditorStateBits, SplatEditorStateCandidateProducer, SplatEditorStateChange, SplatEditorStateChangeSet, SplatEditorStateChangeSide, SplatEditorStateCounts, SplatEditorStateFilterMode, SplatEditorStateIndexMode, SplatEditorStateMutationOptions, SplatEditorStateMutationResult, SplatEditorStateOperation, SplatEditorStateSummary, SplatEditorStateUploadResult } from './SplatEditorState';
+import { SplatEditorSelectionOperation, SplatEditorState, SplatEditorStateBits, SplatEditorStateCandidateCommitGuard, SplatEditorStateCandidateProducer, SplatEditorStateCandidateSetMutationResult, SplatEditorStateChange, SplatEditorStateChangeSet, SplatEditorStateChangeSide, SplatEditorStateCounts, SplatEditorStateFilterMode, SplatEditorStateIndexMode, SplatEditorStateMutationOptions, SplatEditorStateMutationResult, SplatEditorStateOperation, SplatEditorStateSummary, SplatEditorStateUploadResult } from './SplatEditorState';
 import { CovSplatModifier, CovSplatTransformer, FrameUpdateContext, GsplatModifier, SplatGenerator, SplatTransformer } from './SplatGenerator';
 import { PagedSplats, SplatPager } from './SplatPager';
 import { SplatSkinning } from './SplatSkinning';
@@ -299,6 +299,7 @@ export declare class SplatMesh extends SplatGenerator {
     clearSplatState(mask?: SplatEditorStateBits): void;
     selectSplatStateCandidates(indices: Iterable<number>, operation?: SplatEditorSelectionOperation, options?: SplatEditorStateMutationOptions): SplatEditorStateMutationResult;
     selectSplatStateCandidatesFromProducer(produce: SplatEditorStateCandidateProducer, operation?: SplatEditorSelectionOperation, options?: SplatEditorStateMutationOptions): SplatEditorStateMutationResult;
+    selectSplatStateCandidateSetFromProducerGuarded(produce: SplatEditorStateCandidateProducer, options?: SplatEditorStateMutationOptions, shouldCommit?: SplatEditorStateCandidateCommitGuard): SplatEditorStateCandidateSetMutationResult;
     selectAllSplatState(options?: SplatEditorStateMutationOptions): SplatEditorStateMutationResult;
     clearSplatStateSelection(options?: SplatEditorStateMutationOptions): SplatEditorStateMutationResult;
     invertSplatStateSelection(options?: SplatEditorStateMutationOptions): SplatEditorStateMutationResult;

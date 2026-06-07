@@ -2792,12 +2792,10 @@ export class SparkRenderer extends THREE.Mesh {
       shouldMutate,
     } = options;
 
-    if (!shouldMutate) {
-      const cpuProducerResult =
-        this.selectSplatStateFromScreenPickCpuProducer(options);
-      if (cpuProducerResult) {
-        return cpuProducerResult;
-      }
+    const cpuProducerResult =
+      this.selectSplatStateFromScreenPickCpuProducer(options);
+    if (cpuProducerResult) {
+      return cpuProducerResult;
     }
 
     if (!(target instanceof SplatMesh) || !target.isInitialized) {
@@ -2856,6 +2854,7 @@ export class SparkRenderer extends THREE.Mesh {
       target,
       operation = "set",
       mutationOptions = {},
+      shouldMutate,
     } = options;
     if (operation !== "set") {
       return null;
@@ -2934,26 +2933,27 @@ export class SparkRenderer extends THREE.Mesh {
     }
 
     const collectStartedAt = readNowMs();
-    const mutation = target.selectSplatStateCandidatesFromProducer(
-      (consume) => {
-        this.collectSplatScreenPickCenterIndices({
-          scene,
-          camera,
-          target,
-          rect,
-          boundsMode: resolveSplatScreenPickCenterBoundsMode(options.shape),
-          viewportWidth: width,
-          viewportHeight: height,
-          editorStateMode,
-          maxCandidates: options.maxCandidates,
-          sort: false,
-          stats: collectStats,
-          consumeIndex: consume,
-        });
-      },
-      operation,
-      mutationOptions,
-    );
+    const guardedMutation =
+      target.selectSplatStateCandidateSetFromProducerGuarded(
+        (consume) => {
+          this.collectSplatScreenPickCenterIndices({
+            scene,
+            camera,
+            target,
+            rect,
+            boundsMode: resolveSplatScreenPickCenterBoundsMode(options.shape),
+            viewportWidth: width,
+            viewportHeight: height,
+            editorStateMode,
+            maxCandidates: options.maxCandidates,
+            sort: false,
+            stats: collectStats,
+            consumeIndex: consume,
+          });
+        },
+        mutationOptions,
+        () => shouldMutate?.() ?? true,
+      );
     const collectMs = readNowMs() - collectStartedAt;
 
     const pickStats = {
@@ -2995,10 +2995,13 @@ export class SparkRenderer extends THREE.Mesh {
     options.onStats?.(pickStats);
 
     return {
-      applied: true,
-      candidateCount: collectStats.uniqueHitCount,
+      applied: !guardedMutation.canceled,
+      ...(guardedMutation.canceled ? { canceled: true } : {}),
+      candidateCount: guardedMutation.candidateCount,
       pickStats,
-      mutation,
+      ...(guardedMutation.mutation
+        ? { mutation: guardedMutation.mutation }
+        : {}),
     };
   }
 

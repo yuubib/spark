@@ -103,6 +103,16 @@ export type SplatEditorStateCandidateProducer = (
   consumer: SplatEditorStateCandidateConsumer,
 ) => void;
 
+export type SplatEditorStateCandidateCommitGuard = (
+  candidateCount: number,
+) => boolean;
+
+export interface SplatEditorStateCandidateSetMutationResult {
+  readonly candidateCount: number;
+  readonly canceled?: boolean;
+  readonly mutation?: SplatEditorStateMutationResult;
+}
+
 export interface SplatEditorStateDirtyRange {
   readonly start: number;
   readonly count: number;
@@ -163,6 +173,12 @@ type SplatEditorStateMutationChangeBuffer =
 interface SplatEditorStateDenseCandidateWorkspace {
   readonly marks: Uint32Array;
   readonly generation: number;
+}
+
+interface SplatEditorStateCandidateSetWorkspace {
+  sparseCandidates: Set<number>;
+  denseCandidates: SplatEditorStateDenseCandidateWorkspace | null;
+  readonly candidateCount: number;
 }
 
 export class SplatEditorState {
@@ -462,56 +478,10 @@ export class SplatEditorState {
         return this.selectCandidateSetFromEmptyProducer(produce, changes);
       }
 
-      let sparseCandidates = new Set<number>();
-      let denseCandidates: SplatEditorStateDenseCandidateWorkspace | null =
-        null;
-      const sparseThreshold = Math.floor(
-        this.numSplats * SPARSE_SELECTION_SET_THRESHOLD_RATIO,
+      return this.commitCandidateSetWorkspace(
+        this.collectCandidateSetWorkspace(produce),
+        changes,
       );
-      produce((rawIndex) => {
-        const index = this.normalizeIndex(rawIndex);
-        if (index === null) {
-          return true;
-        }
-        if (denseCandidates) {
-          this.markDenseCandidate(denseCandidates, index);
-          return true;
-        }
-        sparseCandidates.add(index);
-        if (sparseCandidates.size > sparseThreshold) {
-          denseCandidates = this.beginDenseCandidateWorkspace();
-          for (const candidate of sparseCandidates) {
-            this.markDenseCandidate(denseCandidates, candidate);
-          }
-          sparseCandidates = new Set<number>();
-        }
-        return true;
-      });
-      const selectedCandidateCount = this.selectedIndicesComplete
-        ? this.selectedIndices.size
-        : this.selected;
-      if (
-        !denseCandidates &&
-        sparseCandidates.size + selectedCandidateCount > sparseThreshold
-      ) {
-        denseCandidates = this.beginDenseCandidateWorkspace();
-        for (const candidate of sparseCandidates) {
-          this.markDenseCandidate(denseCandidates, candidate);
-        }
-        sparseCandidates = new Set<number>();
-      }
-
-      if (denseCandidates) {
-        return this.selectCandidateSetDense(denseCandidates, changes);
-      }
-      if (!this.ensureSelectedIndicesCompleteForSparse()) {
-        denseCandidates = this.beginDenseCandidateWorkspace();
-        for (const candidate of sparseCandidates) {
-          this.markDenseCandidate(denseCandidates, candidate);
-        }
-        return this.selectCandidateSetDense(denseCandidates, changes);
-      }
-      return this.selectCandidateSetSparse(sparseCandidates, changes);
     }
 
     const dirtyIndices: number[] = [];
@@ -536,6 +506,27 @@ export class SplatEditorState {
       return true;
     });
     return this.commitMutation(changed, dirtyIndices, fullRange, changes);
+  }
+
+  selectCandidateSetFromProducerGuarded(
+    produce: SplatEditorStateCandidateProducer,
+    options: SplatEditorStateMutationOptions = {},
+    shouldCommit: SplatEditorStateCandidateCommitGuard = () => true,
+  ): SplatEditorStateCandidateSetMutationResult {
+    const workspace = this.collectCandidateSetWorkspace(produce);
+    if (!shouldCommit(workspace.candidateCount)) {
+      return {
+        candidateCount: workspace.candidateCount,
+        canceled: true,
+      };
+    }
+    return {
+      candidateCount: workspace.candidateCount,
+      mutation: this.commitCandidateSetWorkspace(
+        workspace,
+        createMutationChanges(options),
+      ),
+    };
   }
 
   selectAll(
@@ -1955,6 +1946,77 @@ export class SplatEditorState {
       }
     }
     return this.commitMutation(changed, dirtyIndices, fullRange, changes);
+  }
+
+  private collectCandidateSetWorkspace(
+    produce: SplatEditorStateCandidateProducer,
+  ): SplatEditorStateCandidateSetWorkspace {
+    let sparseCandidates = new Set<number>();
+    let denseCandidates: SplatEditorStateDenseCandidateWorkspace | null = null;
+    let candidateCount = 0;
+    const sparseThreshold = Math.floor(
+      this.numSplats * SPARSE_SELECTION_SET_THRESHOLD_RATIO,
+    );
+    produce((rawIndex) => {
+      const index = this.normalizeIndex(rawIndex);
+      if (index === null) {
+        return true;
+      }
+      candidateCount++;
+      if (denseCandidates) {
+        this.markDenseCandidate(denseCandidates, index);
+        return true;
+      }
+      sparseCandidates.add(index);
+      if (sparseCandidates.size > sparseThreshold) {
+        denseCandidates = this.beginDenseCandidateWorkspace();
+        for (const candidate of sparseCandidates) {
+          this.markDenseCandidate(denseCandidates, candidate);
+        }
+        sparseCandidates = new Set<number>();
+      }
+      return true;
+    });
+    return {
+      sparseCandidates,
+      denseCandidates,
+      candidateCount,
+    };
+  }
+
+  private commitCandidateSetWorkspace(
+    workspace: SplatEditorStateCandidateSetWorkspace,
+    changes?: SplatEditorStateMutationChangeBuffer,
+  ): SplatEditorStateMutationResult {
+    let { sparseCandidates, denseCandidates } = workspace;
+    const sparseThreshold = Math.floor(
+      this.numSplats * SPARSE_SELECTION_SET_THRESHOLD_RATIO,
+    );
+    const selectedCandidateCount = this.selectedIndicesComplete
+      ? this.selectedIndices.size
+      : this.selected;
+    if (
+      !denseCandidates &&
+      sparseCandidates.size + selectedCandidateCount > sparseThreshold
+    ) {
+      denseCandidates = this.beginDenseCandidateWorkspace();
+      for (const candidate of sparseCandidates) {
+        this.markDenseCandidate(denseCandidates, candidate);
+      }
+      sparseCandidates = new Set<number>();
+    }
+
+    if (denseCandidates) {
+      return this.selectCandidateSetDense(denseCandidates, changes);
+    }
+    if (!this.ensureSelectedIndicesCompleteForSparse()) {
+      denseCandidates = this.beginDenseCandidateWorkspace();
+      for (const candidate of sparseCandidates) {
+        this.markDenseCandidate(denseCandidates, candidate);
+      }
+      return this.selectCandidateSetDense(denseCandidates, changes);
+    }
+    return this.selectCandidateSetSparse(sparseCandidates, changes);
   }
 
   private beginDenseCandidateWorkspace(): SplatEditorStateDenseCandidateWorkspace {

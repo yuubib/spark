@@ -18,7 +18,9 @@ import {
   type SplatEditorSelectionOperation,
   SplatEditorState,
   type SplatEditorStateBits,
+  type SplatEditorStateCandidateCommitGuard,
   type SplatEditorStateCandidateProducer,
+  type SplatEditorStateCandidateSetMutationResult,
   type SplatEditorStateChange,
   type SplatEditorStateChangeSet,
   type SplatEditorStateChangeSide,
@@ -1423,6 +1425,29 @@ export class SplatMesh extends SplatGenerator {
     return this.mutateEditorState((state) =>
       state.selectCandidatesFromProducer(produce, operation, options),
     );
+  }
+
+  selectSplatStateCandidateSetFromProducerGuarded(
+    produce: SplatEditorStateCandidateProducer,
+    options: SplatEditorStateMutationOptions = {},
+    shouldCommit: SplatEditorStateCandidateCommitGuard = () => true,
+  ): SplatEditorStateCandidateSetMutationResult {
+    const state = this.ensureEditorState();
+    const previousVersion = state.version;
+    const previousVisibilityVersion = state.visibilityVersion;
+    const result = state.selectCandidateSetFromProducerGuarded(
+      produce,
+      options,
+      shouldCommit,
+    );
+    if (result.mutation) {
+      this.updateVersionForEditorState(
+        state,
+        previousVersion,
+        previousVisibilityVersion,
+      );
+    }
+    return result;
   }
 
   selectAllSplatState(

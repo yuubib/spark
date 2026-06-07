@@ -242,6 +242,151 @@ try {
   sparkRenderer.pickSplatCandidateIndices = originalPickSplatCandidateIndices;
 }
 
+mesh.clearSplatStateSelection();
+let guardedProducerStats: SplatScreenPickStats | null = null;
+let guardedPickIndexCallCount = 0;
+sparkRenderer.pickSplatCandidateIndices = async () => {
+  guardedPickIndexCallCount++;
+  throw new Error("guarded producer fast path should not compact indices");
+};
+try {
+  const guardedProducerSelection =
+    await sparkRenderer.selectSplatStateFromScreenPick({
+      target: mesh,
+      scene,
+      camera,
+      candidateMode: "centers",
+      centerProcessor: "cpu",
+      shape: { kind: "rect", x: 0, y: 0, width: 1, height: 1 },
+      width: 100,
+      height: 100,
+      operation: "set",
+      mutationOptions: {
+        recordChanges: true,
+        changeFormat: "packed",
+      },
+      shouldMutate: () => true,
+      onStats: (nextStats) => {
+        guardedProducerStats = nextStats;
+      },
+    });
+
+  assert.ok(guardedProducerSelection);
+  assert.strictEqual(guardedProducerSelection.applied, true);
+  assert.strictEqual(guardedProducerSelection.canceled, undefined);
+  assert.strictEqual(guardedProducerSelection.candidateCount, 2);
+  assert.strictEqual(guardedPickIndexCallCount, 0);
+  assert.strictEqual(guardedProducerSelection.pickStats, guardedProducerStats);
+  assert.deepStrictEqual(mesh.listSplatStateIndices("selected"), [0, 1]);
+  assert.ok(guardedProducerSelection.mutation);
+  assert.strictEqual(guardedProducerSelection.mutation.changed, 2);
+  assert.strictEqual(
+    guardedProducerSelection.mutation.changeSet?.kind,
+    "packed-list",
+  );
+} finally {
+  sparkRenderer.pickSplatCandidateIndices = originalPickSplatCandidateIndices;
+}
+
+mesh.selectSplatStateCandidates([1], "set");
+let canceledGuardStats: SplatScreenPickStats | null = null;
+let canceledPickIndexCallCount = 0;
+sparkRenderer.pickSplatCandidateIndices = async () => {
+  canceledPickIndexCallCount++;
+  throw new Error("canceled guarded producer should not compact indices");
+};
+try {
+  const canceledGuardSelection =
+    await sparkRenderer.selectSplatStateFromScreenPick({
+      target: mesh,
+      scene,
+      camera,
+      candidateMode: "centers",
+      centerProcessor: "cpu",
+      shape: { kind: "rect", x: 0, y: 0, width: 1, height: 1 },
+      width: 100,
+      height: 100,
+      operation: "set",
+      shouldMutate: () => false,
+      onStats: (nextStats) => {
+        canceledGuardStats = nextStats;
+      },
+    });
+
+  assert.ok(canceledGuardSelection);
+  assert.strictEqual(canceledGuardSelection.applied, false);
+  assert.strictEqual(canceledGuardSelection.canceled, true);
+  assert.strictEqual(canceledGuardSelection.candidateCount, 2);
+  assert.strictEqual(canceledPickIndexCallCount, 0);
+  assert.strictEqual(canceledGuardSelection.pickStats, canceledGuardStats);
+  assert.strictEqual(canceledGuardSelection.mutation, undefined);
+  assert.deepStrictEqual(mesh.listSplatStateIndices("selected"), [1]);
+} finally {
+  sparkRenderer.pickSplatCandidateIndices = originalPickSplatCandidateIndices;
+}
+
+mesh.clearSplatStateSelection();
+let canceledEmptyPickIndexCallCount = 0;
+sparkRenderer.pickSplatCandidateIndices = async () => {
+  canceledEmptyPickIndexCallCount++;
+  throw new Error("empty canceled guarded producer should not compact indices");
+};
+try {
+  const canceledEmptySelection =
+    await sparkRenderer.selectSplatStateFromScreenPick({
+      target: mesh,
+      scene,
+      camera,
+      candidateMode: "centers",
+      centerProcessor: "cpu",
+      shape: { kind: "rect", x: 0, y: 0, width: 1, height: 1 },
+      width: 100,
+      height: 100,
+      operation: "set",
+      shouldMutate: () => false,
+    });
+
+  assert.ok(canceledEmptySelection);
+  assert.strictEqual(canceledEmptySelection.applied, false);
+  assert.strictEqual(canceledEmptySelection.canceled, true);
+  assert.strictEqual(canceledEmptySelection.candidateCount, 2);
+  assert.strictEqual(canceledEmptyPickIndexCallCount, 0);
+  assert.strictEqual(canceledEmptySelection.mutation, undefined);
+  assert.deepStrictEqual(mesh.listSplatStateIndices("selected"), []);
+} finally {
+  sparkRenderer.pickSplatCandidateIndices = originalPickSplatCandidateIndices;
+}
+
+mesh.selectSplatStateCandidates([0, 1], "set");
+let guardedRemovePickIndexCallCount = 0;
+sparkRenderer.pickSplatCandidateIndices = async (options) => {
+  guardedRemovePickIndexCallCount++;
+  return originalPickSplatCandidateIndices(options);
+};
+try {
+  const guardedRemoveSelection =
+    await sparkRenderer.selectSplatStateFromScreenPick({
+      target: mesh,
+      scene,
+      camera,
+      candidateMode: "centers",
+      centerProcessor: "cpu",
+      shape: { kind: "rect", x: 0, y: 0, width: 1, height: 1 },
+      width: 100,
+      height: 100,
+      operation: "remove",
+      shouldMutate: () => true,
+    });
+
+  assert.ok(guardedRemoveSelection);
+  assert.strictEqual(guardedRemoveSelection.applied, true);
+  assert.strictEqual(guardedRemovePickIndexCallCount, 1);
+  assert.deepStrictEqual(mesh.listSplatStateIndices("selected"), []);
+} finally {
+  sparkRenderer.pickSplatCandidateIndices = originalPickSplatCandidateIndices;
+}
+
+mesh.selectSplatStateCandidates([0, 1], "set");
 const directRemove = await sparkRenderer.selectSplatStateFromScreenPick({
   target: mesh,
   scene,

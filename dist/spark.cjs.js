@@ -7089,49 +7089,10 @@ const _SplatEditorState = class _SplatEditorState {
       if (this.selected === 0) {
         return this.selectCandidateSetFromEmptyProducer(produce, changes);
       }
-      let sparseCandidates = /* @__PURE__ */ new Set();
-      let denseCandidates = null;
-      const sparseThreshold = Math.floor(
-        this.numSplats * SPARSE_SELECTION_SET_THRESHOLD_RATIO
+      return this.commitCandidateSetWorkspace(
+        this.collectCandidateSetWorkspace(produce),
+        changes
       );
-      produce((rawIndex) => {
-        const index = this.normalizeIndex(rawIndex);
-        if (index === null) {
-          return true;
-        }
-        if (denseCandidates) {
-          this.markDenseCandidate(denseCandidates, index);
-          return true;
-        }
-        sparseCandidates.add(index);
-        if (sparseCandidates.size > sparseThreshold) {
-          denseCandidates = this.beginDenseCandidateWorkspace();
-          for (const candidate of sparseCandidates) {
-            this.markDenseCandidate(denseCandidates, candidate);
-          }
-          sparseCandidates = /* @__PURE__ */ new Set();
-        }
-        return true;
-      });
-      const selectedCandidateCount = this.selectedIndicesComplete ? this.selectedIndices.size : this.selected;
-      if (!denseCandidates && sparseCandidates.size + selectedCandidateCount > sparseThreshold) {
-        denseCandidates = this.beginDenseCandidateWorkspace();
-        for (const candidate of sparseCandidates) {
-          this.markDenseCandidate(denseCandidates, candidate);
-        }
-        sparseCandidates = /* @__PURE__ */ new Set();
-      }
-      if (denseCandidates) {
-        return this.selectCandidateSetDense(denseCandidates, changes);
-      }
-      if (!this.ensureSelectedIndicesCompleteForSparse()) {
-        denseCandidates = this.beginDenseCandidateWorkspace();
-        for (const candidate of sparseCandidates) {
-          this.markDenseCandidate(denseCandidates, candidate);
-        }
-        return this.selectCandidateSetDense(denseCandidates, changes);
-      }
-      return this.selectCandidateSetSparse(sparseCandidates, changes);
     }
     const dirtyIndices = [];
     let fullRange = false;
@@ -7150,6 +7111,22 @@ const _SplatEditorState = class _SplatEditorState {
       return true;
     });
     return this.commitMutation(changed, dirtyIndices, fullRange, changes);
+  }
+  selectCandidateSetFromProducerGuarded(produce, options = {}, shouldCommit = () => true) {
+    const workspace = this.collectCandidateSetWorkspace(produce);
+    if (!shouldCommit(workspace.candidateCount)) {
+      return {
+        candidateCount: workspace.candidateCount,
+        canceled: true
+      };
+    }
+    return {
+      candidateCount: workspace.candidateCount,
+      mutation: this.commitCandidateSetWorkspace(
+        workspace,
+        createMutationChanges(options)
+      )
+    };
   }
   selectAll(options = {}) {
     if (!options.recordChanges && this.locked === 0 && this.deleted === 0) {
@@ -8231,6 +8208,64 @@ const _SplatEditorState = class _SplatEditorState {
       }
     }
     return this.commitMutation(changed, dirtyIndices, fullRange, changes);
+  }
+  collectCandidateSetWorkspace(produce) {
+    let sparseCandidates = /* @__PURE__ */ new Set();
+    let denseCandidates = null;
+    let candidateCount = 0;
+    const sparseThreshold = Math.floor(
+      this.numSplats * SPARSE_SELECTION_SET_THRESHOLD_RATIO
+    );
+    produce((rawIndex) => {
+      const index = this.normalizeIndex(rawIndex);
+      if (index === null) {
+        return true;
+      }
+      candidateCount++;
+      if (denseCandidates) {
+        this.markDenseCandidate(denseCandidates, index);
+        return true;
+      }
+      sparseCandidates.add(index);
+      if (sparseCandidates.size > sparseThreshold) {
+        denseCandidates = this.beginDenseCandidateWorkspace();
+        for (const candidate of sparseCandidates) {
+          this.markDenseCandidate(denseCandidates, candidate);
+        }
+        sparseCandidates = /* @__PURE__ */ new Set();
+      }
+      return true;
+    });
+    return {
+      sparseCandidates,
+      denseCandidates,
+      candidateCount
+    };
+  }
+  commitCandidateSetWorkspace(workspace, changes) {
+    let { sparseCandidates, denseCandidates } = workspace;
+    const sparseThreshold = Math.floor(
+      this.numSplats * SPARSE_SELECTION_SET_THRESHOLD_RATIO
+    );
+    const selectedCandidateCount = this.selectedIndicesComplete ? this.selectedIndices.size : this.selected;
+    if (!denseCandidates && sparseCandidates.size + selectedCandidateCount > sparseThreshold) {
+      denseCandidates = this.beginDenseCandidateWorkspace();
+      for (const candidate of sparseCandidates) {
+        this.markDenseCandidate(denseCandidates, candidate);
+      }
+      sparseCandidates = /* @__PURE__ */ new Set();
+    }
+    if (denseCandidates) {
+      return this.selectCandidateSetDense(denseCandidates, changes);
+    }
+    if (!this.ensureSelectedIndicesCompleteForSparse()) {
+      denseCandidates = this.beginDenseCandidateWorkspace();
+      for (const candidate of sparseCandidates) {
+        this.markDenseCandidate(denseCandidates, candidate);
+      }
+      return this.selectCandidateSetDense(denseCandidates, changes);
+    }
+    return this.selectCandidateSetSparse(sparseCandidates, changes);
   }
   beginDenseCandidateWorkspace() {
     if (this.denseCandidateMarks.length < this.numSplats) {
@@ -14815,11 +14850,9 @@ const _SparkRenderer = class _SparkRenderer extends THREE__namespace.Mesh {
       mutationOptions = {},
       shouldMutate
     } = options;
-    if (!shouldMutate) {
-      const cpuProducerResult = this.selectSplatStateFromScreenPickCpuProducer(options);
-      if (cpuProducerResult) {
-        return cpuProducerResult;
-      }
+    const cpuProducerResult = this.selectSplatStateFromScreenPickCpuProducer(options);
+    if (cpuProducerResult) {
+      return cpuProducerResult;
     }
     if (!(target instanceof SplatMesh) || !target.isInitialized) {
       return null;
@@ -14872,7 +14905,8 @@ const _SparkRenderer = class _SparkRenderer extends THREE__namespace.Mesh {
       camera,
       target,
       operation = "set",
-      mutationOptions = {}
+      mutationOptions = {},
+      shouldMutate
     } = options;
     if (operation !== "set") {
       return null;
@@ -14942,7 +14976,7 @@ const _SparkRenderer = class _SparkRenderer extends THREE__namespace.Mesh {
       updateMs = readNowMs() - updateStartedAt;
     }
     const collectStartedAt = readNowMs();
-    const mutation = target.selectSplatStateCandidatesFromProducer(
+    const guardedMutation = target.selectSplatStateCandidateSetFromProducerGuarded(
       (consume) => {
         this.collectSplatScreenPickCenterIndices({
           scene,
@@ -14959,8 +14993,8 @@ const _SparkRenderer = class _SparkRenderer extends THREE__namespace.Mesh {
           consumeIndex: consume
         });
       },
-      operation,
-      mutationOptions
+      mutationOptions,
+      () => (shouldMutate == null ? void 0 : shouldMutate()) ?? true
     );
     const collectMs = readNowMs() - collectStartedAt;
     const pickStats = {
@@ -15001,10 +15035,11 @@ const _SparkRenderer = class _SparkRenderer extends THREE__namespace.Mesh {
     };
     (_a2 = options.onStats) == null ? void 0 : _a2.call(options, pickStats);
     return {
-      applied: true,
-      candidateCount: collectStats.uniqueHitCount,
+      applied: !guardedMutation.canceled,
+      ...guardedMutation.canceled ? { canceled: true } : {},
+      candidateCount: guardedMutation.candidateCount,
       pickStats,
-      mutation
+      ...guardedMutation.mutation ? { mutation: guardedMutation.mutation } : {}
     };
   }
   async pickRenderedSplatIndex(options) {
@@ -18990,6 +19025,24 @@ const _SplatMesh = class _SplatMesh extends SplatGenerator {
     return this.mutateEditorState(
       (state) => state.selectCandidatesFromProducer(produce, operation, options)
     );
+  }
+  selectSplatStateCandidateSetFromProducerGuarded(produce, options = {}, shouldCommit = () => true) {
+    const state = this.ensureEditorState();
+    const previousVersion = state.version;
+    const previousVisibilityVersion = state.visibilityVersion;
+    const result = state.selectCandidateSetFromProducerGuarded(
+      produce,
+      options,
+      shouldCommit
+    );
+    if (result.mutation) {
+      this.updateVersionForEditorState(
+        state,
+        previousVersion,
+        previousVisibilityVersion
+      );
+    }
+    return result;
   }
   selectAllSplatState(options = {}) {
     return this.mutateEditorState((state) => state.selectAll(options));
