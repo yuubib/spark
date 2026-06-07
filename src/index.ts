@@ -30,6 +30,7 @@ export {
   type SplatScreenPickCenterCollectStats,
   type SplatScreenPickCollectStats,
   type SplatScreenPickHit,
+  type SplatScreenPickIndexBuffer,
   type SplatScreenPickIndexOptions,
   type SplatScreenPickMask,
   type SplatScreenPickNearestCenterOptions,

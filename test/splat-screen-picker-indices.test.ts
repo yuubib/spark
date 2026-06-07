@@ -121,6 +121,59 @@ const capped = await sparkRenderer.pickSplatCandidateIndices({
 
 assert.deepStrictEqual([...(capped ?? [])], [0]);
 
+const reusableIndexBuffer = { buffer: new Uint32Array(4) };
+const reused = await sparkRenderer.pickSplatCandidateIndices({
+  target: mesh,
+  scene,
+  camera,
+  candidateMode: "centers",
+  shape: { kind: "rect", x: 0, y: 0, width: 1, height: 1 },
+  width: 100,
+  height: 100,
+  operation: "set",
+  indexBuffer: reusableIndexBuffer,
+});
+
+assert.deepStrictEqual([...(reused ?? [])], [0, 1]);
+assert.strictEqual(reused?.buffer, reusableIndexBuffer.buffer.buffer);
+assert.strictEqual(reused?.byteOffset, reusableIndexBuffer.buffer.byteOffset);
+assert.strictEqual(reusableIndexBuffer.buffer.length, 4);
+
+const undersizedIndexBuffer = { buffer: new Uint32Array(1) };
+const grown = await sparkRenderer.pickSplatCandidateIndices({
+  target: mesh,
+  scene,
+  camera,
+  candidateMode: "centers",
+  shape: { kind: "rect", x: 0, y: 0, width: 1, height: 1 },
+  width: 100,
+  height: 100,
+  operation: "set",
+  indexBuffer: undersizedIndexBuffer,
+});
+
+assert.deepStrictEqual([...(grown ?? [])], [0, 1]);
+assert.ok(undersizedIndexBuffer.buffer.length >= 2);
+assert.strictEqual(grown?.buffer, undersizedIndexBuffer.buffer.buffer);
+
+const cappedIndexBuffer = { buffer: new Uint32Array(4).fill(999) };
+const cappedReuse = await sparkRenderer.pickSplatCandidateIndices({
+  target: mesh,
+  scene,
+  camera,
+  candidateMode: "centers",
+  shape: { kind: "rect", x: 0, y: 0, width: 1, height: 1 },
+  width: 100,
+  height: 100,
+  operation: "set",
+  maxCandidates: 1,
+  indexBuffer: cappedIndexBuffer,
+});
+
+assert.deepStrictEqual([...(cappedReuse ?? [])], [0]);
+assert.strictEqual(cappedReuse?.buffer, cappedIndexBuffer.buffer.buffer);
+assert.strictEqual(cappedIndexBuffer.buffer[1], 999);
+
 const originalPickSplatCandidates =
   sparkRenderer.pickSplatCandidates.bind(sparkRenderer);
 let renderedSeedOptions: unknown = null;
@@ -165,6 +218,45 @@ assert.strictEqual(
   1,
 );
 assert.strictEqual((renderedSeedOptions as { sort?: boolean }).sort, false);
+
+sparkRenderer.pickSplatCandidates = async () => [
+  {
+    object: mesh,
+    index: 1,
+    accumulatorIndex: 7,
+    sourceIndexStable: true,
+    pixel: { x: 75, y: 50 },
+  },
+  {
+    object: mesh,
+    index: 0,
+    accumulatorIndex: 3,
+    sourceIndexStable: true,
+    pixel: { x: 25, y: 50 },
+  },
+  {
+    object: mesh,
+    index: 1,
+    accumulatorIndex: 8,
+    sourceIndexStable: true,
+    pixel: { x: 76, y: 50 },
+  },
+];
+const renderedIndexBuffer = { buffer: new Uint32Array(4) };
+const renderedIndices = await sparkRenderer.pickSplatCandidateIndices({
+  target: mesh,
+  scene,
+  camera,
+  candidateMode: "rendered-id",
+  shape: { kind: "rect", x: 0, y: 0, width: 1, height: 1 },
+  width: 100,
+  height: 100,
+  operation: "set",
+  indexBuffer: renderedIndexBuffer,
+});
+
+assert.deepStrictEqual([...(renderedIndices ?? [])], [0, 1]);
+assert.strictEqual(renderedIndices?.buffer, renderedIndexBuffer.buffer.buffer);
 
 sparkRenderer.pickSplatCandidates = async () => [
   {

@@ -12473,7 +12473,7 @@ function readNowMs() {
   var _a2, _b2;
   return ((_b2 = (_a2 = globalThis.performance) == null ? void 0 : _a2.now) == null ? void 0 : _b2.call(_a2)) ?? Date.now();
 }
-function compactStableSplatScreenPickHitIndices(hits, target) {
+function compactStableSplatScreenPickHitIndices(hits, target, indexBuffer) {
   const seen = /* @__PURE__ */ new Set();
   for (const hit of hits) {
     if (hit.object !== target || !hit.sourceIndexStable || !Number.isInteger(hit.index) || hit.index < 0) {
@@ -12484,7 +12484,24 @@ function compactStableSplatScreenPickHitIndices(hits, target) {
   if (!seen.size) {
     return new Uint32Array();
   }
-  return Uint32Array.from([...seen].sort((a, b) => a - b));
+  const sorted = [...seen].sort((a, b) => a - b);
+  const indices = ensureSplatScreenPickIndexBuffer(indexBuffer, sorted.length);
+  indices.set(sorted, 0);
+  return indices.subarray(0, sorted.length);
+}
+function ensureSplatScreenPickIndexBuffer(indexBuffer, capacity, copyFrom, copyLength = 0) {
+  const safeCapacity = Math.max(0, Math.floor(capacity));
+  if (indexBuffer && indexBuffer.buffer.length >= safeCapacity) {
+    return indexBuffer.buffer;
+  }
+  const next = new Uint32Array(safeCapacity);
+  if (copyFrom && copyLength > 0) {
+    next.set(copyFrom.subarray(0, Math.min(copyLength, copyFrom.length)));
+  }
+  if (indexBuffer) {
+    indexBuffer.buffer = next;
+  }
+  return next;
 }
 function resolveSplatScreenPickRankPoint(shape, rect, viewportWidth, viewportHeight) {
   if (shape.kind === "point") {
@@ -13853,7 +13870,11 @@ const _SparkRenderer = class _SparkRenderer extends THREE.Mesh {
     const editorStateMode = options.editorStateMode ?? editorSelectionOperationToPickFilterMode(options.operation ?? "set");
     if (candidateMode !== "centers") {
       const hits = await this.pickSplatCandidates(options);
-      const indices2 = compactStableSplatScreenPickHitIndices(hits, target);
+      const indices2 = compactStableSplatScreenPickHitIndices(
+        hits,
+        target,
+        options.indexBuffer
+      );
       return indices2.length > 0 ? indices2 : null;
     }
     if (!(target instanceof SplatMesh) || !target.isInitialized) {
@@ -13881,7 +13902,8 @@ const _SparkRenderer = class _SparkRenderer extends THREE.Mesh {
       editorStateMode,
       maxCandidates: options.maxCandidates,
       sort: options.sort,
-      stats: collectStats
+      stats: collectStats,
+      indexBuffer: options.indexBuffer
     });
     const collectMs = readNowMs() - collectStartedAt;
     (_a2 = options.onStats) == null ? void 0 : _a2.call(options, {
@@ -14229,7 +14251,8 @@ const _SparkRenderer = class _SparkRenderer extends THREE.Mesh {
     editorStateMode,
     maxCandidates,
     sort,
-    stats
+    stats,
+    indexBuffer
   }) {
     const max2 = maxCandidates != null ? Math.max(0, Math.floor(maxCandidates)) : Number.POSITIVE_INFINITY;
     if (max2 <= 0) {
@@ -14246,9 +14269,7 @@ const _SparkRenderer = class _SparkRenderer extends THREE.Mesh {
       y: 0,
       ndcZ: 0
     };
-    let indices = new Uint32Array(
-      Math.min(Number.isFinite(max2) ? max2 : 1024, 1024)
-    );
+    let indices = (indexBuffer == null ? void 0 : indexBuffer.buffer) ?? new Uint32Array(Math.min(Number.isFinite(max2) ? max2 : 1024, 1024));
     let indexCount = 0;
     let lastIndex = -1;
     let orderedIndices = true;
@@ -14258,11 +14279,16 @@ const _SparkRenderer = class _SparkRenderer extends THREE.Mesh {
         return false;
       }
       if (indexCount >= indices.length) {
-        const next = new Uint32Array(
-          indices.length ? indices.length * 2 : 1024
+        const nextCapacity = Math.min(
+          Number.isFinite(max2) ? max2 : Number.POSITIVE_INFINITY,
+          Math.max(indices.length ? indices.length * 2 : 1024, indexCount + 1)
         );
-        next.set(indices);
-        indices = next;
+        indices = ensureSplatScreenPickIndexBuffer(
+          indexBuffer,
+          nextCapacity,
+          indices,
+          indexCount
+        );
       }
       if (index < lastIndex) {
         orderedIndices = false;

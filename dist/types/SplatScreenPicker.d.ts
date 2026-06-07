@@ -103,6 +103,10 @@ export type SplatScreenPickOptions = {
 };
 export type SplatScreenPickIndexOptions = SplatScreenPickOptions & {
     target: SplatGenerator;
+    indexBuffer?: SplatScreenPickIndexBuffer;
+};
+export type SplatScreenPickIndexBuffer = {
+    buffer: Uint32Array;
 };
 export type SplatScreenPickNearestCenterRankMode = "screen-distance-depth" | "screen-distance" | "depth";
 export type SplatScreenPickNearestCenterOptions = SplatScreenPickIndexOptions & {

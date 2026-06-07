@@ -20,6 +20,7 @@ import {
   type SplatScreenPickCenterCollectStats,
   type SplatScreenPickCollectStats,
   type SplatScreenPickHit,
+  type SplatScreenPickIndexBuffer,
   type SplatScreenPickIndexOptions,
   type SplatScreenPickNearestCenterOptions,
   type SplatScreenPickNearestCenterRankMode,
@@ -68,6 +69,7 @@ function readNowMs(): number {
 function compactStableSplatScreenPickHitIndices(
   hits: readonly SplatScreenPickHit[],
   target: SplatGenerator,
+  indexBuffer?: SplatScreenPickIndexBuffer,
 ): Uint32Array {
   const seen = new Set<number>();
   for (const hit of hits) {
@@ -84,7 +86,31 @@ function compactStableSplatScreenPickHitIndices(
   if (!seen.size) {
     return new Uint32Array();
   }
-  return Uint32Array.from([...seen].sort((a, b) => a - b));
+  const sorted = [...seen].sort((a, b) => a - b);
+  const indices = ensureSplatScreenPickIndexBuffer(indexBuffer, sorted.length);
+  indices.set(sorted, 0);
+  return indices.subarray(0, sorted.length);
+}
+
+function ensureSplatScreenPickIndexBuffer(
+  indexBuffer: SplatScreenPickIndexBuffer | undefined,
+  capacity: number,
+  copyFrom?: Uint32Array,
+  copyLength = 0,
+): Uint32Array {
+  const safeCapacity = Math.max(0, Math.floor(capacity));
+  if (indexBuffer && indexBuffer.buffer.length >= safeCapacity) {
+    return indexBuffer.buffer;
+  }
+
+  const next = new Uint32Array(safeCapacity);
+  if (copyFrom && copyLength > 0) {
+    next.set(copyFrom.subarray(0, Math.min(copyLength, copyFrom.length)));
+  }
+  if (indexBuffer) {
+    indexBuffer.buffer = next;
+  }
+  return next;
 }
 
 function resolveSplatScreenPickRankPoint(
@@ -2273,7 +2299,11 @@ export class SparkRenderer extends THREE.Mesh {
 
     if (candidateMode !== "centers") {
       const hits = await this.pickSplatCandidates(options);
-      const indices = compactStableSplatScreenPickHitIndices(hits, target);
+      const indices = compactStableSplatScreenPickHitIndices(
+        hits,
+        target,
+        options.indexBuffer,
+      );
       return indices.length > 0 ? indices : null;
     }
 
@@ -2305,6 +2335,7 @@ export class SparkRenderer extends THREE.Mesh {
       maxCandidates: options.maxCandidates,
       sort: options.sort,
       stats: collectStats,
+      indexBuffer: options.indexBuffer,
     });
     const collectMs = readNowMs() - collectStartedAt;
 
@@ -2738,6 +2769,7 @@ export class SparkRenderer extends THREE.Mesh {
     maxCandidates,
     sort,
     stats,
+    indexBuffer,
   }: {
     scene: THREE.Object3D;
     camera: THREE.Camera;
@@ -2749,6 +2781,7 @@ export class SparkRenderer extends THREE.Mesh {
     maxCandidates?: number;
     sort?: boolean;
     stats: SplatScreenPickCenterCollectStats;
+    indexBuffer?: SplatScreenPickIndexBuffer;
   }): Uint32Array {
     const max =
       maxCandidates != null
@@ -2770,9 +2803,9 @@ export class SparkRenderer extends THREE.Mesh {
       ndcZ: 0,
     };
 
-    let indices = new Uint32Array(
-      Math.min(Number.isFinite(max) ? max : 1024, 1024),
-    );
+    let indices =
+      indexBuffer?.buffer ??
+      new Uint32Array(Math.min(Number.isFinite(max) ? max : 1024, 1024));
     let indexCount = 0;
     let lastIndex = -1;
     let orderedIndices = true;
@@ -2782,11 +2815,16 @@ export class SparkRenderer extends THREE.Mesh {
         return false;
       }
       if (indexCount >= indices.length) {
-        const next = new Uint32Array(
-          indices.length ? indices.length * 2 : 1024,
+        const nextCapacity = Math.min(
+          Number.isFinite(max) ? max : Number.POSITIVE_INFINITY,
+          Math.max(indices.length ? indices.length * 2 : 1024, indexCount + 1),
         );
-        next.set(indices);
-        indices = next;
+        indices = ensureSplatScreenPickIndexBuffer(
+          indexBuffer,
+          nextCapacity,
+          indices,
+          indexCount,
+        );
       }
       if (index < lastIndex) {
         orderedIndices = false;
