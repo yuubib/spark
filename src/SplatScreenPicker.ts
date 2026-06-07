@@ -97,6 +97,15 @@ export type SplatScreenPickProjectedCenter = {
   ndcZ: number;
 };
 
+export type SplatScreenPickCenterBounds = {
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
+  minNdcZ: number;
+  maxNdcZ: number;
+};
+
 export type SplatScreenPickViewOffset = {
   fullWidth: number;
   fullHeight: number;
@@ -131,6 +140,8 @@ export type SplatScreenPickCenterCollectStats = {
   viewRejectedCenterCount: number;
   duplicateCenterHitCount: number;
   uniqueHitCount: number;
+  projectedBounds: SplatScreenPickCenterBounds | null;
+  candidateBounds: SplatScreenPickCenterBounds | null;
   earlyExit: boolean;
 };
 
@@ -403,8 +414,53 @@ export function createSplatScreenPickCenterCollectStats(): SplatScreenPickCenter
     viewRejectedCenterCount: 0,
     duplicateCenterHitCount: 0,
     uniqueHitCount: 0,
+    projectedBounds: null,
+    candidateBounds: null,
     earlyExit: false,
   };
+}
+
+export function recordSplatScreenPickProjectedCenter(
+  stats: SplatScreenPickCenterCollectStats,
+  center: SplatScreenPickProjectedCenter,
+): void {
+  stats.projectedBounds = expandSplatScreenPickCenterBounds(
+    stats.projectedBounds,
+    center,
+  );
+}
+
+export function recordSplatScreenPickCandidateCenter(
+  stats: SplatScreenPickCenterCollectStats,
+  center: SplatScreenPickProjectedCenter,
+): void {
+  stats.candidateBounds = expandSplatScreenPickCenterBounds(
+    stats.candidateBounds,
+    center,
+  );
+}
+
+function expandSplatScreenPickCenterBounds(
+  bounds: SplatScreenPickCenterBounds | null,
+  center: SplatScreenPickProjectedCenter,
+): SplatScreenPickCenterBounds {
+  if (!bounds) {
+    return {
+      minX: center.x,
+      minY: center.y,
+      maxX: center.x,
+      maxY: center.y,
+      minNdcZ: center.ndcZ,
+      maxNdcZ: center.ndcZ,
+    };
+  }
+  bounds.minX = Math.min(bounds.minX, center.x);
+  bounds.minY = Math.min(bounds.minY, center.y);
+  bounds.maxX = Math.max(bounds.maxX, center.x);
+  bounds.maxY = Math.max(bounds.maxY, center.y);
+  bounds.minNdcZ = Math.min(bounds.minNdcZ, center.ndcZ);
+  bounds.maxNdcZ = Math.max(bounds.maxNdcZ, center.ndcZ);
+  return bounds;
 }
 
 export function projectSplatScreenPickCenter(

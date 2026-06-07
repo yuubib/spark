@@ -12003,8 +12003,41 @@ function createSplatScreenPickCenterCollectStats() {
     viewRejectedCenterCount: 0,
     duplicateCenterHitCount: 0,
     uniqueHitCount: 0,
+    projectedBounds: null,
+    candidateBounds: null,
     earlyExit: false
   };
+}
+function recordSplatScreenPickProjectedCenter(stats, center) {
+  stats.projectedBounds = expandSplatScreenPickCenterBounds(
+    stats.projectedBounds,
+    center
+  );
+}
+function recordSplatScreenPickCandidateCenter(stats, center) {
+  stats.candidateBounds = expandSplatScreenPickCenterBounds(
+    stats.candidateBounds,
+    center
+  );
+}
+function expandSplatScreenPickCenterBounds(bounds, center) {
+  if (!bounds) {
+    return {
+      minX: center.x,
+      minY: center.y,
+      maxX: center.x,
+      maxY: center.y,
+      minNdcZ: center.ndcZ,
+      maxNdcZ: center.ndcZ
+    };
+  }
+  bounds.minX = Math.min(bounds.minX, center.x);
+  bounds.minY = Math.min(bounds.minY, center.y);
+  bounds.maxX = Math.max(bounds.maxX, center.x);
+  bounds.maxY = Math.max(bounds.maxY, center.y);
+  bounds.minNdcZ = Math.min(bounds.minNdcZ, center.ndcZ);
+  bounds.maxNdcZ = Math.max(bounds.maxNdcZ, center.ndcZ);
+  return bounds;
 }
 function projectSplatScreenPickCenter(objectToClipElements, centerX, centerY, centerZ, viewportWidth, viewportHeight, target) {
   const clipX = objectToClipElements[0] * centerX + objectToClipElements[4] * centerY + objectToClipElements[8] * centerZ + objectToClipElements[12];
@@ -13636,6 +13669,7 @@ const _SparkRenderer = class _SparkRenderer extends THREE.Mesh {
           stats.viewRejectedCenterCount += 1;
           return;
         }
+        recordSplatScreenPickProjectedCenter(stats, projectedCenter);
         if (!testSplatScreenPickCenter(
           rect,
           projectedCenter.x,
@@ -13645,6 +13679,7 @@ const _SparkRenderer = class _SparkRenderer extends THREE.Mesh {
           return;
         }
         stats.candidateCenterCount += 1;
+        recordSplatScreenPickCandidateCenter(stats, projectedCenter);
         const accumulatorIndex = mapping && index < mapping.count ? mapping.base + index : index;
         if (accumulatorIndex < lastAccumulatorIndex) {
           orderedAccumulatorHits = false;
@@ -13754,6 +13789,7 @@ const _SparkRenderer = class _SparkRenderer extends THREE.Mesh {
           stats.viewRejectedCenterCount += 1;
           return;
         }
+        recordSplatScreenPickProjectedCenter(stats, projectedCenter);
         if (!testSplatScreenPickCenter(
           rect,
           projectedCenter.x,
@@ -13763,6 +13799,7 @@ const _SparkRenderer = class _SparkRenderer extends THREE.Mesh {
           return;
         }
         stats.candidateCenterCount += 1;
+        recordSplatScreenPickCandidateCenter(stats, projectedCenter);
         pushIndex(index);
       });
     });

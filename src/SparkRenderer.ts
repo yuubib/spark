@@ -28,6 +28,8 @@ import {
   editorSelectionOperationToPickFilterMode,
   normalizeSplatScreenPickShape,
   projectSplatScreenPickCenter,
+  recordSplatScreenPickCandidateCenter,
+  recordSplatScreenPickProjectedCenter,
   resolveSplatScreenPickRenderLayout,
   splatEditorStateFilterModeToPickUniform,
   testSplatScreenPickCenter,
@@ -2330,6 +2332,7 @@ export class SparkRenderer extends THREE.Mesh {
           stats.viewRejectedCenterCount += 1;
           return;
         }
+        recordSplatScreenPickProjectedCenter(stats, projectedCenter);
 
         if (
           !testSplatScreenPickCenter(
@@ -2343,6 +2346,7 @@ export class SparkRenderer extends THREE.Mesh {
         }
 
         stats.candidateCenterCount += 1;
+        recordSplatScreenPickCandidateCenter(stats, projectedCenter);
         const accumulatorIndex =
           mapping && index < mapping.count ? mapping.base + index : index;
         if (accumulatorIndex < lastAccumulatorIndex) {
@@ -2484,6 +2488,7 @@ export class SparkRenderer extends THREE.Mesh {
           stats.viewRejectedCenterCount += 1;
           return;
         }
+        recordSplatScreenPickProjectedCenter(stats, projectedCenter);
 
         if (
           !testSplatScreenPickCenter(
@@ -2497,6 +2502,7 @@ export class SparkRenderer extends THREE.Mesh {
         }
 
         stats.candidateCenterCount += 1;
+        recordSplatScreenPickCandidateCenter(stats, projectedCenter);
         pushIndex(index);
       });
     });

@@ -7,6 +7,8 @@ import {
   editorSelectionOperationToPickFilterMode,
   normalizeSplatScreenPickShape,
   projectSplatScreenPickCenter,
+  recordSplatScreenPickCandidateCenter,
+  recordSplatScreenPickProjectedCenter,
   resolveSplatScreenPickRenderLayout,
   splatEditorStateFilterModeToPickUniform,
   testSplatScreenPickCenter,
@@ -358,6 +360,39 @@ assert.strictEqual(
 );
 assert.strictEqual(centerMaskStats.maskTestedCenterCount, 2);
 assert.strictEqual(centerMaskStats.viewRejectedCenterCount, 1);
+
+const centerBoundsStats = createSplatScreenPickCenterCollectStats();
+recordSplatScreenPickProjectedCenter(centerBoundsStats, {
+  x: 12.5,
+  y: 22.5,
+  ndcZ: -0.25,
+});
+recordSplatScreenPickProjectedCenter(centerBoundsStats, {
+  x: 20,
+  y: 18,
+  ndcZ: 0.5,
+});
+recordSplatScreenPickCandidateCenter(centerBoundsStats, {
+  x: 14,
+  y: 21,
+  ndcZ: 0.125,
+});
+assert.deepStrictEqual(centerBoundsStats.projectedBounds, {
+  minX: 12.5,
+  minY: 18,
+  maxX: 20,
+  maxY: 22.5,
+  minNdcZ: -0.25,
+  maxNdcZ: 0.5,
+});
+assert.deepStrictEqual(centerBoundsStats.candidateBounds, {
+  minX: 14,
+  minY: 21,
+  maxX: 14,
+  maxY: 21,
+  minNdcZ: 0.125,
+  maxNdcZ: 0.125,
+});
 
 assert.throws(() =>
   collectSplatScreenPickHitsFromRgba8(new Uint8Array(3), {

@@ -80,6 +80,14 @@ export type SplatScreenPickProjectedCenter = {
     y: number;
     ndcZ: number;
 };
+export type SplatScreenPickCenterBounds = {
+    minX: number;
+    minY: number;
+    maxX: number;
+    maxY: number;
+    minNdcZ: number;
+    maxNdcZ: number;
+};
 export type SplatScreenPickViewOffset = {
     fullWidth: number;
     fullHeight: number;
@@ -111,6 +119,8 @@ export type SplatScreenPickCenterCollectStats = {
     viewRejectedCenterCount: number;
     duplicateCenterHitCount: number;
     uniqueHitCount: number;
+    projectedBounds: SplatScreenPickCenterBounds | null;
+    candidateBounds: SplatScreenPickCenterBounds | null;
     earlyExit: boolean;
 };
 export type SplatScreenPickStats = {
@@ -155,5 +165,7 @@ export declare function collectSplatScreenPickHitsFromRgba8(pixels: ArrayLike<nu
     stats?: SplatScreenPickCollectStats;
 }): SplatScreenPickPixelHit[];
 export declare function createSplatScreenPickCenterCollectStats(): SplatScreenPickCenterCollectStats;
+export declare function recordSplatScreenPickProjectedCenter(stats: SplatScreenPickCenterCollectStats, center: SplatScreenPickProjectedCenter): void;
+export declare function recordSplatScreenPickCandidateCenter(stats: SplatScreenPickCenterCollectStats, center: SplatScreenPickProjectedCenter): void;
 export declare function projectSplatScreenPickCenter(objectToClipElements: ArrayLike<number>, centerX: number, centerY: number, centerZ: number, viewportWidth: number, viewportHeight: number, target: SplatScreenPickProjectedCenter): boolean;
 export declare function testSplatScreenPickCenter(rect: SplatScreenPickRect, x: number, y: number, stats?: SplatScreenPickCenterCollectStats): boolean;

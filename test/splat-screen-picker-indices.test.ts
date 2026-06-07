@@ -80,6 +80,22 @@ assert.strictEqual(stats?.sourceStableHitCount, 2);
 assert.strictEqual(stats?.centerCollect?.centerCount, 3);
 assert.strictEqual(stats?.centerCollect?.candidateCenterCount, 2);
 assert.strictEqual(stats?.centerCollect?.viewRejectedCenterCount, 1);
+assert.deepStrictEqual(stats?.centerCollect?.projectedBounds, {
+  minX: 25,
+  minY: 50,
+  maxX: 75,
+  maxY: 50,
+  minNdcZ: -0.8,
+  maxNdcZ: -0.8,
+});
+assert.deepStrictEqual(stats?.centerCollect?.candidateBounds, {
+  minX: 25,
+  minY: 50,
+  maxX: 75,
+  maxY: 50,
+  minNdcZ: -0.8,
+  maxNdcZ: -0.8,
+});
 
 const capped = await sparkRenderer.pickSplatCandidateIndices({
   target: mesh,
