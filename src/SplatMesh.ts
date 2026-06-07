@@ -108,6 +108,18 @@ export type SplatMeshSelectedTransformSnapshot = {
   scale: number;
 };
 
+export type SplatMeshSelectedTransformBakeOptions = {
+  clear?: boolean;
+};
+
+export type SplatMeshSelectedTransformBakeResult = {
+  applied: boolean;
+  changed: number;
+  selected: number;
+  cleared: boolean;
+  unsupported: boolean;
+};
+
 export type SplatMeshStateIterationOptions = {
   mode?: SplatEditorStateFilterMode;
   applySelectedTransform?: boolean;
@@ -316,6 +328,26 @@ export interface SplatSource {
     callback: (index: number, x: number, y: number, z: number) => void,
   ): void;
 }
+
+type MutableSplatSource = SplatSource & {
+  needsUpdate?: boolean;
+  textures?: [THREE.DataArrayTexture, THREE.DataArrayTexture];
+  getSplat(index: number): {
+    center: THREE.Vector3;
+    scales: THREE.Vector3;
+    quaternion: THREE.Quaternion;
+    opacity: number;
+    color: THREE.Color;
+  };
+  setSplat(
+    index: number,
+    center: THREE.Vector3,
+    scales: THREE.Vector3,
+    quaternion: THREE.Quaternion,
+    opacity: number,
+    color: THREE.Color,
+  ): void;
+};
 
 export type SplatStateBoundingBoxOptions = {
   centersOnly?: boolean;
@@ -1143,6 +1175,65 @@ export class SplatMesh extends SplatGenerator {
       return null;
     }
     return this.getSelectedSplatTransform();
+  }
+
+  bakeSelectedSplatTransform({
+    clear = true,
+  }: SplatMeshSelectedTransformBakeOptions = {}): SplatMeshSelectedTransformBakeResult {
+    const selectedTransform = this.getSelectedSplatTransform();
+    const editorState = this.getEditorState();
+    const selected = editorState?.getCounts().selected ?? 0;
+    const result: SplatMeshSelectedTransformBakeResult = {
+      applied: false,
+      changed: 0,
+      selected,
+      cleared: false,
+      unsupported: false,
+    };
+    if (!selectedTransform || selected <= 0 || !editorState) {
+      return result;
+    }
+
+    const source = this.splats;
+    if (!isMutableSplatSource(source)) {
+      return {
+        ...result,
+        unsupported: true,
+      };
+    }
+
+    const sourceCount = source.getNumSplats();
+    for (const index of editorState.listIndices("selected")) {
+      if (index < 0 || index >= sourceCount) {
+        continue;
+      }
+      const splat = source.getSplat(index);
+      applySelectedTransformToDecodedSplat(
+        splat.center,
+        splat.scales,
+        splat.quaternion,
+        selectedTransform,
+      );
+      source.setSplat(
+        index,
+        splat.center,
+        splat.scales,
+        splat.quaternion,
+        splat.opacity,
+        splat.color,
+      );
+      result.changed += 1;
+    }
+
+    if (result.changed > 0) {
+      markMutableSplatSourceUpdated(source);
+      this.updateVersion();
+      result.applied = true;
+    }
+    if (clear) {
+      result.cleared = this.clearSelectedSplatTransform();
+    }
+    return result;
   }
 
   getSplatStateCounts(): SplatEditorStateCounts {
@@ -2313,6 +2404,25 @@ function normalizeMaxPickHits(maxHits: number | undefined): number | null {
     return null;
   }
   return Math.max(0, Math.floor(maxHits));
+}
+
+function isMutableSplatSource(
+  source: SplatSource | undefined,
+): source is MutableSplatSource {
+  return (
+    source !== undefined &&
+    typeof (source as Partial<MutableSplatSource>).getSplat === "function" &&
+    typeof (source as Partial<MutableSplatSource>).setSplat === "function"
+  );
+}
+
+function markMutableSplatSourceUpdated(source: MutableSplatSource): void {
+  if ("needsUpdate" in source) {
+    source.needsUpdate = true;
+  }
+  for (const texture of source.textures ?? []) {
+    texture.needsUpdate = true;
+  }
 }
 
 function applySelectedTransformToDecodedSplat(

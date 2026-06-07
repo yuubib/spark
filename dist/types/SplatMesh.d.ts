@@ -34,6 +34,16 @@ export type SplatMeshSelectedTransformSnapshot = {
     rotate: THREE.Quaternion;
     scale: number;
 };
+export type SplatMeshSelectedTransformBakeOptions = {
+    clear?: boolean;
+};
+export type SplatMeshSelectedTransformBakeResult = {
+    applied: boolean;
+    changed: number;
+    selected: number;
+    cleared: boolean;
+    unsupported: boolean;
+};
 export type SplatMeshStateIterationOptions = {
     mode?: SplatEditorStateFilterMode;
     applySelectedTransform?: boolean;
@@ -239,6 +249,7 @@ export declare class SplatMesh extends SplatGenerator {
     clearSelectedSplatTransform(): boolean;
     getSelectedSplatTransform(): SplatMeshSelectedTransformSnapshot | null;
     getAccumulatorSelectedSplatTransform(): SplatMeshSelectedTransformSnapshot | null;
+    bakeSelectedSplatTransform({ clear, }?: SplatMeshSelectedTransformBakeOptions): SplatMeshSelectedTransformBakeResult;
     getSplatStateCounts(): SplatEditorStateCounts;
     getSplatStateSummary(): SplatEditorStateSummary;
     listSplatStateIndices(mode: SplatEditorStateIndexMode): number[];

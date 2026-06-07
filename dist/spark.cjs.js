@@ -16024,6 +16024,61 @@ const _SplatMesh = class _SplatMesh extends SplatGenerator {
     }
     return this.getSelectedSplatTransform();
   }
+  bakeSelectedSplatTransform({
+    clear = true
+  } = {}) {
+    const selectedTransform = this.getSelectedSplatTransform();
+    const editorState = this.getEditorState();
+    const selected = (editorState == null ? void 0 : editorState.getCounts().selected) ?? 0;
+    const result = {
+      applied: false,
+      changed: 0,
+      selected,
+      cleared: false,
+      unsupported: false
+    };
+    if (!selectedTransform || selected <= 0 || !editorState) {
+      return result;
+    }
+    const source = this.splats;
+    if (!isMutableSplatSource(source)) {
+      return {
+        ...result,
+        unsupported: true
+      };
+    }
+    const sourceCount = source.getNumSplats();
+    for (const index of editorState.listIndices("selected")) {
+      if (index < 0 || index >= sourceCount) {
+        continue;
+      }
+      const splat = source.getSplat(index);
+      applySelectedTransformToDecodedSplat(
+        splat.center,
+        splat.scales,
+        splat.quaternion,
+        selectedTransform
+      );
+      source.setSplat(
+        index,
+        splat.center,
+        splat.scales,
+        splat.quaternion,
+        splat.opacity,
+        splat.color
+      );
+      result.changed += 1;
+    }
+    if (result.changed > 0) {
+      markMutableSplatSourceUpdated(source);
+      this.updateVersion();
+      result.applied = true;
+    }
+    if (clear) {
+      result.cleared = this.clearSelectedSplatTransform();
+    }
+    return result;
+  }
   getSplatStateCounts() {
     var _a2;
     return ((_a2 = this.getEditorState()) == null ? void 0 : _a2.getCounts()) ?? {
@@ -16931,6 +16986,17 @@ function normalizeMaxPickHits(maxHits) {
     return null;
   }
   return Math.max(0, Math.floor(maxHits));
+}
+function isMutableSplatSource(source) {
+  return source !== void 0 && typeof source.getSplat === "function" && typeof source.setSplat === "function";
+}
+function markMutableSplatSourceUpdated(source) {
+  if ("needsUpdate" in source) {
+    source.needsUpdate = true;
+  }
+  for (const texture2 of source.textures ?? []) {
+    texture2.needsUpdate = true;
+  }
 }
 function applySelectedTransformToDecodedSplat(center, scales, quaternion, { pivot, translate, rotate, scale }) {
   center.sub(pivot).multiplyScalar(scale).applyQuaternion(rotate);

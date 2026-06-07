@@ -102,6 +102,8 @@ export {
   type SplatMeshContext,
   type SplatSource,
   type SplatStateBoundingBoxOptions,
+  type SplatMeshSelectedTransformBakeOptions,
+  type SplatMeshSelectedTransformBakeResult,
   type SplatMeshSelectedTransformOptions,
   type SplatMeshSelectedTransformSnapshot,
   type SplatMeshStateIterationCallback,
