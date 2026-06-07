@@ -34,6 +34,11 @@ export type SplatMeshSelectedTransformSnapshot = {
     rotate: THREE.Quaternion;
     scale: number;
 };
+export type SplatMeshStateIterationOptions = {
+    mode?: SplatEditorStateFilterMode;
+    applySelectedTransform?: boolean;
+};
+export type SplatMeshStateIterationCallback = (index: number, center: THREE.Vector3, scales: THREE.Vector3, quaternion: THREE.Quaternion, opacity: number, color: THREE.Color, state: SplatEditorStateBits) => void;
 export type SplatMeshOptions = {
     url?: string;
     fileBytes?: Uint8Array | ArrayBuffer;
@@ -203,6 +208,7 @@ export declare class SplatMesh extends SplatGenerator {
     static staticInitialize(): Promise<void>;
     pushSplat(center: THREE.Vector3, scales: THREE.Vector3, quaternion: THREE.Quaternion, opacity: number, color: THREE.Color): void;
     forEachSplat(callback: (index: number, center: THREE.Vector3, scales: THREE.Vector3, quaternion: THREE.Quaternion, opacity: number, color: THREE.Color) => void): void;
+    forEachSplatByState(callback: SplatMeshStateIterationCallback, { mode, applySelectedTransform, }?: SplatMeshStateIterationOptions): void;
     forEachSplatCenter(callback: (index: number, center: THREE.Vector3) => void): void;
     forEachSplatCenterRaw(callback: (index: number, x: number, y: number, z: number) => void): void;
     getEditorState(): SplatEditorState | null;

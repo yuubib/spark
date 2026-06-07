@@ -104,6 +104,8 @@ export {
   type SplatStateBoundingBoxOptions,
   type SplatMeshSelectedTransformOptions,
   type SplatMeshSelectedTransformSnapshot,
+  type SplatMeshStateIterationCallback,
+  type SplatMeshStateIterationOptions,
 } from "./SplatMesh";
 export {
   SplatSkinning,

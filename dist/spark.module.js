@@ -15700,6 +15700,35 @@ const _SplatMesh = class _SplatMesh extends SplatGenerator {
     var _a2;
     (_a2 = this.splats) == null ? void 0 : _a2.forEachSplat(callback);
   }
+  // Iterate over decoded splats that match an editor-state filter. The decoded
+  // component objects follow forEachSplat reuse semantics and are safe to read
+  // but not retain between iterations.
+  forEachSplatByState(callback, {
+    mode = "visible",
+    applySelectedTransform = false
+  } = {}) {
+    const source = this.splats;
+    if (!source) {
+      return;
+    }
+    const editorState = this.getEditorState();
+    const selectedTransform = applySelectedTransform ? this.getSelectedSplatTransform() : null;
+    source.forEachSplat((index, center, scales, quaternion, opacity, color) => {
+      const bits2 = this.getEditorStateBits(editorState, index);
+      if (!matchesSplatEditorStateBits(bits2, mode)) {
+        return;
+      }
+      if (selectedTransform && bits2 === SPLAT_EDITOR_STATE_SELECTED) {
+        applySelectedTransformToDecodedSplat(
+          center,
+          scales,
+          quaternion,
+          selectedTransform
+        );
+      }
+      callback(index, center, scales, quaternion, opacity, color, bits2);
+    });
+  }
   // Iterate over splat centers without requiring sources to decode scale,
   // rotation, opacity, or color attributes. Custom sources may omit the center
   // hook; in that case Spark falls back to the full splat iterator.
@@ -16883,6 +16912,12 @@ function normalizeMaxPickHits(maxHits) {
     return null;
   }
   return Math.max(0, Math.floor(maxHits));
+}
+function applySelectedTransformToDecodedSplat(center, scales, quaternion, { pivot, translate, rotate, scale }) {
+  center.sub(pivot).multiplyScalar(scale).applyQuaternion(rotate);
+  center.add(pivot).add(translate);
+  scales.multiplyScalar(scale);
+  quaternion.premultiply(rotate);
 }
 const PLY_PROPERTY_TYPES = [
   "char",

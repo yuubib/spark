@@ -14,6 +14,7 @@ import { SparkRenderer } from "./SparkRenderer";
 import { SplatEdit, SplatEditSdf, SplatEdits } from "./SplatEdit";
 import {
   SPLAT_EDITOR_STATE_NONE,
+  SPLAT_EDITOR_STATE_SELECTED,
   type SplatEditorSelectionOperation,
   SplatEditorState,
   type SplatEditorStateBits,
@@ -106,6 +107,21 @@ export type SplatMeshSelectedTransformSnapshot = {
   rotate: THREE.Quaternion;
   scale: number;
 };
+
+export type SplatMeshStateIterationOptions = {
+  mode?: SplatEditorStateFilterMode;
+  applySelectedTransform?: boolean;
+};
+
+export type SplatMeshStateIterationCallback = (
+  index: number,
+  center: THREE.Vector3,
+  scales: THREE.Vector3,
+  quaternion: THREE.Quaternion,
+  opacity: number,
+  color: THREE.Color,
+  state: SplatEditorStateBits,
+) => void;
 
 export type SplatMeshOptions = {
   // URL to fetch a Gaussian splat file from(supports .ply, .splat, .ksplat,
@@ -722,6 +738,42 @@ export class SplatMesh extends SplatGenerator {
     ) => void,
   ) {
     this.splats?.forEachSplat(callback);
+  }
+
+  // Iterate over decoded splats that match an editor-state filter. The decoded
+  // component objects follow forEachSplat reuse semantics and are safe to read
+  // but not retain between iterations.
+  forEachSplatByState(
+    callback: SplatMeshStateIterationCallback,
+    {
+      mode = "visible",
+      applySelectedTransform = false,
+    }: SplatMeshStateIterationOptions = {},
+  ): void {
+    const source = this.splats;
+    if (!source) {
+      return;
+    }
+
+    const editorState = this.getEditorState();
+    const selectedTransform = applySelectedTransform
+      ? this.getSelectedSplatTransform()
+      : null;
+    source.forEachSplat((index, center, scales, quaternion, opacity, color) => {
+      const bits = this.getEditorStateBits(editorState, index);
+      if (!matchesSplatEditorStateBits(bits, mode)) {
+        return;
+      }
+      if (selectedTransform && bits === SPLAT_EDITOR_STATE_SELECTED) {
+        applySelectedTransformToDecodedSplat(
+          center,
+          scales,
+          quaternion,
+          selectedTransform,
+        );
+      }
+      callback(index, center, scales, quaternion, opacity, color, bits);
+    });
   }
 
   // Iterate over splat centers without requiring sources to decode scale,
@@ -2261,6 +2313,18 @@ function normalizeMaxPickHits(maxHits: number | undefined): number | null {
     return null;
   }
   return Math.max(0, Math.floor(maxHits));
+}
+
+function applySelectedTransformToDecodedSplat(
+  center: THREE.Vector3,
+  scales: THREE.Vector3,
+  quaternion: THREE.Quaternion,
+  { pivot, translate, rotate, scale }: SplatMeshSelectedTransformSnapshot,
+): void {
+  center.sub(pivot).multiplyScalar(scale).applyQuaternion(rotate);
+  center.add(pivot).add(translate);
+  scales.multiplyScalar(scale);
+  quaternion.premultiply(rotate);
 }
 
 // Creates an empty mesh to hook into Three.js rendering.
