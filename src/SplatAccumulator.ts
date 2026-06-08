@@ -1000,14 +1000,21 @@ export class SplatAccumulator {
       },
       readback: async () => {
         const textures = this.getTextures();
+        // extSplats2 is an INTEGER usampler2DArray. In the non-ext path textures[1] is
+        // the RGBA8 display target (target3); binding an RGBA8 texture to a usampler2DArray
+        // raises GL_INVALID_OPERATION at draw validation (texture-format/sampler-type
+        // mismatch — can force some drivers onto a slow validation/error path). The non-ext
+        // readback shader never samples extSplats2, so bind it to the integer textures[0]
+        // instead — behaviour-neutral and warning-free.
+        const extSplats2Texture = this.extSplats ? textures[1] : textures[0];
         if (this.readbackSplats.length === 0) {
           this.readbackSplats = [
             new DynoUsampler2DArray({ value: textures[0], key: "extSplats" }),
-            new DynoUsampler2DArray({ value: textures[1], key: "extSplats" }),
+            new DynoUsampler2DArray({ value: extSplats2Texture, key: "extSplats" }),
           ];
         }
         this.readbackSplats[0].value = textures[0];
-        this.readbackSplats[1].value = textures[1];
+        this.readbackSplats[1].value = extSplats2Texture;
 
         if (!this.readback) {
           this.readback = new Readback({ renderer });

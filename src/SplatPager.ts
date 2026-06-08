@@ -1498,7 +1498,19 @@ export class SplatPager {
     }
   }
 
+  // Per-frame wall-clock budget for synchronous GPU page uploads. uploadPage does
+  // texSubImage copies on the render thread; a burst of ready pages (e.g. after a
+  // fast camera move) could otherwise drain dozens in one frame — a 3-10ms+ spike
+  // that blows a 144fps (6.94ms) frame. Bounding it carries the remainder to the next
+  // frame so streaming stays smooth without dropping frames. At least one page is
+  // always uploaded per call (progress guarantee). When performance.now() is
+  // unavailable (non-browser contexts) the original unbounded behaviour is preserved.
+  private static readonly UPLOAD_BUDGET_MS = 1.5;
+
   processUploads() {
+    const canTime = typeof performance !== "undefined" && typeof performance.now === "function";
+    const start = canTime ? performance.now() : 0;
+    let uploaded = 0;
     while (true) {
       const upload = this.readyUploads.shift();
       if (!upload) {
@@ -1506,6 +1518,11 @@ export class SplatPager {
       }
       const { page, numSplats, packedArray, extArray, extra } = upload;
       this.uploadPage(page, packedArray, extra, extArray);
+      uploaded += 1;
+      // Always upload at least one (progress), then honour the per-frame budget.
+      if (canTime && uploaded >= 1 && performance.now() - start >= SplatPager.UPLOAD_BUDGET_MS) {
+        break;
+      }
     }
   }
 

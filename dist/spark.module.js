@@ -12075,14 +12075,15 @@ const _SplatAccumulator = class _SplatAccumulator {
       },
       readback: async () => {
         const textures = this.getTextures();
+        const extSplats2Texture = this.extSplats ? textures[1] : textures[0];
         if (this.readbackSplats.length === 0) {
           this.readbackSplats = [
             new DynoUsampler2DArray({ value: textures[0], key: "extSplats" }),
-            new DynoUsampler2DArray({ value: textures[1], key: "extSplats" })
+            new DynoUsampler2DArray({ value: extSplats2Texture, key: "extSplats" })
           ];
         }
         this.readbackSplats[0].value = textures[0];
-        this.readbackSplats[1].value = textures[1];
+        this.readbackSplats[1].value = extSplats2Texture;
         if (!this.readback) {
           this.readback = new Readback({ renderer });
         }
@@ -18185,6 +18186,9 @@ const _SplatPager = class _SplatPager {
     }
   }
   processUploads() {
+    const canTime = typeof performance !== "undefined" && typeof performance.now === "function";
+    const start = canTime ? performance.now() : 0;
+    let uploaded = 0;
     while (true) {
       const upload = this.readyUploads.shift();
       if (!upload) {
@@ -18192,6 +18196,10 @@ const _SplatPager = class _SplatPager {
       }
       const { page, numSplats, packedArray, extArray, extra } = upload;
       this.uploadPage(page, packedArray, extra, extArray);
+      uploaded += 1;
+      if (canTime && uploaded >= 1 && performance.now() - start >= 1.5) {
+        break;
+      }
     }
   }
   consumeLodTreeUpdates() {
