@@ -6878,6 +6878,7 @@ const _SplatEditorState = class _SplatEditorState {
     this.renderDirtyRanges = [];
     this.dirtyAll = false;
     this.renderDirtyAll = false;
+    this.renderDirtyBaseVersion = 0;
     this.fullTextureUploadPending = false;
     this.denseCandidateMarks = new Uint32Array(0);
     this.denseCandidateGeneration = 0;
@@ -7685,6 +7686,12 @@ const _SplatEditorState = class _SplatEditorState {
   clearRenderDirtyRanges() {
     this.renderDirtyAll = false;
     this.renderDirtyRanges = [];
+    this.renderDirtyBaseVersion = this.version;
+  }
+  // Lowest `version` an accumulator can have last-synced at and still catch up purely from the current
+  // render-dirty ranges. An accumulator synced before this missed cleared edits and needs a full copy.
+  getRenderDirtyBaseVersion() {
+    return this.renderDirtyBaseVersion;
   }
   getDirtyUploadSpans() {
     if (this.maxSplats <= 0) {
@@ -8116,20 +8123,20 @@ const _SplatEditorState = class _SplatEditorState {
     if (previous === next) {
       return false;
     }
-    this.updateCounts(previous, -1);
-    this.updateSelectedIndex(index, previous, next);
-    this.updateDeletedIndex(index, previous, next);
     this.states[index] = next;
     if (index < this.numSplats) {
+      this.updateCounts(previous, -1);
+      this.updateSelectedIndex(index, previous, next);
+      this.updateDeletedIndex(index, previous, next);
       if (this.numSplats === 1) {
         this.uniformStateBits = next;
       } else if (this.uniformStateBits !== null && next !== this.uniformStateBits) {
         this.uniformStateBits = null;
       }
-    }
-    this.updateCounts(next, 1);
-    if ((previous & SPLAT_EDITOR_STATE_DELETED) !== (next & SPLAT_EDITOR_STATE_DELETED)) {
-      this.visibilityVersion++;
+      this.updateCounts(next, 1);
+      if ((previous & SPLAT_EDITOR_STATE_DELETED) !== (next & SPLAT_EDITOR_STATE_DELETED)) {
+        this.visibilityVersion++;
+      }
     }
     if (markDirty) {
       this.markDirtyRange(index, 1);
@@ -11394,6 +11401,7 @@ const _SplatAccumulator = class _SplatAccumulator {
     this.editorSelectedTransformRotate = new THREE__namespace.Quaternion();
     this.editorSelectedTransformScale = 1;
     this.editorStateMappingKey = "";
+    this.editorStateSyncedVersions = /* @__PURE__ */ new Map();
     if (!threeMrtArray) {
       throw new Error("Spark requires THREE.js r179 or above");
     }
@@ -11420,6 +11428,7 @@ const _SplatAccumulator = class _SplatAccumulator {
     this.editorSelectedTransformRotate.identity();
     this.editorSelectedTransformScale = 1;
     this.editorStateMappingKey = "";
+    this.editorStateSyncedVersions.clear();
   }
   // Returns a THREE.DataArrayTexture representing the NewSplatAccumulator
   // content as 2 x Uint32x4 data array textures (2048 x 2048 x 2048 in size)
@@ -11484,7 +11493,15 @@ const _SplatAccumulator = class _SplatAccumulator {
     const mappingKey = createEditorStateMappingKey(stateMappings);
     const editorStateUniformValue = uniformValue ?? null;
     const allocated = editorStateUniformValue == null ? this.ensureEditorStateTexture(requiredSplats) : false;
-    const fullCopy = allocated || !this.editorStateEnabled || this.editorStateMappingKey !== mappingKey || this.editorStateUniformValue != null && editorStateUniformValue == null;
+    let hasStaleEditorStateMapping = false;
+    for (const { state } of stateMappings) {
+      const synced = this.editorStateSyncedVersions.get(state);
+      if (synced === void 0 || synced < state.getRenderDirtyBaseVersion()) {
+        hasStaleEditorStateMapping = true;
+        break;
+      }
+    }
+    const fullCopy = allocated || !this.editorStateEnabled || this.editorStateMappingKey !== mappingKey || hasStaleEditorStateMapping || this.editorStateUniformValue != null && editorStateUniformValue == null;
     const dirtyRanges = [];
     if (fullCopy) {
       this.editorStateData.fill(0);
@@ -11542,6 +11559,9 @@ const _SplatAccumulator = class _SplatAccumulator {
         dirtyRanges.push({ start: item.base + start, count: end - start });
       }
       state.clearRenderDirtyRanges();
+    }
+    for (const { state } of stateMappings) {
+      this.editorStateSyncedVersions.set(state, state.version);
     }
     this.editorStateEnabled = enabled;
     this.editorStateVisibleCount = enabled ? Math.max(0, Math.max(this.numSplats, totalSplats) - deletedSplats) : null;
@@ -13820,6 +13840,7 @@ const _SparkRenderer = class _SparkRenderer extends THREE__namespace.Mesh {
       }
       if (sortUpdated) {
         this.current.mapping = next.mapping;
+        this.current.updateEditorStateTexture({ renderer });
         this.current.sortVersion = sortVersion;
         this.sortDirty = true;
       }

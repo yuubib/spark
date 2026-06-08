@@ -1468,6 +1468,11 @@ export class SparkRenderer extends THREE.Mesh {
       }
       if (sortUpdated) {
         this.current.mapping = next.mapping;
+        // The style branch above refreshed only `display`, consuming+clearing the shared render-dirty
+        // ranges. Sync `current` too before the upcoming sort reads its editorStateData for deleted
+        // compaction — otherwise the sort runs off a stale buffer. If `current` lagged, the per-
+        // accumulator version guard in updateEditorStateTexture promotes this to a full copy.
+        this.current.updateEditorStateTexture({ renderer });
         this.current.sortVersion = sortVersion;
         this.sortDirty = true;
       }

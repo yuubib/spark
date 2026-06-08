@@ -124,6 +124,11 @@ export class SplatAccumulator {
   editorSelectedTransformRotate = new THREE.Quaternion();
   editorSelectedTransformScale = 1;
   private editorStateMappingKey = "";
+  // Per-source-state `version` this accumulator's editorStateData was last synced to. Lets each
+  // accumulator tell whether ITS OWN buffer is current (vs whichever accumulator happened to consume
+  // the shared render-dirty ranges first); a lagging accumulator is force-full-copied instead of
+  // silently rendering stale selected/locked/deleted state after the display rotates to it.
+  private editorStateSyncedVersions = new Map<SplatEditorState, number>();
 
   constructor({
     extSplats,
@@ -156,6 +161,7 @@ export class SplatAccumulator {
     this.editorSelectedTransformRotate.identity();
     this.editorSelectedTransformScale = 1;
     this.editorStateMappingKey = "";
+    this.editorStateSyncedVersions.clear();
   }
 
   // Returns a THREE.DataArrayTexture representing the NewSplatAccumulator
@@ -240,10 +246,24 @@ export class SplatAccumulator {
       editorStateUniformValue == null
         ? this.ensureEditorStateTexture(requiredSplats)
         : false;
+    // A mapping is STALE for THIS accumulator when its buffer was last synced before the source state's
+    // render-dirty base version — i.e. another accumulator already consumed+cleared the dirty ranges
+    // carrying edits this one never saw, so it can't be caught up incrementally and must full-copy.
+    // (Without this, `createEditorStateMappingKey` excluded the version, so the incremental path kept
+    // stale selected/locked/deleted bits and the state diverged across the rotating accumulator pool.)
+    let hasStaleEditorStateMapping = false;
+    for (const { state } of stateMappings) {
+      const synced = this.editorStateSyncedVersions.get(state);
+      if (synced === undefined || synced < state.getRenderDirtyBaseVersion()) {
+        hasStaleEditorStateMapping = true;
+        break;
+      }
+    }
     const fullCopy =
       allocated ||
       !this.editorStateEnabled ||
       this.editorStateMappingKey !== mappingKey ||
+      hasStaleEditorStateMapping ||
       (this.editorStateUniformValue != null && editorStateUniformValue == null);
     const dirtyRanges: SplatEditorStateDirtyRange[] = [];
     if (fullCopy) {
@@ -312,6 +332,12 @@ export class SplatAccumulator {
         dirtyRanges.push({ start: item.base + start, count: end - start });
       }
       state.clearRenderDirtyRanges();
+    }
+
+    // Record the version each mapping's buffer is now synced to, so a later generate on a DIFFERENT
+    // accumulator can detect it lagged and force a full copy (see hasStaleEditorStateMapping above).
+    for (const { state } of stateMappings) {
+      this.editorStateSyncedVersions.set(state, state.version);
     }
 
     this.editorStateEnabled = enabled;

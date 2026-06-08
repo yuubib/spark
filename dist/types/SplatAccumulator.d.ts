@@ -50,6 +50,7 @@ export declare class SplatAccumulator {
     editorSelectedTransformRotate: THREE.Quaternion;
     editorSelectedTransformScale: number;
     private editorStateMappingKey;
+    private editorStateSyncedVersions;
     constructor({ extSplats, covSplats, }?: {
         extSplats?: boolean;
         covSplats?: boolean;

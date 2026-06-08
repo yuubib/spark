@@ -109,6 +109,7 @@ export declare class SplatEditorState {
     private renderDirtyRanges;
     private dirtyAll;
     private renderDirtyAll;
+    private renderDirtyBaseVersion;
     private fullTextureUploadPending;
     private denseCandidateMarks;
     private denseCandidateGeneration;
@@ -152,6 +153,7 @@ export declare class SplatEditorState {
     getDirtyRanges(): readonly SplatEditorStateDirtyRange[];
     getRenderDirtyRanges(): readonly SplatEditorStateDirtyRange[];
     clearRenderDirtyRanges(): void;
+    getRenderDirtyBaseVersion(): number;
     getDirtyUploadSpans(): readonly SplatEditorStateDirtyUploadSpan[];
     uploadDirty(): THREE.DataArrayTexture;
     uploadDirtyWithResult(renderer?: THREE.WebGLRenderer): SplatEditorStateUploadResult;

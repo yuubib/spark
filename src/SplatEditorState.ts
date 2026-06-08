@@ -204,6 +204,12 @@ export class SplatEditorState {
   private renderDirtyRanges: SplatEditorStateDirtyRange[] = [];
   private dirtyAll = false;
   private renderDirtyAll = false;
+  // The version as of the last `clearRenderDirtyRanges()`. The render-dirty ranges only cover edits
+  // newer than this, so an accumulator whose last-synced version is below it has missed edits that were
+  // already consumed+cleared by another accumulator and must do a full copy rather than an incremental
+  // apply. (Fixes the multi-accumulator editor-state divergence: a shared consume-and-clear render-dirty
+  // channel + per-accumulator state buffers + a mapping key that excluded the version.)
+  private renderDirtyBaseVersion = 0;
   private fullTextureUploadPending = false;
   private denseCandidateMarks = new Uint32Array(0);
   private denseCandidateGeneration = 0;
@@ -1257,6 +1263,13 @@ export class SplatEditorState {
   clearRenderDirtyRanges(): void {
     this.renderDirtyAll = false;
     this.renderDirtyRanges = [];
+    this.renderDirtyBaseVersion = this.version;
+  }
+
+  // Lowest `version` an accumulator can have last-synced at and still catch up purely from the current
+  // render-dirty ranges. An accumulator synced before this missed cleared edits and needs a full copy.
+  getRenderDirtyBaseVersion(): number {
+    return this.renderDirtyBaseVersion;
   }
 
   getDirtyUploadSpans(): readonly SplatEditorStateDirtyUploadSpan[] {
@@ -1826,11 +1839,17 @@ export class SplatEditorState {
     if (previous === next) {
       return false;
     }
-    this.updateCounts(previous, -1);
-    this.updateSelectedIndex(index, previous, next);
-    this.updateDeletedIndex(index, previous, next);
     this.states[index] = next;
+    // Count/index bookkeeping only for real splats. The texture-padded region [numSplats, maxSplats)
+    // carries no splat, so a write there (reachable via the public single-index setters, which bound
+    // against maxSplats, or an over-wide setRange) must not perturb the selected/locked/deleted counts,
+    // the tracked index sets, uniform-state detection, or the visibility version — doing so corrupted
+    // getCounts()/getSummary() and every count-based fast path. The state byte itself is still written
+    // (harmless; padding is never uploaded or rendered) so reads stay consistent.
     if (index < this.numSplats) {
+      this.updateCounts(previous, -1);
+      this.updateSelectedIndex(index, previous, next);
+      this.updateDeletedIndex(index, previous, next);
       if (this.numSplats === 1) {
         this.uniformStateBits = next;
       } else if (
@@ -1839,13 +1858,13 @@ export class SplatEditorState {
       ) {
         this.uniformStateBits = null;
       }
-    }
-    this.updateCounts(next, 1);
-    if (
-      (previous & SPLAT_EDITOR_STATE_DELETED) !==
-      (next & SPLAT_EDITOR_STATE_DELETED)
-    ) {
-      this.visibilityVersion++;
+      this.updateCounts(next, 1);
+      if (
+        (previous & SPLAT_EDITOR_STATE_DELETED) !==
+        (next & SPLAT_EDITOR_STATE_DELETED)
+      ) {
+        this.visibilityVersion++;
+      }
     }
     if (markDirty) {
       this.markDirtyRange(index, 1);
