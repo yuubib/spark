@@ -6859,6 +6859,7 @@ const SPLAT_EDITOR_STATE_NONE = 0;
 const DEFAULT_SELECTED_COLOR = new THREE__namespace.Vector4(0.38, 0.62, 1, 0.42);
 const DEFAULT_LOCKED_COLOR = new THREE__namespace.Vector4(0, 0, 0, 0.05);
 const MAX_DIRTY_UPLOAD_SPANS = 512;
+const MAX_EDITOR_STATE_DIRTY_RANGES = 512;
 const SPARSE_SELECTION_SET_THRESHOLD_RATIO = 0.25;
 const _SplatEditorState = class _SplatEditorState {
   constructor(numSplats = 0, colors = {}) {
@@ -7629,17 +7630,19 @@ const _SplatEditorState = class _SplatEditorState {
     if (safeStart >= safeEnd) {
       return;
     }
+    const coversAll = safeEnd - safeStart >= this.maxSplats;
     if (!this.dirtyAll) {
-      this.dirtyRanges.push({ start: safeStart, count: safeEnd - safeStart });
+      if (coversAll || appendCoalescedDirtyRange(this.dirtyRanges, safeStart, safeEnd)) {
+        this.dirtyAll = true;
+        this.dirtyRanges = [];
+      }
     }
     if (!this.renderDirtyAll) {
-      this.renderDirtyRanges.push({
-        start: safeStart,
-        count: safeEnd - safeStart
-      });
+      if (coversAll || appendCoalescedDirtyRange(this.renderDirtyRanges, safeStart, safeEnd)) {
+        this.renderDirtyAll = true;
+        this.renderDirtyRanges = [];
+      }
     }
-    this.dirtyAll || (this.dirtyAll = safeEnd - safeStart >= this.maxSplats);
-    this.renderDirtyAll || (this.renderDirtyAll = safeEnd - safeStart >= this.maxSplats);
   }
   markDirtyList(indices) {
     const sortedIndices = [];
@@ -8443,6 +8446,20 @@ function applyCovSplatEditorStateColor(covsplat, stateTexture, enabled, selected
     selectedColor,
     lockedColor
   }).outputs.covsplat;
+}
+function appendCoalescedDirtyRange(ranges, start, end) {
+  const last = ranges.length > 0 ? ranges[ranges.length - 1] : void 0;
+  if (last && start <= last.start + last.count && end >= last.start) {
+    const mergedStart = Math.min(last.start, start);
+    const mergedEnd = Math.max(last.start + last.count, end);
+    ranges[ranges.length - 1] = {
+      start: mergedStart,
+      count: mergedEnd - mergedStart
+    };
+    return false;
+  }
+  ranges.push({ start, count: end - start });
+  return ranges.length > MAX_EDITOR_STATE_DIRTY_RANGES;
 }
 function createDirtyUploadSpans(ranges, width, height, maxSplats) {
   if (width <= 0 || height <= 0 || maxSplats <= 0) {

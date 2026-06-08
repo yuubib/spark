@@ -146,6 +146,9 @@ export interface SplatEditorStateColors {
 const DEFAULT_SELECTED_COLOR = new THREE.Vector4(0.38, 0.62, 1.0, 0.42);
 const DEFAULT_LOCKED_COLOR = new THREE.Vector4(0.0, 0.0, 0.0, 0.05);
 const MAX_DIRTY_UPLOAD_SPANS = 512;
+// Cap on tracked dirty ranges before collapsing to a full (dirty-all) upload. Coalescing keeps
+// sequential brush strokes at one range; this bounds memory for pathological scattered per-splat edits.
+const MAX_EDITOR_STATE_DIRTY_RANGES = 512;
 const SPARSE_SELECTION_SET_THRESHOLD_RATIO = 0.25;
 
 type StateTextureImage = {
@@ -1201,17 +1204,25 @@ export class SplatEditorState {
     if (safeStart >= safeEnd) {
       return;
     }
+    const coversAll = safeEnd - safeStart >= this.maxSplats;
     if (!this.dirtyAll) {
-      this.dirtyRanges.push({ start: safeStart, count: safeEnd - safeStart });
+      if (
+        coversAll ||
+        appendCoalescedDirtyRange(this.dirtyRanges, safeStart, safeEnd)
+      ) {
+        this.dirtyAll = true;
+        this.dirtyRanges = [];
+      }
     }
     if (!this.renderDirtyAll) {
-      this.renderDirtyRanges.push({
-        start: safeStart,
-        count: safeEnd - safeStart,
-      });
+      if (
+        coversAll ||
+        appendCoalescedDirtyRange(this.renderDirtyRanges, safeStart, safeEnd)
+      ) {
+        this.renderDirtyAll = true;
+        this.renderDirtyRanges = [];
+      }
     }
-    this.dirtyAll ||= safeEnd - safeStart >= this.maxSplats;
-    this.renderDirtyAll ||= safeEnd - safeStart >= this.maxSplats;
   }
 
   markDirtyList(indices: Iterable<number>): void {
@@ -2275,6 +2286,29 @@ export function applyCovSplatEditorStateColor(
     selectedColor,
     lockedColor,
   }).outputs.covsplat;
+}
+
+// Append [start, end) to a dirty-range list, coalescing with the last range when they touch/overlap
+// (sequential brush strokes hit adjacent splats, so per-splat edits collapse to one range instead of
+// accumulating one object each). Ranges are readonly, so the merged tail is replaced, not mutated.
+// Returns true when the list has grown past the cap and the caller should collapse to a full upload.
+function appendCoalescedDirtyRange(
+  ranges: SplatEditorStateDirtyRange[],
+  start: number,
+  end: number,
+): boolean {
+  const last = ranges.length > 0 ? ranges[ranges.length - 1] : undefined;
+  if (last && start <= last.start + last.count && end >= last.start) {
+    const mergedStart = Math.min(last.start, start);
+    const mergedEnd = Math.max(last.start + last.count, end);
+    ranges[ranges.length - 1] = {
+      start: mergedStart,
+      count: mergedEnd - mergedStart,
+    };
+    return false;
+  }
+  ranges.push({ start, count: end - start });
+  return ranges.length > MAX_EDITOR_STATE_DIRTY_RANGES;
 }
 
 function createDirtyUploadSpans(
