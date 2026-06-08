@@ -316,3 +316,4 @@ export declare function recordSplatScreenPickProjectedCenter(stats: SplatScreenP
 export declare function recordSplatScreenPickCandidateCenter(stats: SplatScreenPickCenterCollectStats, center: SplatScreenPickProjectedCenter): void;
 export declare function projectSplatScreenPickCenter(objectToClipElements: ArrayLike<number>, centerX: number, centerY: number, centerZ: number, viewportWidth: number, viewportHeight: number, target: SplatScreenPickProjectedCenter): boolean;
 export declare function testSplatScreenPickCenter(rect: SplatScreenPickRect, x: number, y: number, stats?: SplatScreenPickCenterCollectStats, boundsMode?: SplatScreenPickCenterBoundsMode): boolean;
+export declare function clipPickRect(rect: Omit<SplatScreenPickRect, "mask">, targetWidth: number, targetHeight: number): SplatScreenPickRect;

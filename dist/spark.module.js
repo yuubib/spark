@@ -12950,11 +12950,13 @@ function clipPickRect(rect, targetWidth, targetHeight) {
   const y0 = Math.max(0, Math.min(targetHeight, rect.y));
   const x1 = Math.max(0, Math.min(targetWidth, rect.x + rect.width));
   const y1 = Math.max(0, Math.min(targetHeight, rect.y + rect.height));
+  const width = Math.max(1, x1 - x0);
+  const height = Math.max(1, y1 - y0);
   return {
-    x: x0,
-    y: y0,
-    width: Math.max(1, x1 - x0),
-    height: Math.max(1, y1 - y0)
+    x: Math.min(x0, Math.max(0, targetWidth - width)),
+    y: Math.min(y0, Math.max(0, targetHeight - height)),
+    width,
+    height
   };
 }
 function isPickMaskPixelEnabledAt(mask, x, y) {
@@ -28272,6 +28274,7 @@ export {
   Uint8ToFloat,
   XrHand,
   XrHands,
+  clipPickRect,
   collectSplatScreenPickHitsFromRgba8,
   compactSplatCenterIntersectionBitsetBytes,
   compactSplatCenterIntersectionBytes,

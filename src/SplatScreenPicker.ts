@@ -1154,7 +1154,7 @@ export function testSplatScreenPickCenter(
   return true;
 }
 
-function clipPickRect(
+export function clipPickRect(
   rect: Omit<SplatScreenPickRect, "mask">,
   targetWidth: number,
   targetHeight: number,
@@ -1163,11 +1163,17 @@ function clipPickRect(
   const y0 = Math.max(0, Math.min(targetHeight, rect.y));
   const x1 = Math.max(0, Math.min(targetWidth, rect.x + rect.width));
   const y1 = Math.max(0, Math.min(targetHeight, rect.y + rect.height));
+  const width = Math.max(1, x1 - x0);
+  const height = Math.max(1, y1 - y0);
+  // Pull the origin back so the (>=1px) read stays inside the framebuffer. A rect flush to / past the
+  // right or bottom edge clamps to x0 == targetWidth (likewise y0); with width forced to >=1 that read
+  // would otherwise sample the column/row at index targetWidth — one pixel out of bounds, which makes
+  // readRenderTargetPixels GL-error or return garbage and yields a spurious/missing edge pick.
   return {
-    x: x0,
-    y: y0,
-    width: Math.max(1, x1 - x0),
-    height: Math.max(1, y1 - y0),
+    x: Math.min(x0, Math.max(0, targetWidth - width)),
+    y: Math.min(y0, Math.max(0, targetHeight - height)),
+    width,
+    height,
   };
 }
 

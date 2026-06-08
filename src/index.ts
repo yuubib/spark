@@ -15,6 +15,7 @@ export {
   compactSplatCenterIntersectionBitsetBytes,
   compactSplatCenterIntersectionBytes,
   createSplatCenterIntersectionCompactStats,
+  clipPickRect,
   collectSplatScreenPickHitsFromRgba8,
   createSplatScreenFloodMaskFromRgba8,
   editorSelectionOperationToPickFilterMode,
