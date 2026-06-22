@@ -25154,6 +25154,13 @@ const _SplatSkinning = class _SplatSkinning {
     this.boneTexture.needsUpdate = true;
     this.mesh.needsUpdate = true;
   }
+  // Upload changed bone data and regenerate the rendered splats without
+  // bumping sortVersion. Use only when the caller has profiled stale sort
+  // order as acceptable for the current bone motion.
+  updateBoneTextureRenderOnly() {
+    this.boneTexture.needsUpdate = true;
+    this.mesh.updateRenderVersion();
+  }
 };
 _SplatSkinning.UNIT_SCALE = new THREE.Vector3(1, 1, 1);
 _SplatSkinning.relQuat = new THREE.Quaternion();

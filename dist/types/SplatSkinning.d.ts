@@ -42,6 +42,7 @@ export declare class SplatSkinning {
     setSplatBones(splatIndex: number, boneIndices: THREE.Vector4, weights: THREE.Vector4): void;
     setSplatBonesPacked(packedSkinData: Uint16Array, splatCount?: number): void;
     updateBones(): void;
+    updateBoneTextureRenderOnly(): void;
     private static UNIT_SCALE;
     private static relQuat;
     private static relPos;

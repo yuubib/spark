@@ -9,6 +9,35 @@ function mesh(numSplats: number): SplatMesh {
   return { numSplats, needsUpdate: false } as unknown as SplatMesh;
 }
 
+type VersionedMesh = SplatMesh & {
+  version: number;
+  sortVersion: number;
+};
+
+function versionedMesh(numSplats: number): VersionedMesh {
+  const fake = {
+    numSplats,
+    version: 0,
+    sortVersion: 0,
+    updateRenderVersion() {
+      fake.version += 1;
+    },
+  };
+
+  Object.defineProperty(fake, "needsUpdate", {
+    get: () => false,
+    set(value: boolean) {
+      if (!value) {
+        return;
+      }
+      fake.version += 1;
+      fake.sortVersion += 1;
+    },
+  });
+
+  return fake as unknown as VersionedMesh;
+}
+
 {
   const perRow = new SplatSkinning({
     mesh: mesh(2),
@@ -65,6 +94,38 @@ function mesh(numSplats: number): SplatMesh {
   skinning.setSplatBonesPacked(new Uint16Array([0, 0, 0, 0]));
 
   assert.strictEqual(skinning.skinTexture.version, before + 1);
+}
+
+{
+  const testMesh = versionedMesh(1);
+  const skinning = new SplatSkinning({
+    mesh: testMesh,
+    numSplats: 1,
+    numBones: 8,
+  });
+  const beforeBoneVersion = skinning.boneTexture.version;
+
+  skinning.updateBones();
+
+  assert.strictEqual(skinning.boneTexture.version, beforeBoneVersion + 1);
+  assert.strictEqual(testMesh.version, 1);
+  assert.strictEqual(testMesh.sortVersion, 1);
+}
+
+{
+  const testMesh = versionedMesh(1);
+  const skinning = new SplatSkinning({
+    mesh: testMesh,
+    numSplats: 1,
+    numBones: 8,
+  });
+  const beforeBoneVersion = skinning.boneTexture.version;
+
+  skinning.updateBoneTextureRenderOnly();
+
+  assert.strictEqual(skinning.boneTexture.version, beforeBoneVersion + 1);
+  assert.strictEqual(testMesh.version, 1);
+  assert.strictEqual(testMesh.sortVersion, 0);
 }
 
 {
