@@ -25128,6 +25128,26 @@ const _SplatSkinning = class _SplatSkinning {
     this.skinData[i4 + 2] = Math.min(255, Math.max(0, Math.round(weights.z * 255))) + (boneIndices.z << 8);
     this.skinData[i4 + 3] = Math.min(255, Math.max(0, Math.round(weights.w * 255))) + (boneIndices.w << 8);
   }
+  // Bulk-upload already-packed skinning rows. Each Uint16 packs the weight in
+  // the low byte and the bone index in the high byte, matching setSplatBones().
+  setSplatBonesPacked(packedSkinData, splatCount = this.numSplats) {
+    if (!(packedSkinData instanceof Uint16Array)) {
+      throw new Error("packedSkinData must be a Uint16Array");
+    }
+    if (!Number.isInteger(splatCount) || splatCount < 0 || splatCount > this.numSplats) {
+      throw new Error(
+        `splatCount must be an integer in [0, ${this.numSplats}]`
+      );
+    }
+    const length2 = splatCount * 4;
+    if (packedSkinData.length < length2) {
+      throw new Error(
+        `packedSkinData length ${packedSkinData.length} must cover splatCount*4 ${length2}`
+      );
+    }
+    this.skinData.set(packedSkinData.subarray(0, length2), 0);
+    this.skinTexture.needsUpdate = true;
+  }
   // Call this to indicate that the bones have changed and the Gsplats need to be
   // re-generated with updated skinning.
   updateBones() {

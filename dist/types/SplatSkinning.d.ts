@@ -40,6 +40,7 @@ export declare class SplatSkinning {
     setBoneQuatPosScale(boneIndex: number, quat: THREE.Quaternion, pos: THREE.Vector3, scale: THREE.Vector3): void;
     setBoneMatrix(boneIndex: number, matrix: THREE.Matrix4): void;
     setSplatBones(splatIndex: number, boneIndices: THREE.Vector4, weights: THREE.Vector4): void;
+    setSplatBonesPacked(packedSkinData: Uint16Array, splatCount?: number): void;
     updateBones(): void;
     private static UNIT_SCALE;
     private static relQuat;

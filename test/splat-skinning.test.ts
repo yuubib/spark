@@ -1,0 +1,91 @@
+import assert from "node:assert";
+
+import * as THREE from "three";
+
+import type { SplatMesh } from "../src/SplatMesh.js";
+import { SplatSkinning } from "../src/SplatSkinning.js";
+
+function mesh(numSplats: number): SplatMesh {
+  return { numSplats, needsUpdate: false } as unknown as SplatMesh;
+}
+
+{
+  const perRow = new SplatSkinning({
+    mesh: mesh(2),
+    numSplats: 2,
+    numBones: 8,
+  });
+  perRow.setSplatBones(
+    0,
+    new THREE.Vector4(1, 2, 0, 0),
+    new THREE.Vector4(0.5, 0.25, 0.25, 0),
+  );
+  perRow.setSplatBones(
+    1,
+    new THREE.Vector4(3, 4, 5, 6),
+    new THREE.Vector4(1, 0, 0, 0),
+  );
+  const packed = perRow.skinData.slice(0, 8);
+
+  const bulk = new SplatSkinning({ mesh: mesh(2), numSplats: 2, numBones: 8 });
+  bulk.setSplatBonesPacked(packed);
+
+  assert.deepStrictEqual(
+    Array.from(bulk.skinData.slice(0, 8)),
+    Array.from(packed),
+  );
+}
+
+{
+  const skinning = new SplatSkinning({
+    mesh: mesh(4),
+    numSplats: 4,
+    numBones: 8,
+  });
+  const packed = new Uint16Array([1, 2, 3, 4, 5, 6, 7, 8]);
+  skinning.setSplatBonesPacked(packed, 2);
+
+  assert.deepStrictEqual(
+    Array.from(skinning.skinData.slice(0, 8)),
+    Array.from(packed),
+  );
+  assert.deepStrictEqual(
+    Array.from(skinning.skinData.slice(8, 16)),
+    new Array(8).fill(0),
+  );
+}
+
+{
+  const skinning = new SplatSkinning({
+    mesh: mesh(1),
+    numSplats: 1,
+    numBones: 8,
+  });
+  const before = skinning.skinTexture.version;
+  skinning.setSplatBonesPacked(new Uint16Array([0, 0, 0, 0]));
+
+  assert.strictEqual(skinning.skinTexture.version, before + 1);
+}
+
+{
+  const skinning = new SplatSkinning({
+    mesh: mesh(2),
+    numSplats: 2,
+    numBones: 8,
+  });
+
+  assert.throws(
+    () => skinning.setSplatBonesPacked(new Uint16Array(7)),
+    /must cover splatCount\*4/,
+  );
+  assert.throws(
+    () => skinning.setSplatBonesPacked(new Uint16Array(8), 3),
+    /splatCount must be an integer/,
+  );
+  assert.throws(
+    () => skinning.setSplatBonesPacked([] as unknown as Uint16Array),
+    /Uint16Array/,
+  );
+}
+
+console.log("SplatSkinning packed skin data tests passed");
