@@ -1716,6 +1716,10 @@ export class SplatMesh extends SplatGenerator {
   // Call this when you are finished with the SplatMesh and want to free
   // any buffers it holds (via packedSplats).
   dispose() {
+    if (this.skinning) {
+      this.skinning.dispose();
+      this.skinning = null;
+    }
     if (
       this.splats &&
       this.splats !== this.packedSplats &&

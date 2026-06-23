@@ -65,6 +65,7 @@ export class SplatSkinning {
   boneRestInvMats: THREE.Matrix4[];
 
   uniform: DynoUniform<typeof GsplatSkinning, "skinning">;
+  private disposed = false;
 
   constructor(options: SplatSkinningOptions) {
     this.mesh = options.mesh;
@@ -347,6 +348,16 @@ export class SplatSkinning {
   updateBoneTextureRenderOnly() {
     this.boneTexture.needsUpdate = true;
     this.mesh.updateRenderVersion();
+  }
+
+  // Free GPU texture resources owned by this skinning instance.
+  dispose() {
+    if (this.disposed) {
+      return;
+    }
+    this.disposed = true;
+    this.skinTexture.dispose();
+    this.boneTexture.dispose();
   }
 
   private static UNIT_SCALE = new THREE.Vector3(1, 1, 1);

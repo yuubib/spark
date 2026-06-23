@@ -135,6 +135,28 @@ function versionedMesh(numSplats: number): VersionedMesh {
 
 {
   const skinning = new SplatSkinning({
+    mesh: mesh(1),
+    numSplats: 1,
+    numBones: 8,
+  });
+  let skinDisposeCount = 0;
+  let boneDisposeCount = 0;
+  skinning.skinTexture.dispose = () => {
+    skinDisposeCount += 1;
+  };
+  skinning.boneTexture.dispose = () => {
+    boneDisposeCount += 1;
+  };
+
+  skinning.dispose();
+  skinning.dispose();
+
+  assert.strictEqual(skinDisposeCount, 1);
+  assert.strictEqual(boneDisposeCount, 1);
+}
+
+{
+  const skinning = new SplatSkinning({
     mesh: mesh(2),
     numSplats: 2,
     numBones: 8,

@@ -19269,6 +19269,10 @@ const _SplatMesh = class _SplatMesh extends SplatGenerator {
   // Call this when you are finished with the SplatMesh and want to free
   // any buffers it holds (via packedSplats).
   dispose() {
+    if (this.skinning) {
+      this.skinning.dispose();
+      this.skinning = null;
+    }
     if (this.splats && this.splats !== this.packedSplats && this.splats !== this.extSplats) {
       this.splats.dispose();
       this.splats = void 0;
@@ -24988,6 +24992,7 @@ var SplatSkinningMode = /* @__PURE__ */ ((SplatSkinningMode2) => {
 })(SplatSkinningMode || {});
 const _SplatSkinning = class _SplatSkinning {
   constructor(options) {
+    this.disposed = false;
     this.mesh = options.mesh;
     this.numSplats = options.numSplats ?? this.mesh.numSplats;
     this.mode = options.mode ?? "dual_quaternion";
@@ -25187,6 +25192,15 @@ const _SplatSkinning = class _SplatSkinning {
   updateBoneTextureRenderOnly() {
     this.boneTexture.needsUpdate = true;
     this.mesh.updateRenderVersion();
+  }
+  // Free GPU texture resources owned by this skinning instance.
+  dispose() {
+    if (this.disposed) {
+      return;
+    }
+    this.disposed = true;
+    this.skinTexture.dispose();
+    this.boneTexture.dispose();
   }
 };
 _SplatSkinning.UNIT_SCALE = new THREE.Vector3(1, 1, 1);

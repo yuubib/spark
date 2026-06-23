@@ -27,6 +27,7 @@ export declare class SplatSkinning {
     }[];
     boneRestInvMats: THREE.Matrix4[];
     uniform: DynoUniform<typeof GsplatSkinning, "skinning">;
+    private disposed;
     constructor(options: SplatSkinningOptions);
     modify(gsplat: DynoVal<typeof Gsplat>): DynoVal<typeof Gsplat>;
     modifyCov(covsplat: DynoVal<typeof CovSplat>): DynoVal<typeof CovSplat>;
@@ -43,6 +44,7 @@ export declare class SplatSkinning {
     setSplatBonesPacked(packedSkinData: Uint16Array, splatCount?: number): void;
     updateBones(): void;
     updateBoneTextureRenderOnly(): void;
+    dispose(): void;
     private static UNIT_SCALE;
     private static relQuat;
     private static relPos;
