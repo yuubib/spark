@@ -79,6 +79,7 @@ export declare class PackedSplats implements SplatSource {
     private ensureCenterMatchXyzCapacity;
     private writeCenterMatchXyz;
     private writeCenterMatchTextureData;
+    private markCenterMatchLayerDirty;
     private markSourceLayerDirty;
     ensureSplatsSh(level: number, numSplats: number): Uint32Array;
     getSplat(index: number): {

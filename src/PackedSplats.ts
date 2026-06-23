@@ -621,6 +621,34 @@ export class PackedSplats implements SplatSource {
     data[offset + 1] = center.y;
     data[offset + 2] = center.z;
     data[offset + 3] = 1;
+    return this.markCenterMatchLayerDirty(index);
+  }
+
+  private markCenterMatchLayerDirty(index: number): boolean {
+    const texture = this.centerMatchTexture;
+    const data = this.centerMatchTextureData;
+    if (
+      !texture ||
+      !data ||
+      texture.image.data !== data ||
+      !Number.isInteger(index) ||
+      index < 0
+    ) {
+      return false;
+    }
+
+    const { width, height, depth } = texture.image;
+    const splatsPerLayer = width * height;
+    if (splatsPerLayer <= 0) {
+      return false;
+    }
+
+    const layer = Math.floor(index / splatsPerLayer);
+    if (layer < 0 || layer >= depth) {
+      return false;
+    }
+
+    texture.addLayerUpdate(layer);
     texture.needsUpdate = true;
     return true;
   }
@@ -1070,6 +1098,7 @@ export class PackedSplats implements SplatSource {
     }
 
     if (refreshData) {
+      this.centerMatchTexture.layerUpdates.clear();
       this.centerMatchTextureData.fill(0);
       const splatCount = Math.min(
         this.numSplats,

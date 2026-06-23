@@ -20,6 +20,26 @@ function setTestSplat(packed: PackedSplats, index: number): void {
   );
 }
 
+function createCenterMatchPackedSplats(count: number): PackedSplats {
+  const base = new PackedSplats();
+  const centers = new Float32Array(count * 3);
+  for (let i = 0; i < count; i++) {
+    setTestSplat(base, i);
+    const offset = i * 3;
+    centers[offset] = i;
+    centers[offset + 1] = i + 1;
+    centers[offset + 2] = i + 2;
+  }
+
+  const packed = new PackedSplats({
+    packedArray: base.packedArray?.slice(),
+    numSplats: count,
+    extra: { centerMatchXyz: centers },
+  });
+  packed.ensureSplats(packed.maxSplats);
+  return packed;
+}
+
 function createSourceBackedPackedSplats(): {
   packed: PackedSplats;
   texture: THREE.DataArrayTexture;
@@ -91,4 +111,50 @@ test("source realloc clears stale layer updates before replacing texture", () =>
   assert.strictEqual(texture.layerUpdates.size, 0);
   assert.strictEqual(replacement.image.data, packed.packedArray);
   assert.strictEqual(replacement.layerUpdates.size, 0);
+});
+
+test("center-match setSplat marks DataArrayTexture layer updates", () => {
+  const packed = createCenterMatchPackedSplats(2);
+  const texture = packed.getCenterMatchTexture();
+  assert.ok(texture);
+  assert.strictEqual(texture.layerUpdates.size, 0);
+
+  const versionBeforeWrite = texture.source.version;
+  setTestSplat(packed, 1);
+
+  assert.deepStrictEqual(Array.from(texture.layerUpdates), [0]);
+  assert.strictEqual(texture.source.version, versionBeforeWrite + 1);
+  assert.deepStrictEqual(
+    Array.from((texture.image.data as Float32Array).slice(4, 8)),
+    [1, 2, 3, 1],
+  );
+
+  packed.markCenterMatchTextureDirty();
+  assert.strictEqual(packed.getCenterMatchTexture(), texture);
+  assert.strictEqual(texture.layerUpdates.size, 0);
+});
+
+test("center-match layer updates follow texture layer layout", () => {
+  const packed = createCenterMatchPackedSplats(8);
+  const textureData = new Float32Array(8 * 4);
+  const texture = new THREE.DataArrayTexture(textureData, 2, 2, 2);
+  texture.format = THREE.RGBAFormat;
+  texture.type = THREE.FloatType;
+  texture.internalFormat = "RGBA32F";
+
+  const internals = packed as unknown as {
+    centerMatchTexture: THREE.DataArrayTexture | null;
+    centerMatchTextureData: Float32Array | null;
+    centerMatchTextureNeedsUpdate: boolean;
+  };
+  internals.centerMatchTexture = texture;
+  internals.centerMatchTextureData = textureData;
+  internals.centerMatchTextureNeedsUpdate = false;
+
+  const versionBeforeWrite = texture.source.version;
+  setTestSplat(packed, 5);
+
+  assert.deepStrictEqual(Array.from(texture.layerUpdates), [1]);
+  assert.strictEqual(texture.source.version, versionBeforeWrite + 1);
+  assert.deepStrictEqual(Array.from(textureData.slice(20, 24)), [5, 6, 7, 1]);
 });

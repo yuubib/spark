@@ -21958,6 +21958,24 @@ const _PackedSplats = class _PackedSplats {
     data[offset + 1] = center.y;
     data[offset + 2] = center.z;
     data[offset + 3] = 1;
+    return this.markCenterMatchLayerDirty(index);
+  }
+  markCenterMatchLayerDirty(index) {
+    const texture2 = this.centerMatchTexture;
+    const data = this.centerMatchTextureData;
+    if (!texture2 || !data || texture2.image.data !== data || !Number.isInteger(index) || index < 0) {
+      return false;
+    }
+    const { width, height, depth } = texture2.image;
+    const splatsPerLayer = width * height;
+    if (splatsPerLayer <= 0) {
+      return false;
+    }
+    const layer = Math.floor(index / splatsPerLayer);
+    if (layer < 0 || layer >= depth) {
+      return false;
+    }
+    texture2.addLayerUpdate(layer);
     texture2.needsUpdate = true;
     return true;
   }
@@ -22296,6 +22314,7 @@ const _PackedSplats = class _PackedSplats {
       refreshData = true;
     }
     if (refreshData) {
+      this.centerMatchTexture.layerUpdates.clear();
       this.centerMatchTextureData.fill(0);
       const splatCount = Math.min(
         this.numSplats,
