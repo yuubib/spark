@@ -237,6 +237,10 @@ export class SplatSkinning {
           0.0,
         )
         .multiply(SplatSkinning.relQuat);
+      SplatSkinning.canonicalizeDualQuaternionRow(
+        SplatSkinning.relQuat,
+        SplatSkinning.dual,
+      );
 
       const i16 = boneIndex * 16;
       this.boneData[i16 + 0] = SplatSkinning.relQuat.x;
@@ -381,6 +385,52 @@ export class SplatSkinning {
   private static relPos = new THREE.Vector3();
   private static dual = new THREE.Quaternion();
   private static skinMat = new THREE.Matrix4();
+
+  private static canonicalizeDualQuaternionRow(
+    quat: THREE.Quaternion,
+    dual: THREE.Quaternion,
+  ) {
+    if (SplatSkinning.shouldFlipQuaternionSign(quat)) {
+      quat.x = -quat.x;
+      quat.y = -quat.y;
+      quat.z = -quat.z;
+      quat.w = -quat.w;
+      dual.x = -dual.x;
+      dual.y = -dual.y;
+      dual.z = -dual.z;
+      dual.w = -dual.w;
+    }
+    SplatSkinning.canonicalizeQuaternionSignedZero(quat);
+    SplatSkinning.canonicalizeQuaternionSignedZero(dual);
+  }
+
+  private static canonicalizeQuaternionSignedZero(quat: THREE.Quaternion) {
+    if (quat.x === 0) {
+      quat.x = 0;
+    }
+    if (quat.y === 0) {
+      quat.y = 0;
+    }
+    if (quat.z === 0) {
+      quat.z = 0;
+    }
+    if (quat.w === 0) {
+      quat.w = 0;
+    }
+  }
+
+  private static shouldFlipQuaternionSign(quat: THREE.Quaternion): boolean {
+    if (quat.w !== 0) {
+      return quat.w < 0;
+    }
+    if (quat.z !== 0) {
+      return quat.z < 0;
+    }
+    if (quat.y !== 0) {
+      return quat.y < 0;
+    }
+    return quat.x < 0;
+  }
 
   private assertBoneIndex(boneIndex: number) {
     if (

@@ -202,6 +202,33 @@ function versionedMesh(numSplats: number): VersionedMesh {
     mesh: mesh(1),
     numSplats: 1,
     numBones: 8,
+  });
+  const pos = new THREE.Vector3(1, 2, 3);
+  const quat = new THREE.Quaternion().setFromAxisAngle(
+    new THREE.Vector3(0, 1, 0),
+    Math.PI / 3,
+  );
+
+  skinning.setBoneQuatPos(1, quat, pos);
+  const canonicalRow = Array.from(skinning.boneData.slice(16, 24));
+
+  skinning.setBoneQuatPos(
+    1,
+    new THREE.Quaternion(-quat.x, -quat.y, -quat.z, -quat.w),
+    pos,
+  );
+
+  assert.deepStrictEqual(
+    Array.from(skinning.boneData.slice(16, 24)),
+    canonicalRow,
+  );
+}
+
+{
+  const skinning = new SplatSkinning({
+    mesh: mesh(1),
+    numSplats: 1,
+    numBones: 8,
     mode: SplatSkinningMode.LINEAR_BLEND,
   });
   const skinData = skinning.skinData;

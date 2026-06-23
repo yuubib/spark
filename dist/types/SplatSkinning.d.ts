@@ -50,6 +50,9 @@ export declare class SplatSkinning {
     private static relPos;
     private static dual;
     private static skinMat;
+    private static canonicalizeDualQuaternionRow;
+    private static canonicalizeQuaternionSignedZero;
+    private static shouldFlipQuaternionSign;
     private assertBoneIndex;
     private assertSplatIndex;
     private validatedPackedBoneIndex;

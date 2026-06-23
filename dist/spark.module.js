@@ -25172,6 +25172,10 @@ const _SplatSkinning = class _SplatSkinning {
         _SplatSkinning.relPos.z,
         0
       ).multiply(_SplatSkinning.relQuat);
+      _SplatSkinning.canonicalizeDualQuaternionRow(
+        _SplatSkinning.relQuat,
+        _SplatSkinning.dual
+      );
       const i16 = boneIndex * 16;
       this.boneData[i16 + 0] = _SplatSkinning.relQuat.x;
       this.boneData[i16 + 1] = _SplatSkinning.relQuat.y;
@@ -25279,6 +25283,46 @@ const _SplatSkinning = class _SplatSkinning {
     this.boneData = new Float32Array(0);
     this.boneRestQuatPosScale = [];
     this.boneRestInvMats = [];
+  }
+  static canonicalizeDualQuaternionRow(quat, dual) {
+    if (_SplatSkinning.shouldFlipQuaternionSign(quat)) {
+      quat.x = -quat.x;
+      quat.y = -quat.y;
+      quat.z = -quat.z;
+      quat.w = -quat.w;
+      dual.x = -dual.x;
+      dual.y = -dual.y;
+      dual.z = -dual.z;
+      dual.w = -dual.w;
+    }
+    _SplatSkinning.canonicalizeQuaternionSignedZero(quat);
+    _SplatSkinning.canonicalizeQuaternionSignedZero(dual);
+  }
+  static canonicalizeQuaternionSignedZero(quat) {
+    if (quat.x === 0) {
+      quat.x = 0;
+    }
+    if (quat.y === 0) {
+      quat.y = 0;
+    }
+    if (quat.z === 0) {
+      quat.z = 0;
+    }
+    if (quat.w === 0) {
+      quat.w = 0;
+    }
+  }
+  static shouldFlipQuaternionSign(quat) {
+    if (quat.w !== 0) {
+      return quat.w < 0;
+    }
+    if (quat.z !== 0) {
+      return quat.z < 0;
+    }
+    if (quat.y !== 0) {
+      return quat.y < 0;
+    }
+    return quat.x < 0;
   }
   assertBoneIndex(boneIndex) {
     if (!Number.isInteger(boneIndex) || boneIndex < 0 || boneIndex >= this.numBones) {
