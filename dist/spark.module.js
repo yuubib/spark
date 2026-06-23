@@ -25244,7 +25244,7 @@ const _SplatSkinning = class _SplatSkinning {
   }
   // Bulk-upload already-packed skinning rows. Each Uint16 packs the weight in
   // the low byte and the bone index in the high byte, matching setSplatBones().
-  setSplatBonesPacked(packedSkinData, splatCount = this.numSplats) {
+  setSplatBonesPacked(packedSkinData, splatCount = this.numSplats, options) {
     if (!(packedSkinData instanceof Uint16Array)) {
       throw new Error("packedSkinData must be a Uint16Array");
     }
@@ -25259,7 +25259,9 @@ const _SplatSkinning = class _SplatSkinning {
         `packedSkinData length ${packedSkinData.length} must cover splatCount*4 ${length2}`
       );
     }
-    this.assertPackedSkinDataBoneIndices(packedSkinData, length2);
+    if ((options == null ? void 0 : options.validateBoneIndices) !== false) {
+      this.assertPackedSkinDataBoneIndices(packedSkinData, length2);
+    }
     this.skinData.set(packedSkinData.subarray(0, length2), 0);
     this.skinTexture.needsUpdate = true;
   }

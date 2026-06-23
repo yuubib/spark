@@ -171,6 +171,21 @@ function versionedMesh(numSplats: number): VersionedMesh {
     numSplats: 1,
     numBones: 8,
   });
+  const packed = new Uint16Array([8 << 8, 0, 0, 0]);
+  skinning.setSplatBonesPacked(packed, 1, { validateBoneIndices: false });
+
+  assert.deepStrictEqual(
+    Array.from(skinning.skinData.slice(0, 4)),
+    Array.from(packed),
+  );
+}
+
+{
+  const skinning = new SplatSkinning({
+    mesh: mesh(1),
+    numSplats: 1,
+    numBones: 8,
+  });
   const before = skinning.skinTexture.version;
   skinning.setSplatBones(
     0,

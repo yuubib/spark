@@ -43,6 +43,12 @@ export type SplatSkinningOptions = {
   mode?: SplatSkinningMode;
 };
 
+export type SplatBonesPackedOptions = {
+  // Set false only when the caller has already validated the high-byte bone
+  // indices against this SplatSkinning instance's numBones.
+  validateBoneIndices?: boolean;
+};
+
 export class SplatSkinning {
   mesh: SplatMesh;
   numSplats: number;
@@ -326,6 +332,7 @@ export class SplatSkinning {
   setSplatBonesPacked(
     packedSkinData: Uint16Array,
     splatCount = this.numSplats,
+    options?: SplatBonesPackedOptions,
   ) {
     if (!(packedSkinData instanceof Uint16Array)) {
       throw new Error("packedSkinData must be a Uint16Array");
@@ -345,7 +352,9 @@ export class SplatSkinning {
         `packedSkinData length ${packedSkinData.length} must cover splatCount*4 ${length}`,
       );
     }
-    this.assertPackedSkinDataBoneIndices(packedSkinData, length);
+    if (options?.validateBoneIndices !== false) {
+      this.assertPackedSkinDataBoneIndices(packedSkinData, length);
+    }
     this.skinData.set(packedSkinData.subarray(0, length), 0);
     this.skinTexture.needsUpdate = true;
   }
