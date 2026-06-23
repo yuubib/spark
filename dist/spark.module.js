@@ -13386,6 +13386,7 @@ const _SparkRenderer = class _SparkRenderer extends THREE.Mesh {
     this.sortedCenter = new THREE.Vector3().setScalar(Number.NEGATIVE_INFINITY);
     this.sortedDir = new THREE.Vector3().setScalar(0);
     this.readback32 = new Uint32Array(0);
+    this.ordering32 = new Uint32Array(0);
     this.compactReadback32 = new Uint32Array(0);
     this.compactSortSourceIndices = new Uint32Array(0);
     this.centerProjectionCache = /* @__PURE__ */ new WeakMap();
@@ -13936,7 +13937,8 @@ const _SparkRenderer = class _SparkRenderer extends THREE.Mesh {
     const rows = Math.max(1, Math.ceil(maxSplats / 16384));
     const orderingMaxSplats = rows * 16384;
     this.maxSplats = Math.max(this.maxSplats, orderingMaxSplats);
-    const ordering = new Uint32Array(this.maxSplats);
+    const ordering = Readback.ensureBuffer(orderingMaxSplats, this.ordering32);
+    this.ordering32 = ordering;
     const readback = Readback.ensureBuffer(maxSplats, this.readback32);
     this.readback32 = readback;
     await this.readbackDepth({
@@ -14002,12 +14004,16 @@ const _SparkRenderer = class _SparkRenderer extends THREE.Mesh {
     } else {
       this.readback32 = result.readback;
     }
+    this.ordering32 = result.ordering;
     this.activeSplats = result.activeSplats;
     if (this.orderingTexture) {
       if (rows > this.orderingTexture.image.height) {
         this.orderingTexture.dispose();
         this.orderingTexture = null;
       }
+    }
+    if (this.orderingTexture && this.orderingTexture.image.data !== result.ordering) {
+      this.orderingTexture.image.data = result.ordering;
     }
     if (!this.orderingTexture) {
       const orderingTexture = new THREE.DataTexture(

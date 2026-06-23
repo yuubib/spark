@@ -806,6 +806,7 @@ export class SparkRenderer extends THREE.Mesh {
   sortedCenter = new THREE.Vector3().setScalar(Number.NEGATIVE_INFINITY);
   sortedDir = new THREE.Vector3().setScalar(0);
   readback32 = new Uint32Array(0);
+  ordering32 = new Uint32Array(0);
   compactReadback32 = new Uint32Array(0);
   compactSortSourceIndices = new Uint32Array(0);
   private centerProjectionCache = new WeakMap<
@@ -1587,7 +1588,8 @@ export class SparkRenderer extends THREE.Mesh {
     const orderingMaxSplats = rows * 16384;
     this.maxSplats = Math.max(this.maxSplats, orderingMaxSplats);
 
-    const ordering = new Uint32Array(this.maxSplats);
+    const ordering = Readback.ensureBuffer(orderingMaxSplats, this.ordering32);
+    this.ordering32 = ordering;
     const readback = Readback.ensureBuffer(maxSplats, this.readback32);
     this.readback32 = readback;
 
@@ -1668,6 +1670,7 @@ export class SparkRenderer extends THREE.Mesh {
     } else {
       this.readback32 = result.readback;
     }
+    this.ordering32 = result.ordering;
 
     this.activeSplats = result.activeSplats;
 
@@ -1676,6 +1679,12 @@ export class SparkRenderer extends THREE.Mesh {
         this.orderingTexture.dispose();
         this.orderingTexture = null;
       }
+    }
+    if (
+      this.orderingTexture &&
+      this.orderingTexture.image.data !== result.ordering
+    ) {
+      this.orderingTexture.image.data = result.ordering;
     }
 
     if (!this.orderingTexture) {
