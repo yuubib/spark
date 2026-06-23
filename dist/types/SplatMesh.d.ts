@@ -243,6 +243,9 @@ export declare class SplatMesh extends SplatGenerator {
     enableWorldToView: boolean;
     skinning: SplatSkinning | null;
     edits: SplatEdit[] | null;
+    private readonly rgbaDisplaceEditScratch;
+    private readonly rgbaDisplaceEditInputsScratch;
+    private readonly rgbaDisplaceChildSdfsScratch;
     editable: boolean;
     raycastable: boolean;
     minRaycastOpacity: number;
@@ -341,6 +344,7 @@ export declare class SplatMesh extends SplatGenerator {
     constructCovGenerator(context: SplatMeshContext): void;
     updateGenerator(): void;
     updateGeneratorRenderOnly(): void;
+    private collectRgbaDisplaceEditInputs;
     update({ renderer, time, deltaTime, viewToWorld, camera, renderSize, globalEdits, lodIndices, }: FrameUpdateContext): void;
     raycast(raycaster: THREE.Raycaster, intersects: {
         distance: number;

@@ -2,7 +2,7 @@ import assert from "node:assert";
 
 import * as THREE from "three";
 
-import { SplatMesh } from "../dist/spark.module.js";
+import { SplatEdit, SplatEditSdf, SplatMesh } from "../dist/spark.module.js";
 import {
   CovSplatTransformer,
   SplatGenerator,
@@ -76,14 +76,18 @@ import {
   assert.deepStrictEqual(transformer.offset.value.toArray(), [4, 5, 6]);
 }
 
-function updateMesh(mesh: SplatMesh, viewToWorld = new THREE.Matrix4()): void {
+function updateMesh(
+  mesh: SplatMesh,
+  viewToWorld = new THREE.Matrix4(),
+  globalEdits: SplatEdit[] = [],
+): void {
   mesh.update({
     renderer: {} as THREE.WebGLRenderer,
     object: mesh,
     time: 0,
     deltaTime: 0,
     viewToWorld,
-    globalEdits: [],
+    globalEdits,
   });
 }
 
@@ -106,6 +110,44 @@ await SplatMesh.staticInitialized;
   mesh.updateGeneratorRenderOnly();
   updateMesh(mesh);
   assert.strictEqual(mesh.sortVersion, sortVersion + 1);
+
+  mesh.dispose();
+}
+
+{
+  const mesh = new SplatMesh();
+  await mesh.initialized;
+
+  const childEdit = new SplatEdit();
+  childEdit.ordering = 2;
+  childEdit.add(new SplatEditSdf());
+  mesh.add(childEdit);
+
+  const globalEdit = new SplatEdit({ sdfs: [new SplatEditSdf()] });
+  globalEdit.ordering = 1;
+
+  updateMesh(mesh, new THREE.Matrix4(), [globalEdit]);
+  assert.strictEqual(mesh.rgbaDisplaceEdits?.numEdits, 2);
+  assert.strictEqual(mesh.rgbaDisplaceEdits?.numSdfs, 2);
+
+  const scratch = (
+    mesh as unknown as {
+      rgbaDisplaceEditInputsScratch: Array<{
+        edit: SplatEdit;
+        sdfs: SplatEditSdf[];
+      }>;
+    }
+  ).rgbaDisplaceEditInputsScratch;
+  const firstEntry = scratch[0];
+  const secondEntry = scratch[1];
+  assert.strictEqual(firstEntry.edit, globalEdit);
+  assert.strictEqual(secondEntry.edit, childEdit);
+
+  updateMesh(mesh, new THREE.Matrix4(), [globalEdit]);
+  assert.strictEqual(scratch[0], firstEntry);
+  assert.strictEqual(scratch[1], secondEntry);
+  assert.strictEqual(scratch[0].edit, globalEdit);
+  assert.strictEqual(scratch[1].edit, childEdit);
 
   mesh.dispose();
 }

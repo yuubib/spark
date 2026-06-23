@@ -86,6 +86,11 @@ const splatMeshViewToObjectScratch = new THREE.Matrix4();
 const splatMeshUniformScaleScratch = new THREE.Vector3();
 const splatMeshRecolorScratch = new THREE.Vector4();
 
+type SplatMeshEditSdfs = {
+  edit: SplatEdit;
+  sdfs: SplatEditSdf[];
+};
+
 export type SplatEditorStateRenderMode = "generator" | "accumulator";
 export type SplatEditorSelectedTransformRenderMode =
   | "generator"
@@ -588,6 +593,9 @@ export class SplatMesh extends SplatGenerator {
   // Optional list of SplatEdits to apply to the mesh. If null, any SplatEdit
   // children in the scene graph will be added automatically. (default: null)
   edits: SplatEdit[] | null = null;
+  private readonly rgbaDisplaceEditScratch: SplatEdit[] = [];
+  private readonly rgbaDisplaceEditInputsScratch: SplatMeshEditSdfs[] = [];
+  private readonly rgbaDisplaceChildSdfsScratch: SplatEditSdf[][] = [];
   editable: boolean;
   raycastable: boolean;
   minRaycastOpacity: number;
@@ -2259,6 +2267,65 @@ export class SplatMesh extends SplatGenerator {
     this.generatorDirty = true;
   }
 
+  private collectRgbaDisplaceEditInputs(globalEdits: SplatEdit[]) {
+    const edits = this.rgbaDisplaceEditScratch;
+    edits.length = 0;
+
+    if (this.editable) {
+      if (this.edits) {
+        for (const edit of this.edits) {
+          edits.push(edit);
+        }
+      }
+      for (const edit of globalEdits) {
+        edits.push(edit);
+      }
+      if (!this.edits) {
+        // If we haven't set any explicit edits, add any child SplatEdits.
+        this.traverseVisible((node) => {
+          if (node instanceof SplatEdit) {
+            edits.push(node);
+          }
+        });
+      }
+    }
+
+    edits.sort((a, b) => a.ordering - b.ordering);
+
+    const editInputs = this.rgbaDisplaceEditInputsScratch;
+    const childSdfs = this.rgbaDisplaceChildSdfsScratch;
+    editInputs.length = edits.length;
+    for (let i = edits.length; i < childSdfs.length; i += 1) {
+      childSdfs[i].length = 0;
+    }
+    for (let i = 0; i < edits.length; i += 1) {
+      const edit = edits[i];
+      let entry = editInputs[i];
+      if (!entry) {
+        entry = { edit, sdfs: [] };
+        editInputs[i] = entry;
+      }
+      entry.edit = edit;
+      if (edit.sdfs != null) {
+        entry.sdfs = edit.sdfs;
+        continue;
+      }
+      let sdfs = childSdfs[i];
+      if (!sdfs) {
+        sdfs = [];
+        childSdfs[i] = sdfs;
+      }
+      sdfs.length = 0;
+      edit.traverseVisible((node) => {
+        if (node instanceof SplatEditSdf) {
+          sdfs.push(node);
+        }
+      });
+      entry.sdfs = sdfs;
+    }
+    return editInputs;
+  }
+
   // This is called automatically by SparkRenderer and you should not have to
   // call it. It updates parameters for the generated pipeline and calls
   // updateGenerator() if the pipeline needs to change.
@@ -2420,38 +2487,15 @@ export class SplatMesh extends SplatGenerator {
       updated = true;
     }
 
-    const edits = this.editable ? (this.edits ?? []).concat(globalEdits) : [];
-    if (this.editable && !this.edits) {
-      // If we haven't set any explicit edits, add any child SplatEdits
-      this.traverseVisible((node) => {
-        if (node instanceof SplatEdit) {
-          edits.push(node);
-        }
-      });
-    }
-
-    edits.sort((a, b) => a.ordering - b.ordering);
-    const editsSdfs = edits.map((edit) => {
-      if (edit.sdfs != null) {
-        return { edit, sdfs: edit.sdfs };
-      }
-      const sdfs: SplatEditSdf[] = [];
-      edit.traverseVisible((node) => {
-        if (node instanceof SplatEditSdf) {
-          sdfs.push(node);
-        }
-      });
-      return { edit, sdfs };
-    });
+    const editsSdfs = this.collectRgbaDisplaceEditInputs(globalEdits);
 
     if (editsSdfs.length > 0 && !this.rgbaDisplaceEdits) {
-      const edits = editsSdfs.length;
-      const sdfs = editsSdfs.reduce(
-        (total, edit) => total + edit.sdfs.length,
-        0,
-      );
+      let sdfs = 0;
+      for (const edit of editsSdfs) {
+        sdfs += edit.sdfs.length;
+      }
       this.rgbaDisplaceEdits = new SplatEdits({
-        maxEdits: edits,
+        maxEdits: editsSdfs.length,
         maxSdfs: sdfs,
       });
       this.generatorDirty = true;

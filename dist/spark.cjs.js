@@ -18411,6 +18411,9 @@ const _SplatMesh = class _SplatMesh extends SplatGenerator {
     this.enableWorldToView = false;
     this.skinning = null;
     this.edits = null;
+    this.rgbaDisplaceEditScratch = [];
+    this.rgbaDisplaceEditInputsScratch = [];
+    this.rgbaDisplaceChildSdfsScratch = [];
     this.rgbaDisplaceEdits = null;
     this.splatRgba = null;
     this.maxSh = 3;
@@ -19734,6 +19737,60 @@ const _SplatMesh = class _SplatMesh extends SplatGenerator {
     }
     this.generatorDirty = true;
   }
+  collectRgbaDisplaceEditInputs(globalEdits) {
+    const edits = this.rgbaDisplaceEditScratch;
+    edits.length = 0;
+    if (this.editable) {
+      if (this.edits) {
+        for (const edit of this.edits) {
+          edits.push(edit);
+        }
+      }
+      for (const edit of globalEdits) {
+        edits.push(edit);
+      }
+      if (!this.edits) {
+        this.traverseVisible((node) => {
+          if (node instanceof SplatEdit) {
+            edits.push(node);
+          }
+        });
+      }
+    }
+    edits.sort((a, b) => a.ordering - b.ordering);
+    const editInputs = this.rgbaDisplaceEditInputsScratch;
+    const childSdfs = this.rgbaDisplaceChildSdfsScratch;
+    editInputs.length = edits.length;
+    for (let i = edits.length; i < childSdfs.length; i += 1) {
+      childSdfs[i].length = 0;
+    }
+    for (let i = 0; i < edits.length; i += 1) {
+      const edit = edits[i];
+      let entry = editInputs[i];
+      if (!entry) {
+        entry = { edit, sdfs: [] };
+        editInputs[i] = entry;
+      }
+      entry.edit = edit;
+      if (edit.sdfs != null) {
+        entry.sdfs = edit.sdfs;
+        continue;
+      }
+      let sdfs = childSdfs[i];
+      if (!sdfs) {
+        sdfs = [];
+        childSdfs[i] = sdfs;
+      }
+      sdfs.length = 0;
+      edit.traverseVisible((node) => {
+        if (node instanceof SplatEditSdf) {
+          sdfs.push(node);
+        }
+      });
+      entry.sdfs = sdfs;
+    }
+    return editInputs;
+  }
   // This is called automatically by SparkRenderer and you should not have to
   // call it. It updates parameters for the generated pipeline and calls
   // updateGenerator() if the pipeline needs to change.
@@ -19850,35 +19907,14 @@ const _SplatMesh = class _SplatMesh extends SplatGenerator {
       this.context.recolor.value.copy(newRecolor);
       updated = true;
     }
-    const edits = this.editable ? (this.edits ?? []).concat(globalEdits) : [];
-    if (this.editable && !this.edits) {
-      this.traverseVisible((node) => {
-        if (node instanceof SplatEdit) {
-          edits.push(node);
-        }
-      });
-    }
-    edits.sort((a, b) => a.ordering - b.ordering);
-    const editsSdfs = edits.map((edit) => {
-      if (edit.sdfs != null) {
-        return { edit, sdfs: edit.sdfs };
-      }
-      const sdfs = [];
-      edit.traverseVisible((node) => {
-        if (node instanceof SplatEditSdf) {
-          sdfs.push(node);
-        }
-      });
-      return { edit, sdfs };
-    });
+    const editsSdfs = this.collectRgbaDisplaceEditInputs(globalEdits);
     if (editsSdfs.length > 0 && !this.rgbaDisplaceEdits) {
-      const edits2 = editsSdfs.length;
-      const sdfs = editsSdfs.reduce(
-        (total, edit) => total + edit.sdfs.length,
-        0
-      );
+      let sdfs = 0;
+      for (const edit of editsSdfs) {
+        sdfs += edit.sdfs.length;
+      }
       this.rgbaDisplaceEdits = new SplatEdits({
-        maxEdits: edits2,
+        maxEdits: editsSdfs.length,
         maxSdfs: sdfs
       });
       this.generatorDirty = true;
