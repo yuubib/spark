@@ -18312,6 +18312,12 @@ async function fetchRange({
   }
   return new Uint8Array(await response.arrayBuffer());
 }
+const splatMeshWorldToViewScratch = new THREE__namespace.Matrix4();
+const splatMeshObjectToWorldScratch = new THREE__namespace.Matrix4();
+const splatMeshWorldToObjectScratch = new THREE__namespace.Matrix4();
+const splatMeshViewToObjectScratch = new THREE__namespace.Matrix4();
+const splatMeshUniformScaleScratch = new THREE__namespace.Vector3();
+const splatMeshRecolorScratch = new THREE__namespace.Vector4();
 function normalizeColorMatchThreshold(threshold = 0) {
   return Math.min(1, Math.max(0, Number.isFinite(threshold) ? threshold : 0));
 }
@@ -19795,17 +19801,19 @@ const _SplatMesh = class _SplatMesh extends SplatGenerator {
       if (this.context.viewToWorld.updateFromMatrix(viewToWorld) && this.enableViewToWorld) {
         updated = true;
       }
-      const worldToView = viewToWorld.clone().invert();
+      const worldToView = splatMeshWorldToViewScratch.copy(viewToWorld).invert();
       if (this.context.worldToView.updateFromMatrix(worldToView) && this.enableWorldToView) {
         updated = true;
       }
-      const objectToWorld = new THREE__namespace.Matrix4().compose(
+      const objectToWorld = splatMeshObjectToWorldScratch.compose(
         this.context.transform.translate.value,
         this.context.transform.rotate.value,
-        new THREE__namespace.Vector3().setScalar(this.context.transform.scale.value)
+        splatMeshUniformScaleScratch.setScalar(
+          this.context.transform.scale.value
+        )
       );
-      const worldToObject = objectToWorld.invert();
-      const viewToObjectMatrix = worldToObject.multiply(viewToWorld);
+      const worldToObject = splatMeshWorldToObjectScratch.copy(objectToWorld).invert();
+      const viewToObjectMatrix = splatMeshViewToObjectScratch.copy(worldToObject).multiply(viewToWorld);
       if (this.context.viewToObject.updateFromMatrix(viewToObjectMatrix) && (this.enableViewToObject || this.context.splats.hasRgbDir())) {
         updated = true;
       }
@@ -19816,17 +19824,17 @@ const _SplatMesh = class _SplatMesh extends SplatGenerator {
       if (this.context.covViewToWorld.updateFromMatrix(viewToWorld) && this.enableViewToWorld) {
         updated = true;
       }
-      const worldToView = viewToWorld.clone().invert();
+      const worldToView = splatMeshWorldToViewScratch.copy(viewToWorld).invert();
       if (this.context.covWorldToView.updateFromMatrix(worldToView) && this.enableWorldToView) {
         updated = true;
       }
-      const worldToObject = this.matrixWorld.clone().invert();
-      const viewToObjectMatrix = worldToObject.multiply(viewToWorld);
+      const worldToObject = splatMeshWorldToObjectScratch.copy(this.matrixWorld).invert();
+      const viewToObjectMatrix = splatMeshViewToObjectScratch.copy(worldToObject).multiply(viewToWorld);
       if (this.context.covViewToObject.updateFromMatrix(viewToObjectMatrix) && (this.enableViewToObject || this.context.splats.hasRgbDir())) {
         updated = true;
       }
     }
-    const newRecolor = new THREE__namespace.Vector4(
+    const newRecolor = splatMeshRecolorScratch.set(
       this.recolor.r,
       this.recolor.g,
       this.recolor.b,
