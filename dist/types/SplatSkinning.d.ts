@@ -14,6 +14,20 @@ export type SplatSkinningOptions = {
 export type SplatBonesPackedOptions = {
     validateBoneIndices?: boolean;
 };
+export type SplatBoneQuatPos = {
+    boneIndex: number;
+    quat: {
+        x: number;
+        y: number;
+        z: number;
+        w: number;
+    };
+    pos: {
+        x: number;
+        y: number;
+        z: number;
+    };
+};
 export declare class SplatSkinning {
     mesh: SplatMesh;
     numSplats: number;
@@ -41,6 +55,8 @@ export declare class SplatSkinning {
     setRestMatrix(boneIndex: number, matrix: THREE.Matrix4): void;
     getRestMatrix(boneIndex: number, matrix: THREE.Matrix4): void;
     setBoneQuatPos(boneIndex: number, quat: THREE.Quaternion, pos: THREE.Vector3): void;
+    setBoneQuatPoses(entries: readonly SplatBoneQuatPos[]): void;
+    private setBoneQuatPosScalars;
     setBoneQuatPosScale(boneIndex: number, quat: THREE.Quaternion, pos: THREE.Vector3, scale: THREE.Vector3): void;
     setBoneMatrix(boneIndex: number, matrix: THREE.Matrix4): void;
     setSplatBones(splatIndex: number, boneIndices: THREE.Vector4, weights: THREE.Vector4): void;
@@ -52,6 +68,8 @@ export declare class SplatSkinning {
     private static relQuat;
     private static relPos;
     private static dual;
+    private static poseQuat;
+    private static posePos;
     private static skinMat;
     private static canonicalizeDualQuaternionRow;
     private static canonicalizeQuaternionSignedZero;

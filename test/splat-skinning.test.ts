@@ -181,6 +181,58 @@ function versionedMesh(numSplats: number): VersionedMesh {
 }
 
 {
+  const perRow = new SplatSkinning({
+    mesh: mesh(1),
+    numSplats: 1,
+    numBones: 8,
+  });
+  const bulk = new SplatSkinning({
+    mesh: mesh(1),
+    numSplats: 1,
+    numBones: 8,
+  });
+  const restQuat = new THREE.Quaternion().setFromAxisAngle(
+    new THREE.Vector3(1, 0, 0),
+    Math.PI / 6,
+  );
+  const restPos = new THREE.Vector3(0.25, -0.5, 0.75);
+  const poses = [
+    {
+      boneIndex: 1,
+      quat: new THREE.Quaternion().setFromAxisAngle(
+        new THREE.Vector3(0, 1, 0),
+        Math.PI / 3,
+      ),
+      pos: new THREE.Vector3(1, 2, 3),
+    },
+    {
+      boneIndex: 4,
+      quat: new THREE.Quaternion().setFromAxisAngle(
+        new THREE.Vector3(0, 0, 1),
+        -Math.PI / 5,
+      ),
+      pos: new THREE.Vector3(-2, 0.5, 4),
+    },
+  ];
+
+  perRow.setRestQuatPos(1, restQuat, restPos);
+  bulk.setRestQuatPos(1, restQuat, restPos);
+  for (const pose of poses) {
+    perRow.setBoneQuatPos(pose.boneIndex, pose.quat, pose.pos);
+  }
+  bulk.setBoneQuatPoses(poses);
+
+  assert.deepStrictEqual(
+    Array.from(bulk.boneData),
+    Array.from(perRow.boneData),
+  );
+  assert.throws(
+    () => bulk.setBoneQuatPoses([{ ...poses[0], boneIndex: 8 }]),
+    /boneIndex must be an integer in \[0, 7\]/,
+  );
+}
+
+{
   const skinning = new SplatSkinning({
     mesh: mesh(1),
     numSplats: 1,

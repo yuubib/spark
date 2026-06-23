@@ -25207,11 +25207,40 @@ const _SplatSkinning = class _SplatSkinning {
   }
   // Set the "current" position and orientation of a bone.
   setBoneQuatPos(boneIndex, quat, pos) {
+    this.setBoneQuatPosScalars(
+      boneIndex,
+      quat.x,
+      quat.y,
+      quat.z,
+      quat.w,
+      pos.x,
+      pos.y,
+      pos.z
+    );
+  }
+  setBoneQuatPoses(entries) {
+    for (const entry of entries) {
+      const { quat, pos } = entry;
+      this.setBoneQuatPosScalars(
+        entry.boneIndex,
+        quat.x,
+        quat.y,
+        quat.z,
+        quat.w,
+        pos.x,
+        pos.y,
+        pos.z
+      );
+    }
+  }
+  setBoneQuatPosScalars(boneIndex, quatX, quatY, quatZ, quatW, posX, posY, posZ) {
     this.assertBoneIndex(boneIndex);
     if (this.mode === "dual_quaternion") {
-      _SplatSkinning.relQuat.copy(this.boneRestQuatPosScale[boneIndex].quat).invert();
-      _SplatSkinning.relPos.copy(pos).sub(this.boneRestQuatPosScale[boneIndex].pos);
-      _SplatSkinning.relQuat.multiply(quat);
+      const rest = this.boneRestQuatPosScale[boneIndex];
+      _SplatSkinning.relQuat.copy(rest.quat).invert();
+      _SplatSkinning.relPos.set(posX - rest.pos.x, posY - rest.pos.y, posZ - rest.pos.z);
+      _SplatSkinning.poseQuat.set(quatX, quatY, quatZ, quatW);
+      _SplatSkinning.relQuat.multiply(_SplatSkinning.poseQuat);
       _SplatSkinning.dual.set(
         _SplatSkinning.relPos.x,
         _SplatSkinning.relPos.y,
@@ -25232,7 +25261,14 @@ const _SplatSkinning = class _SplatSkinning {
       this.boneData[i16 + 6] = 0.5 * _SplatSkinning.dual.z;
       this.boneData[i16 + 7] = 0.5 * _SplatSkinning.dual.w;
     } else {
-      this.setBoneQuatPosScale(boneIndex, quat, pos, _SplatSkinning.UNIT_SCALE);
+      _SplatSkinning.poseQuat.set(quatX, quatY, quatZ, quatW);
+      _SplatSkinning.posePos.set(posX, posY, posZ);
+      this.setBoneQuatPosScale(
+        boneIndex,
+        _SplatSkinning.poseQuat,
+        _SplatSkinning.posePos,
+        _SplatSkinning.UNIT_SCALE
+      );
     }
   }
   setBoneQuatPosScale(boneIndex, quat, pos, scale) {
@@ -25412,6 +25448,8 @@ _SplatSkinning.UNIT_SCALE = new THREE.Vector3(1, 1, 1);
 _SplatSkinning.relQuat = new THREE.Quaternion();
 _SplatSkinning.relPos = new THREE.Vector3();
 _SplatSkinning.dual = new THREE.Quaternion();
+_SplatSkinning.poseQuat = new THREE.Quaternion();
+_SplatSkinning.posePos = new THREE.Vector3();
 _SplatSkinning.skinMat = new THREE.Matrix4();
 let SplatSkinning = _SplatSkinning;
 function assertValidBoneCount(numBones) {

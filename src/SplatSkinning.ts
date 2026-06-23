@@ -49,6 +49,12 @@ export type SplatBonesPackedOptions = {
   validateBoneIndices?: boolean;
 };
 
+export type SplatBoneQuatPos = {
+  boneIndex: number;
+  quat: { x: number; y: number; z: number; w: number };
+  pos: { x: number; y: number; z: number };
+};
+
 export class SplatSkinning {
   mesh: SplatMesh;
   numSplats: number;
@@ -226,15 +232,54 @@ export class SplatSkinning {
     quat: THREE.Quaternion,
     pos: THREE.Vector3,
   ) {
+    this.setBoneQuatPosScalars(
+      boneIndex,
+      quat.x,
+      quat.y,
+      quat.z,
+      quat.w,
+      pos.x,
+      pos.y,
+      pos.z,
+    );
+  }
+
+  setBoneQuatPoses(entries: readonly SplatBoneQuatPos[]) {
+    for (const entry of entries) {
+      const { quat, pos } = entry;
+      this.setBoneQuatPosScalars(
+        entry.boneIndex,
+        quat.x,
+        quat.y,
+        quat.z,
+        quat.w,
+        pos.x,
+        pos.y,
+        pos.z,
+      );
+    }
+  }
+
+  private setBoneQuatPosScalars(
+    boneIndex: number,
+    quatX: number,
+    quatY: number,
+    quatZ: number,
+    quatW: number,
+    posX: number,
+    posY: number,
+    posZ: number,
+  ) {
     this.assertBoneIndex(boneIndex);
     if (this.mode === SplatSkinningMode.DUAL_QUATERNION) {
+      const rest = this.boneRestQuatPosScale[boneIndex];
       SplatSkinning.relQuat
-        .copy(this.boneRestQuatPosScale[boneIndex].quat)
+        .copy(rest.quat)
         .invert();
       SplatSkinning.relPos
-        .copy(pos)
-        .sub(this.boneRestQuatPosScale[boneIndex].pos);
-      SplatSkinning.relQuat.multiply(quat);
+        .set(posX - rest.pos.x, posY - rest.pos.y, posZ - rest.pos.z);
+      SplatSkinning.poseQuat.set(quatX, quatY, quatZ, quatW);
+      SplatSkinning.relQuat.multiply(SplatSkinning.poseQuat);
       SplatSkinning.dual
         .set(
           SplatSkinning.relPos.x,
@@ -258,7 +303,14 @@ export class SplatSkinning {
       this.boneData[i16 + 6] = 0.5 * SplatSkinning.dual.z;
       this.boneData[i16 + 7] = 0.5 * SplatSkinning.dual.w;
     } else {
-      this.setBoneQuatPosScale(boneIndex, quat, pos, SplatSkinning.UNIT_SCALE);
+      SplatSkinning.poseQuat.set(quatX, quatY, quatZ, quatW);
+      SplatSkinning.posePos.set(posX, posY, posZ);
+      this.setBoneQuatPosScale(
+        boneIndex,
+        SplatSkinning.poseQuat,
+        SplatSkinning.posePos,
+        SplatSkinning.UNIT_SCALE,
+      );
     }
   }
 
@@ -394,6 +446,8 @@ export class SplatSkinning {
   private static relQuat = new THREE.Quaternion();
   private static relPos = new THREE.Vector3();
   private static dual = new THREE.Quaternion();
+  private static poseQuat = new THREE.Quaternion();
+  private static posePos = new THREE.Vector3();
   private static skinMat = new THREE.Matrix4();
 
   private static canonicalizeDualQuaternionRow(
