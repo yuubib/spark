@@ -10612,6 +10612,12 @@ var SplatEditRgbaBlendMode = /* @__PURE__ */ ((SplatEditRgbaBlendMode2) => {
   SplatEditRgbaBlendMode2["ADD_RGBA"] = "add_rgba";
   return SplatEditRgbaBlendMode2;
 })(SplatEditRgbaBlendMode || {});
+const splatEditValuesScratch = [new THREE__namespace.Vector4(), new THREE__namespace.Vector4()];
+const splatEditCenterScratch = new THREE__namespace.Vector3();
+const splatEditQuaternionScratch = new THREE__namespace.Quaternion();
+const splatEditScaleScratch = new THREE__namespace.Vector3();
+const splatEditSizesScratch = new THREE__namespace.Vector4();
+const splatEditWorldToSdfScratch = new THREE__namespace.Matrix4();
 function rgbaBlendModeToNumber(mode) {
   switch (mode) {
     case "multiply":
@@ -10831,11 +10837,11 @@ class SplatEdits {
       maxEdits: edits.length,
       maxSdfs: sdfCount
     });
-    const values = [new THREE__namespace.Vector4(), new THREE__namespace.Vector4()];
-    const center = new THREE__namespace.Vector3();
-    const quaternion = new THREE__namespace.Quaternion();
-    const scale = new THREE__namespace.Vector3();
-    const sizes = new THREE__namespace.Vector4();
+    const values = splatEditValuesScratch;
+    const center = splatEditCenterScratch;
+    const quaternion = splatEditQuaternionScratch;
+    const scale = splatEditScaleScratch;
+    const sizes = splatEditSizesScratch;
     let sdfIndex = 0;
     let updated = dynoUpdated;
     if (edits.length !== this.dynoNumEdits.value) {
@@ -10857,7 +10863,7 @@ class SplatEdits {
         sizes.set(sdf.scale.x, sdf.scale.y, sdf.scale.z, sdf.radius);
         sdf.scale.setScalar(1);
         sdf.updateMatrixWorld();
-        const worldToSdf = sdf.matrixWorld.clone().invert();
+        const worldToSdf = splatEditWorldToSdfScratch.copy(sdf.matrixWorld).invert();
         worldToSdf.decompose(center, quaternion, scale);
         sdf.scale.set(sizes.x, sizes.y, sizes.z);
         sdf.updateMatrixWorld();

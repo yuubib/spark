@@ -94,6 +94,13 @@ export enum SplatEditRgbaBlendMode {
   ADD_RGBA = "add_rgba",
 }
 
+const splatEditValuesScratch = [new THREE.Vector4(), new THREE.Vector4()];
+const splatEditCenterScratch = new THREE.Vector3();
+const splatEditQuaternionScratch = new THREE.Quaternion();
+const splatEditScaleScratch = new THREE.Vector3();
+const splatEditSizesScratch = new THREE.Vector4();
+const splatEditWorldToSdfScratch = new THREE.Matrix4();
+
 function rgbaBlendModeToNumber(mode: SplatEditRgbaBlendMode) {
   switch (mode) {
     case SplatEditRgbaBlendMode.MULTIPLY:
@@ -468,11 +475,11 @@ export class SplatEdits {
       maxSdfs: sdfCount,
     });
 
-    const values = [new THREE.Vector4(), new THREE.Vector4()];
-    const center = new THREE.Vector3();
-    const quaternion = new THREE.Quaternion();
-    const scale = new THREE.Vector3();
-    const sizes = new THREE.Vector4();
+    const values = splatEditValuesScratch;
+    const center = splatEditCenterScratch;
+    const quaternion = splatEditQuaternionScratch;
+    const scale = splatEditScaleScratch;
+    const sizes = splatEditSizesScratch;
 
     let sdfIndex = 0;
     let updated = dynoUpdated;
@@ -501,7 +508,9 @@ export class SplatEdits {
         // transform without scaling. The SDF treats the scale separately.
         sdf.scale.setScalar(1.0);
         sdf.updateMatrixWorld();
-        const worldToSdf = sdf.matrixWorld.clone().invert();
+        const worldToSdf = splatEditWorldToSdfScratch
+          .copy(sdf.matrixWorld)
+          .invert();
         worldToSdf.decompose(center, quaternion, scale);
 
         sdf.scale.set(sizes.x, sizes.y, sizes.z);
