@@ -625,6 +625,31 @@ export class PackedSplats implements SplatSource {
     return true;
   }
 
+  private markSourceLayerDirty(index: number): void {
+    const source = this.source;
+    if (
+      !source ||
+      source.image.data !== this.packedArray ||
+      !Number.isInteger(index) ||
+      index < 0
+    ) {
+      return;
+    }
+
+    const { width, height, depth } = source.image;
+    const splatsPerLayer = width * height;
+    if (splatsPerLayer <= 0) {
+      return;
+    }
+
+    const layer = Math.floor(index / splatsPerLayer);
+    if (layer < 0 || layer >= depth) {
+      return;
+    }
+
+    source.addLayerUpdate(layer);
+  }
+
   // Ensure the extra array for the given level is large enough to hold numSplats
   ensureSplatsSh(level: number, numSplats: number): Uint32Array {
     let wordsPerSplat: number;
@@ -716,6 +741,7 @@ export class PackedSplats implements SplatSource {
     );
     this.numSplats = Math.max(this.numSplats, index + 1);
     this.writeCenterMatchXyz(index, center);
+    this.markSourceLayerDirty(index);
     this.needsUpdate = true;
   }
 
@@ -774,6 +800,7 @@ export class PackedSplats implements SplatSource {
       splat.quaternion.w,
     );
     this.writeCenterMatchXyz(index, splat.center);
+    this.markSourceLayerDirty(index);
     this.needsUpdate = true;
     return true;
   }
@@ -807,6 +834,7 @@ export class PackedSplats implements SplatSource {
       color.b,
     );
     this.writeCenterMatchXyz(this.numSplats, center);
+    this.markSourceLayerDirty(this.numSplats);
     ++this.numSplats;
     this.needsUpdate = true;
   }
@@ -1142,6 +1170,7 @@ export class PackedSplats implements SplatSource {
         const { width, height, depth } = this.source.image;
         if (this.maxSplats !== width * height * depth) {
           // The existing source texture isn't the right size, so dispose it
+          this.source.layerUpdates.clear();
           this.source.dispose();
           this.source = null;
         }
@@ -1161,6 +1190,7 @@ export class PackedSplats implements SplatSource {
         this.source.needsUpdate = true;
       } else if (this.source.image.data !== this.packedArray) {
         // The source texture is the right size, update the data
+        this.source.layerUpdates.clear();
         this.source.image.data = this.packedArray as Uint32Array<ArrayBuffer>;
       }
       // Indicate to Three.js that the source texture needs to be uploaded to the GPU
