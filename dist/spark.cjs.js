@@ -11188,6 +11188,11 @@ function applyCovSplatRgbaDisplaceEdits(covsplat, sdfArray, numEdits, rgbaDispla
   return dyno2.outputs.covsplat;
 }
 const tempFloat32 = new Float32Array(1);
+const splatTransformerScaleScratch = new THREE__namespace.Vector3();
+const splatTransformerQuaternionScratch = new THREE__namespace.Quaternion();
+const splatTransformerPositionScratch = new THREE__namespace.Vector3();
+const covSplatTransformerBasisScratch = new THREE__namespace.Matrix3();
+const covSplatTransformerOffsetScratch = new THREE__namespace.Vector3();
 class SplatModifier {
   constructor(modifier) {
     this.modifier = modifier;
@@ -11253,9 +11258,9 @@ class SplatTransformer {
   }
   // Update the uniforms to match the given transform matrix.
   updateFromMatrix(transform) {
-    const scale = new THREE__namespace.Vector3();
-    const quaternion = new THREE__namespace.Quaternion();
-    const position = new THREE__namespace.Vector3();
+    const scale = splatTransformerScaleScratch;
+    const quaternion = splatTransformerQuaternionScratch;
+    const position = splatTransformerPositionScratch;
     transform.decompose(position, quaternion, scale);
     const newScale = (scale.x + scale.y + scale.z) / 3;
     let updated = false;
@@ -11327,8 +11332,11 @@ class CovSplatTransformer {
   }
   // Update the uniforms to match the given transform matrix.
   updateFromMatrix(transform) {
-    const basis = new THREE__namespace.Matrix3().setFromMatrix4(transform);
-    const offset = new THREE__namespace.Vector3().setFromMatrixColumn(transform, 3);
+    const basis = covSplatTransformerBasisScratch.setFromMatrix4(transform);
+    const offset = covSplatTransformerOffsetScratch.setFromMatrixColumn(
+      transform,
+      3
+    );
     const updated = !basis.equals(this.basis.value) || !offset.equals(this.offset.value);
     if (updated) {
       this.basis.value.copy(basis);
