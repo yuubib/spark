@@ -32,6 +32,15 @@ export type PackedSplatTransformOptions = {
     rotate: THREE.Quaternion;
     scale: number;
 };
+export type PackedSplatWriteBuffers = {
+    indices: ArrayLike<number>;
+    centers: ArrayLike<number>;
+    scales: ArrayLike<number>;
+    quaternions: ArrayLike<number>;
+    opacities: ArrayLike<number>;
+    colors: ArrayLike<number>;
+    count?: number;
+};
 export declare class PackedSplats implements SplatSource {
     maxSplats: number;
     numSplats: number;
@@ -90,6 +99,7 @@ export declare class PackedSplats implements SplatSource {
         color: THREE.Color;
     };
     setSplat(index: number, center: THREE.Vector3, scales: THREE.Vector3, quaternion: THREE.Quaternion, opacity: number, color: THREE.Color): void;
+    setSplats(writes: PackedSplatWriteBuffers): void;
     transformSplat(index: number, { pivot, translate, rotate, scale }: PackedSplatTransformOptions): boolean;
     pushSplat(center: THREE.Vector3, scales: THREE.Vector3, quaternion: THREE.Quaternion, opacity: number, color: THREE.Color): void;
     forEachSplat(callback: (index: number, center: THREE.Vector3, scales: THREE.Vector3, quaternion: THREE.Quaternion, opacity: number, color: THREE.Color) => void): void;

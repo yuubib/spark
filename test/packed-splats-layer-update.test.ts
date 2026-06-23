@@ -20,6 +20,47 @@ function setTestSplat(packed: PackedSplats, index: number): void {
   );
 }
 
+function setTestSplats(packed: PackedSplats, indices: number[]): void {
+  const centers = new Float32Array(indices.length * 3);
+  const batchScales = new Float32Array(indices.length * 3);
+  const quaternions = new Float32Array(indices.length * 4);
+  const opacities = new Float32Array(indices.length);
+  const colors = new Float32Array(indices.length * 3);
+
+  for (let row = 0; row < indices.length; row++) {
+    const index = indices[row];
+    const centerOffset = row * 3;
+    centers[centerOffset] = index;
+    centers[centerOffset + 1] = index + 1;
+    centers[centerOffset + 2] = index + 2;
+    batchScales[centerOffset] = scales.x;
+    batchScales[centerOffset + 1] = scales.y;
+    batchScales[centerOffset + 2] = scales.z;
+
+    const quaternionOffset = row * 4;
+    quaternions[quaternionOffset] = quaternion.x;
+    quaternions[quaternionOffset + 1] = quaternion.y;
+    quaternions[quaternionOffset + 2] = quaternion.z;
+    quaternions[quaternionOffset + 3] = quaternion.w;
+
+    const colorOffset = row * 3;
+    opacities[row] = 0.8;
+    colors[colorOffset] = color.r;
+    colors[colorOffset + 1] = color.g;
+    colors[colorOffset + 2] = color.b;
+  }
+
+  packed.setSplats({
+    indices,
+    centers,
+    scales: batchScales,
+    quaternions,
+    opacities,
+    colors,
+    count: indices.length,
+  });
+}
+
 function createCenterMatchPackedSplats(count: number): PackedSplats {
   const base = new PackedSplats();
   const centers = new Float32Array(count * 3);
@@ -80,6 +121,22 @@ test("source-backed setSplat marks DataArrayTexture layer updates", () => {
   setTestSplat(packed, 4);
 
   assert.deepStrictEqual(Array.from(texture.layerUpdates).sort(), [0, 1]);
+});
+
+test("source-backed setSplats matches row writes and marks touched layers", () => {
+  const batch = createSourceBackedPackedSplats();
+  const perRow = new PackedSplats();
+
+  setTestSplats(batch.packed, [1, 4]);
+  setTestSplat(perRow, 1);
+  setTestSplat(perRow, 4);
+
+  assert.strictEqual(batch.packed.needsUpdate, true);
+  assert.deepStrictEqual(Array.from(batch.texture.layerUpdates).sort(), [0, 1]);
+  assert.deepStrictEqual(
+    Array.from(batch.packed.packedArray ?? []),
+    Array.from(perRow.packedArray ?? []),
+  );
 });
 
 test("full source data swaps clear stale layer updates", () => {
@@ -156,5 +213,29 @@ test("center-match layer updates follow texture layer layout", () => {
 
   assert.deepStrictEqual(Array.from(texture.layerUpdates), [1]);
   assert.strictEqual(texture.source.version, versionBeforeWrite + 1);
+  assert.deepStrictEqual(Array.from(textureData.slice(20, 24)), [5, 6, 7, 1]);
+});
+
+test("center-match setSplats marks DataArrayTexture layer updates", () => {
+  const packed = createCenterMatchPackedSplats(8);
+  const textureData = new Float32Array(8 * 4);
+  const texture = new THREE.DataArrayTexture(textureData, 2, 2, 2);
+  texture.format = THREE.RGBAFormat;
+  texture.type = THREE.FloatType;
+  texture.internalFormat = "RGBA32F";
+
+  const internals = packed as unknown as {
+    centerMatchTexture: THREE.DataArrayTexture | null;
+    centerMatchTextureData: Float32Array | null;
+    centerMatchTextureNeedsUpdate: boolean;
+  };
+  internals.centerMatchTexture = texture;
+  internals.centerMatchTextureData = textureData;
+  internals.centerMatchTextureNeedsUpdate = false;
+
+  setTestSplats(packed, [1, 5]);
+
+  assert.deepStrictEqual(Array.from(texture.layerUpdates).sort(), [0, 1]);
+  assert.deepStrictEqual(Array.from(textureData.slice(4, 8)), [1, 2, 3, 1]);
   assert.deepStrictEqual(Array.from(textureData.slice(20, 24)), [5, 6, 7, 1]);
 });

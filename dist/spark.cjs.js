@@ -22082,6 +22082,98 @@ const _PackedSplats = class _PackedSplats {
     this.markSourceLayerDirty(index);
     this.needsUpdate = true;
   }
+  setSplats(writes) {
+    const { indices, centers, scales, quaternions, opacities, colors } = writes;
+    const count = writes.count ?? indices.length;
+    if (count <= 0) {
+      return;
+    }
+    let maxIndex = -1;
+    for (let row = 0; row < count; row++) {
+      const index = indices[row];
+      if (!Number.isInteger(index) || index < 0) {
+        throw new Error("Invalid index");
+      }
+      if (index > maxIndex) {
+        maxIndex = index;
+      }
+    }
+    const packedSplats = this.ensureSplats(maxIndex + 1);
+    const centerMatchXyz = this.ensureCenterMatchXyzCapacity(maxIndex + 1);
+    const source = this.source;
+    const sourceImage = source == null ? void 0 : source.image;
+    const canMarkSourceLayers = !!source && !!sourceImage && sourceImage.data === packedSplats && sourceImage.width * sourceImage.height > 0;
+    const sourceSplatsPerLayer = canMarkSourceLayers ? sourceImage.width * sourceImage.height : 0;
+    const sourceDepth = canMarkSourceLayers ? sourceImage.depth : 0;
+    const centerTexture = this.centerMatchTexture;
+    const centerTextureData = this.centerMatchTextureData;
+    const centerTextureImage = centerTexture == null ? void 0 : centerTexture.image;
+    const canPatchCenterTexture = !!centerTexture && !!centerTextureData && !!centerTextureImage && !this.centerMatchTextureNeedsUpdate && centerTextureImage.data === centerTextureData && centerTextureImage.width * centerTextureImage.height > 0;
+    const centerTextureSplatsPerLayer = canPatchCenterTexture ? centerTextureImage.width * centerTextureImage.height : 0;
+    const centerTextureDepth = canPatchCenterTexture ? centerTextureImage.depth : 0;
+    let centerTextureFallbackDirty = false;
+    for (let row = 0; row < count; row++) {
+      const index = indices[row];
+      const centerOffset = row * 3;
+      const scaleOffset = row * 3;
+      const quaternionOffset = row * 4;
+      const colorOffset = row * 3;
+      const x = centers[centerOffset];
+      const y = centers[centerOffset + 1];
+      const z = centers[centerOffset + 2];
+      setPackedSplat(
+        packedSplats,
+        index,
+        x,
+        y,
+        z,
+        scales[scaleOffset],
+        scales[scaleOffset + 1],
+        scales[scaleOffset + 2],
+        quaternions[quaternionOffset],
+        quaternions[quaternionOffset + 1],
+        quaternions[quaternionOffset + 2],
+        quaternions[quaternionOffset + 3],
+        opacities[row],
+        colors[colorOffset],
+        colors[colorOffset + 1],
+        colors[colorOffset + 2]
+      );
+      if (centerMatchXyz) {
+        const packedCenterOffset = index * 3;
+        centerMatchXyz[packedCenterOffset] = x;
+        centerMatchXyz[packedCenterOffset + 1] = y;
+        centerMatchXyz[packedCenterOffset + 2] = z;
+        if (canPatchCenterTexture) {
+          const textureOffset = index * 4;
+          const layer = Math.floor(index / centerTextureSplatsPerLayer);
+          if (textureOffset + 3 < centerTextureData.length && layer >= 0 && layer < centerTextureDepth) {
+            centerTextureData[textureOffset] = x;
+            centerTextureData[textureOffset + 1] = y;
+            centerTextureData[textureOffset + 2] = z;
+            centerTextureData[textureOffset + 3] = 1;
+            centerTexture.addLayerUpdate(layer);
+            centerTexture.needsUpdate = true;
+          } else {
+            centerTextureFallbackDirty = true;
+          }
+        } else {
+          centerTextureFallbackDirty = true;
+        }
+      }
+      if (canMarkSourceLayers) {
+        const layer = Math.floor(index / sourceSplatsPerLayer);
+        if (layer >= 0 && layer < sourceDepth) {
+          source.addLayerUpdate(layer);
+        }
+      }
+    }
+    if (centerTextureFallbackDirty) {
+      this.markCenterMatchTextureDirty();
+    }
+    this.numSplats = Math.max(this.numSplats, maxIndex + 1);
+    this.needsUpdate = true;
+  }
   transformSplat(index, { pivot, translate, rotate, scale }) {
     if (!this.packedArray || !Number.isInteger(index) || index < 0 || index >= this.numSplats) {
       return false;
