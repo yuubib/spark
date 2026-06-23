@@ -166,6 +166,22 @@ function versionedMesh(numSplats: number): VersionedMesh {
 }
 
 {
+  const skinning = new SplatSkinning({
+    mesh: mesh(1),
+    numSplats: 1,
+    numBones: 8,
+  });
+  const before = skinning.skinTexture.version;
+  skinning.setSplatBones(
+    0,
+    new THREE.Vector4(0, 1, 2, 3),
+    new THREE.Vector4(1, 0, 0, 0),
+  );
+
+  assert.strictEqual(skinning.skinTexture.version, before + 1);
+}
+
+{
   const testMesh = versionedMesh(1);
   const skinning = new SplatSkinning({
     mesh: testMesh,

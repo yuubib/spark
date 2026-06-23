@@ -318,6 +318,7 @@ export class SplatSkinning {
       Math.min(255, Math.max(0, Math.round(weights.z * 255.0))) + (boneZ << 8);
     this.skinData[i4 + 3] =
       Math.min(255, Math.max(0, Math.round(weights.w * 255.0))) + (boneW << 8);
+    this.skinTexture.needsUpdate = true;
   }
 
   // Bulk-upload already-packed skinning rows. Each Uint16 packs the weight in

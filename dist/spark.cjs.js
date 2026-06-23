@@ -25259,6 +25259,7 @@ const _SplatSkinning = class _SplatSkinning {
     this.skinData[i4 + 1] = Math.min(255, Math.max(0, Math.round(weights.y * 255))) + (boneY << 8);
     this.skinData[i4 + 2] = Math.min(255, Math.max(0, Math.round(weights.z * 255))) + (boneZ << 8);
     this.skinData[i4 + 3] = Math.min(255, Math.max(0, Math.round(weights.w * 255))) + (boneW << 8);
+    this.skinTexture.needsUpdate = true;
   }
   // Bulk-upload already-packed skinning rows. Each Uint16 packs the weight in
   // the low byte and the bone index in the high byte, matching setSplatBones().
