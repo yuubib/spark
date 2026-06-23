@@ -233,6 +233,7 @@ export declare class SplatMesh extends SplatGenerator {
         deltaTime: number;
     }) => void;
     generatorDirty: boolean;
+    generatorDirtyRenderOnly: boolean;
     objectModifiers?: GsplatModifier[];
     worldModifiers?: GsplatModifier[];
     covObjectModifiers?: CovSplatModifier[];
@@ -339,6 +340,7 @@ export declare class SplatMesh extends SplatGenerator {
     private constructGenerator;
     constructCovGenerator(context: SplatMeshContext): void;
     updateGenerator(): void;
+    updateGeneratorRenderOnly(): void;
     update({ renderer, time, deltaTime, viewToWorld, camera, renderSize, globalEdits, lodIndices, }: FrameUpdateContext): void;
     raycast(raycaster: THREE.Raycaster, intersects: {
         distance: number;

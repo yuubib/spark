@@ -18366,6 +18366,7 @@ const _SplatMesh = class _SplatMesh extends SplatGenerator {
     this.recolor = new THREE.Color(1, 1, 1);
     this.opacity = 1;
     this.generatorDirty = true;
+    this.generatorDirtyRenderOnly = false;
     this.enableViewToObject = false;
     this.enableViewToWorld = false;
     this.enableWorldToView = false;
@@ -19678,6 +19679,17 @@ const _SplatMesh = class _SplatMesh extends SplatGenerator {
   // pipeline structure emerges after successive changes.
   updateGenerator() {
     this.generatorDirty = true;
+    this.generatorDirtyRenderOnly = false;
+  }
+  // Same as updateGenerator(), but when this is the only update in the frame,
+  // regenerate rendered splats without bumping sortVersion. This is useful for
+  // binding a render-only generator seam at rest; source/edits/view changes keep
+  // the normal full-sort update path.
+  updateGeneratorRenderOnly() {
+    if (!this.generatorDirty) {
+      this.generatorDirtyRenderOnly = true;
+    }
+    this.generatorDirty = true;
   }
   // This is called automatically by SparkRenderer and you should not have to
   // call it. It updates parameters for the generated pipeline and calls
@@ -19717,6 +19729,7 @@ const _SplatMesh = class _SplatMesh extends SplatGenerator {
     if (this.context.splats !== this.lastSplats) {
       this.lastSplats = this.context.splats;
       this.generatorDirty = true;
+      this.generatorDirtyRenderOnly = false;
     }
     const editorState = ((_d = (_c = this.context.splats).getEditorState) == null ? void 0 : _d.call(_c)) ?? null;
     this.updateEditorStateContext(editorState, renderer);
@@ -19824,18 +19837,26 @@ const _SplatMesh = class _SplatMesh extends SplatGenerator {
         maxSdfs: sdfs
       });
       this.generatorDirty = true;
+      this.generatorDirtyRenderOnly = false;
     }
     if (this.rgbaDisplaceEdits) {
       const editResult = this.rgbaDisplaceEdits.update(editsSdfs);
       updated || (updated = editResult.updated);
       if (editResult.dynoUpdated) {
         this.generatorDirty = true;
+        this.generatorDirtyRenderOnly = false;
       }
     }
     if (this.generatorDirty) {
+      const renderOnlyGeneratorUpdate = this.generatorDirtyRenderOnly;
       this.constructGenerator(this.context);
       this.generatorDirty = false;
-      updated = true;
+      this.generatorDirtyRenderOnly = false;
+      if (renderOnlyGeneratorUpdate && !updated) {
+        this.updateRenderVersion();
+      } else {
+        updated = true;
+      }
     }
     if (updated) {
       this.updateVersion();

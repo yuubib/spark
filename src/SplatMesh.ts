@@ -559,6 +559,7 @@ export class SplatMesh extends SplatGenerator {
     deltaTime,
   }: { mesh: SplatMesh; time: number; deltaTime: number }) => void;
   generatorDirty = true;
+  generatorDirtyRenderOnly = false;
 
   objectModifiers?: GsplatModifier[];
   worldModifiers?: GsplatModifier[];
@@ -2233,6 +2234,18 @@ export class SplatMesh extends SplatGenerator {
   // pipeline structure emerges after successive changes.
   updateGenerator() {
     this.generatorDirty = true;
+    this.generatorDirtyRenderOnly = false;
+  }
+
+  // Same as updateGenerator(), but when this is the only update in the frame,
+  // regenerate rendered splats without bumping sortVersion. This is useful for
+  // binding a render-only generator seam at rest; source/edits/view changes keep
+  // the normal full-sort update path.
+  updateGeneratorRenderOnly() {
+    if (!this.generatorDirty) {
+      this.generatorDirtyRenderOnly = true;
+    }
+    this.generatorDirty = true;
   }
 
   // This is called automatically by SparkRenderer and you should not have to
@@ -2278,6 +2291,7 @@ export class SplatMesh extends SplatGenerator {
     if (this.context.splats !== this.lastSplats) {
       this.lastSplats = this.context.splats;
       this.generatorDirty = true;
+      this.generatorDirtyRenderOnly = false;
     }
 
     const editorState = this.context.splats.getEditorState?.() ?? null;
@@ -2416,19 +2430,27 @@ export class SplatMesh extends SplatGenerator {
         maxSdfs: sdfs,
       });
       this.generatorDirty = true;
+      this.generatorDirtyRenderOnly = false;
     }
     if (this.rgbaDisplaceEdits) {
       const editResult = this.rgbaDisplaceEdits.update(editsSdfs);
       updated ||= editResult.updated;
       if (editResult.dynoUpdated) {
         this.generatorDirty = true;
+        this.generatorDirtyRenderOnly = false;
       }
     }
 
     if (this.generatorDirty) {
+      const renderOnlyGeneratorUpdate = this.generatorDirtyRenderOnly;
       this.constructGenerator(this.context);
       this.generatorDirty = false;
-      updated = true;
+      this.generatorDirtyRenderOnly = false;
+      if (renderOnlyGeneratorUpdate && !updated) {
+        this.updateRenderVersion();
+      } else {
+        updated = true;
+      }
     }
 
     if (updated) {
