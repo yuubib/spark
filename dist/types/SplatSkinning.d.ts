@@ -50,6 +50,10 @@ export declare class SplatSkinning {
     private static relPos;
     private static dual;
     private static skinMat;
+    private assertBoneIndex;
+    private assertSplatIndex;
+    private validatedPackedBoneIndex;
+    private assertPackedSkinDataBoneIndices;
 }
 export declare const GsplatSkinning: {
     type: "GsplatSkinning";

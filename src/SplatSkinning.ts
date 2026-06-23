@@ -85,7 +85,7 @@ export class SplatSkinning {
     this.skinTexture.internalFormat = "RGBA16UI";
     this.skinTexture.needsUpdate = true;
 
-    this.numBones = options.numBones ?? 256;
+    this.numBones = assertValidBoneCount(options.numBones ?? 256);
     this.boneData = new Float32Array(this.numBones * 16);
     this.boneTexture = new THREE.DataTexture(
       this.boneData,
@@ -143,6 +143,7 @@ export class SplatSkinning {
     quat: THREE.Quaternion,
     pos: THREE.Vector3,
   ) {
+    this.assertBoneIndex(boneIndex);
     this.boneRestQuatPosScale[boneIndex].quat.copy(quat);
     this.boneRestQuatPosScale[boneIndex].pos.copy(pos);
     this.boneRestQuatPosScale[boneIndex].scale.copy(SplatSkinning.UNIT_SCALE);
@@ -161,6 +162,7 @@ export class SplatSkinning {
     quat: THREE.Quaternion,
     pos: THREE.Vector3,
   ) {
+    this.assertBoneIndex(boneIndex);
     quat.copy(this.boneRestQuatPosScale[boneIndex].quat);
     pos.copy(this.boneRestQuatPosScale[boneIndex].pos);
   }
@@ -171,6 +173,7 @@ export class SplatSkinning {
     pos: THREE.Vector3,
     scale: THREE.Vector3,
   ) {
+    this.assertBoneIndex(boneIndex);
     this.boneRestQuatPosScale[boneIndex].quat.copy(quat);
     this.boneRestQuatPosScale[boneIndex].pos.copy(pos);
     this.boneRestQuatPosScale[boneIndex].scale.copy(scale);
@@ -188,6 +191,7 @@ export class SplatSkinning {
     pos: THREE.Vector3,
     scale: THREE.Vector3,
   ) {
+    this.assertBoneIndex(boneIndex);
     quat.copy(this.boneRestQuatPosScale[boneIndex].quat);
     pos.copy(this.boneRestQuatPosScale[boneIndex].pos);
     scale.copy(this.boneRestQuatPosScale[boneIndex].scale);
@@ -197,6 +201,7 @@ export class SplatSkinning {
     if (this.mode !== SplatSkinningMode.LINEAR_BLEND) {
       throw new Error("setRestMat only supported for linear blend skinning");
     }
+    this.assertBoneIndex(boneIndex);
     this.boneRestInvMats[boneIndex].copy(matrix).invert();
     this.setBoneMatrix(boneIndex, matrix);
   }
@@ -205,6 +210,7 @@ export class SplatSkinning {
     if (this.mode !== SplatSkinningMode.LINEAR_BLEND) {
       throw new Error("getRestMat only supported for linear blend skinning");
     }
+    this.assertBoneIndex(boneIndex);
     matrix.copy(this.boneRestInvMats[boneIndex]).invert();
   }
 
@@ -214,6 +220,7 @@ export class SplatSkinning {
     quat: THREE.Quaternion,
     pos: THREE.Vector3,
   ) {
+    this.assertBoneIndex(boneIndex);
     if (this.mode === SplatSkinningMode.DUAL_QUATERNION) {
       SplatSkinning.relQuat
         .copy(this.boneRestQuatPosScale[boneIndex].quat)
@@ -265,6 +272,7 @@ export class SplatSkinning {
     if (this.mode !== SplatSkinningMode.LINEAR_BLEND) {
       throw new Error("setBoneMatrix only supported for linear blend skinning");
     }
+    this.assertBoneIndex(boneIndex);
 
     SplatSkinning.skinMat.multiplyMatrices(
       this.boneRestInvMats[boneIndex],
@@ -292,19 +300,20 @@ export class SplatSkinning {
     boneIndices: THREE.Vector4,
     weights: THREE.Vector4,
   ) {
+    this.assertSplatIndex(splatIndex);
     const i4 = splatIndex * 4;
+    const boneX = this.validatedPackedBoneIndex(boneIndices.x, 0);
+    const boneY = this.validatedPackedBoneIndex(boneIndices.y, 1);
+    const boneZ = this.validatedPackedBoneIndex(boneIndices.z, 2);
+    const boneW = this.validatedPackedBoneIndex(boneIndices.w, 3);
     this.skinData[i4 + 0] =
-      Math.min(255, Math.max(0, Math.round(weights.x * 255.0))) +
-      (boneIndices.x << 8);
+      Math.min(255, Math.max(0, Math.round(weights.x * 255.0))) + (boneX << 8);
     this.skinData[i4 + 1] =
-      Math.min(255, Math.max(0, Math.round(weights.y * 255.0))) +
-      (boneIndices.y << 8);
+      Math.min(255, Math.max(0, Math.round(weights.y * 255.0))) + (boneY << 8);
     this.skinData[i4 + 2] =
-      Math.min(255, Math.max(0, Math.round(weights.z * 255.0))) +
-      (boneIndices.z << 8);
+      Math.min(255, Math.max(0, Math.round(weights.z * 255.0))) + (boneZ << 8);
     this.skinData[i4 + 3] =
-      Math.min(255, Math.max(0, Math.round(weights.w * 255.0))) +
-      (boneIndices.w << 8);
+      Math.min(255, Math.max(0, Math.round(weights.w * 255.0))) + (boneW << 8);
   }
 
   // Bulk-upload already-packed skinning rows. Each Uint16 packs the weight in
@@ -331,6 +340,7 @@ export class SplatSkinning {
         `packedSkinData length ${packedSkinData.length} must cover splatCount*4 ${length}`,
       );
     }
+    this.assertPackedSkinDataBoneIndices(packedSkinData, length);
     this.skinData.set(packedSkinData.subarray(0, length), 0);
     this.skinTexture.needsUpdate = true;
   }
@@ -371,9 +381,69 @@ export class SplatSkinning {
   private static relPos = new THREE.Vector3();
   private static dual = new THREE.Quaternion();
   private static skinMat = new THREE.Matrix4();
+
+  private assertBoneIndex(boneIndex: number) {
+    if (
+      !Number.isInteger(boneIndex) ||
+      boneIndex < 0 ||
+      boneIndex >= this.numBones
+    ) {
+      throw new Error(
+        `boneIndex must be an integer in [0, ${this.numBones - 1}]`,
+      );
+    }
+  }
+
+  private assertSplatIndex(splatIndex: number) {
+    if (
+      !Number.isInteger(splatIndex) ||
+      splatIndex < 0 ||
+      splatIndex >= this.numSplats
+    ) {
+      throw new Error(
+        `splatIndex must be an integer in [0, ${this.numSplats - 1}]`,
+      );
+    }
+  }
+
+  private validatedPackedBoneIndex(boneIndex: number, lane: number) {
+    if (
+      !Number.isInteger(boneIndex) ||
+      boneIndex < 0 ||
+      boneIndex >= this.numBones
+    ) {
+      throw new Error(
+        `boneIndices[${lane}] must be an integer in [0, ${this.numBones - 1}]`,
+      );
+    }
+    return boneIndex;
+  }
+
+  private assertPackedSkinDataBoneIndices(
+    packedSkinData: Uint16Array,
+    length: number,
+  ) {
+    for (let i = 0; i < length; i += 1) {
+      const boneIndex = packedSkinData[i] >> 8;
+      if (boneIndex >= this.numBones) {
+        const splatIndex = Math.floor(i / 4);
+        const lane = i % 4;
+        throw new Error(
+          `packedSkinData bone index ${boneIndex} at splat ${splatIndex} lane ${lane} exceeds numBones ${this.numBones}`,
+        );
+      }
+    }
+  }
 }
 
 // dyno program definitions for SplatSkinning
+
+function assertValidBoneCount(numBones: number) {
+  if (!Number.isInteger(numBones) || numBones < 1 || numBones > 256) {
+    throw new Error("numBones must be an integer in [1, 256]");
+  }
+  return numBones;
+}
 
 export const GsplatSkinning = { type: "GsplatSkinning" } as {
   type: "GsplatSkinning";

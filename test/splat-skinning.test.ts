@@ -72,6 +72,69 @@ function versionedMesh(numSplats: number): VersionedMesh {
 }
 
 {
+  assert.throws(
+    () => new SplatSkinning({ mesh: mesh(1), numSplats: 1, numBones: 0 }),
+    /numBones must be an integer in \[1, 256\]/,
+  );
+  assert.throws(
+    () => new SplatSkinning({ mesh: mesh(1), numSplats: 1, numBones: 257 }),
+    /numBones must be an integer in \[1, 256\]/,
+  );
+  const skinning = new SplatSkinning({
+    mesh: mesh(1),
+    numSplats: 1,
+    numBones: 256,
+  });
+  skinning.setSplatBones(
+    0,
+    new THREE.Vector4(255, 0, 0, 0),
+    new THREE.Vector4(1, 0, 0, 0),
+  );
+  assert.strictEqual(skinning.skinData[0] >> 8, 255);
+  assert.throws(
+    () =>
+      skinning.setSplatBones(
+        0,
+        new THREE.Vector4(256, 0, 0, 0),
+        new THREE.Vector4(1, 0, 0, 0),
+      ),
+    /boneIndices\[0\] must be an integer in \[0, 255\]/,
+  );
+  assert.throws(
+    () =>
+      skinning.setSplatBones(
+        0,
+        new THREE.Vector4(-1, 0, 0, 0),
+        new THREE.Vector4(1, 0, 0, 0),
+      ),
+    /boneIndices\[0\] must be an integer in \[0, 255\]/,
+  );
+  assert.throws(
+    () =>
+      skinning.setSplatBones(
+        0,
+        new THREE.Vector4(0.5, 0, 0, 0),
+        new THREE.Vector4(1, 0, 0, 0),
+      ),
+    /boneIndices\[0\] must be an integer in \[0, 255\]/,
+  );
+  assert.throws(
+    () =>
+      skinning.setSplatBones(
+        1,
+        new THREE.Vector4(0, 0, 0, 0),
+        new THREE.Vector4(1, 0, 0, 0),
+      ),
+    /splatIndex must be an integer in \[0, 0\]/,
+  );
+  assert.throws(
+    () =>
+      skinning.setBoneQuatPos(256, new THREE.Quaternion(), new THREE.Vector3()),
+    /boneIndex must be an integer in \[0, 255\]/,
+  );
+}
+
+{
   const skinning = new SplatSkinning({
     mesh: mesh(4),
     numSplats: 4,
@@ -189,6 +252,14 @@ function versionedMesh(numSplats: number): VersionedMesh {
   assert.throws(
     () => skinning.setSplatBonesPacked([] as unknown as Uint16Array),
     /Uint16Array/,
+  );
+  assert.throws(
+    () => skinning.setSplatBonesPacked(new Uint16Array([8 << 8, 0, 0, 0]), 1),
+    /packedSkinData bone index 8 at splat 0 lane 0 exceeds numBones 8/,
+  );
+  assert.throws(
+    () => skinning.setSplatBonesPacked(new Uint16Array([0, 0, 0, 8 << 8]), 1),
+    /packedSkinData bone index 8 at splat 0 lane 3 exceeds numBones 8/,
   );
 }
 
