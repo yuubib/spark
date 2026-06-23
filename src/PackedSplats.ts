@@ -229,6 +229,7 @@ export class PackedSplats implements SplatSource {
     this.clearEditorState();
 
     this.disposeCenterMatchTexture();
+    this.needsUpdate = true;
     this.extra = {};
     this.colorMatchRgb = null;
     this.centerMatchXyz = null;
@@ -281,6 +282,7 @@ export class PackedSplats implements SplatSource {
     this.colorMatchRgb = readColorMatchRgbExtra(this.extra, this.numSplats);
     this.centerMatchXyz = readCenterMatchXyzExtra(this.extra, this.numSplats);
     this.markCenterMatchTextureDirty();
+    this.needsUpdate = true;
   }
 
   async asyncInitialize(options: PackedSplatsOptions) {
@@ -557,6 +559,7 @@ export class PackedSplats implements SplatSource {
         newArray.set(this.packedArray);
       }
       this.packedArray = newArray;
+      this.needsUpdate = true;
     }
     if (this.editorState) {
       this.editorState.ensureCapacity(this.maxSplats);
@@ -713,6 +716,7 @@ export class PackedSplats implements SplatSource {
     );
     this.numSplats = Math.max(this.numSplats, index + 1);
     this.writeCenterMatchXyz(index, center);
+    this.needsUpdate = true;
   }
 
   transformSplat(
@@ -770,6 +774,7 @@ export class PackedSplats implements SplatSource {
       splat.quaternion.w,
     );
     this.writeCenterMatchXyz(index, splat.center);
+    this.needsUpdate = true;
     return true;
   }
 
@@ -803,6 +808,7 @@ export class PackedSplats implements SplatSource {
     );
     this.writeCenterMatchXyz(this.numSplats, center);
     ++this.numSplats;
+    this.needsUpdate = true;
   }
 
   // Iterate over Gsplats index 0..=(this.numSplats-1), unpack each Gsplat
@@ -1153,9 +1159,9 @@ export class PackedSplats implements SplatSource {
         this.source.type = THREE.UnsignedIntType;
         this.source.internalFormat = "RGBA32UI";
         this.source.needsUpdate = true;
-      } else if (this.packedArray.buffer !== this.source.image.data.buffer) {
+      } else if (this.source.image.data !== this.packedArray) {
         // The source texture is the right size, update the data
-        this.source.image.data = new Uint8Array(this.packedArray.buffer);
+        this.source.image.data = this.packedArray as Uint32Array<ArrayBuffer>;
       }
       // Indicate to Three.js that the source texture needs to be uploaded to the GPU
       this.source.needsUpdate = true;

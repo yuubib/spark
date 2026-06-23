@@ -21600,6 +21600,7 @@ const _PackedSplats = class _PackedSplats {
     this.isInitialized = false;
     this.clearEditorState();
     this.disposeCenterMatchTexture();
+    this.needsUpdate = true;
     this.extra = {};
     this.colorMatchRgb = null;
     this.centerMatchXyz = null;
@@ -21638,6 +21639,7 @@ const _PackedSplats = class _PackedSplats {
     this.colorMatchRgb = readColorMatchRgbExtra(this.extra, this.numSplats);
     this.centerMatchXyz = readCenterMatchXyzExtra(this.extra, this.numSplats);
     this.markCenterMatchTextureDirty();
+    this.needsUpdate = true;
   }
   async asyncInitialize(options) {
     const {
@@ -21860,6 +21862,7 @@ const _PackedSplats = class _PackedSplats {
         newArray2.set(this.packedArray);
       }
       this.packedArray = newArray2;
+      this.needsUpdate = true;
     }
     if (this.editorState) {
       this.editorState.ensureCapacity(this.maxSplats);
@@ -21974,6 +21977,7 @@ const _PackedSplats = class _PackedSplats {
     );
     this.numSplats = Math.max(this.numSplats, index + 1);
     this.writeCenterMatchXyz(index, center);
+    this.needsUpdate = true;
   }
   transformSplat(index, { pivot, translate, rotate, scale }) {
     if (!this.packedArray || !Number.isInteger(index) || index < 0 || index >= this.numSplats) {
@@ -22019,6 +22023,7 @@ const _PackedSplats = class _PackedSplats {
       splat.quaternion.w
     );
     this.writeCenterMatchXyz(index, splat.center);
+    this.needsUpdate = true;
     return true;
   }
   // Effectively calls this.setSplat(this.numSplats++, center, ...), useful on
@@ -22045,6 +22050,7 @@ const _PackedSplats = class _PackedSplats {
     );
     this.writeCenterMatchXyz(this.numSplats, center);
     ++this.numSplats;
+    this.needsUpdate = true;
   }
   // Iterate over Gsplats index 0..=(this.numSplats-1), unpack each Gsplat
   // and invoke the callback function with the Gsplat attributes.
@@ -22317,8 +22323,8 @@ const _PackedSplats = class _PackedSplats {
         this.source.type = THREE__namespace.UnsignedIntType;
         this.source.internalFormat = "RGBA32UI";
         this.source.needsUpdate = true;
-      } else if (this.packedArray.buffer !== this.source.image.data.buffer) {
-        this.source.image.data = new Uint8Array(this.packedArray.buffer);
+      } else if (this.source.image.data !== this.packedArray) {
+        this.source.image.data = this.packedArray;
       }
       this.source.needsUpdate = true;
     }

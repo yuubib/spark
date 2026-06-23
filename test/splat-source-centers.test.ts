@@ -220,6 +220,46 @@ const makePositionPly = (rows: readonly (readonly number[])[]) => {
 }
 
 {
+  const firstBase = new PackedSplats();
+  splat(firstBase, new THREE.Vector3(1, 2, 3));
+  splat(firstBase, new THREE.Vector3(4, 5, 6));
+  const packed = new PackedSplats({
+    packedArray: firstBase.packedArray?.slice(),
+    numSplats: 2,
+  });
+  const texture = packed.getTexture();
+  assert.ok(texture.image.data instanceof Uint32Array);
+  const firstTextureData = texture.image.data;
+  assert.strictEqual(firstTextureData, packed.packedArray);
+  texture.needsUpdate = false;
+  packed.needsUpdate = false;
+
+  const secondBase = new PackedSplats();
+  splat(secondBase, new THREE.Vector3(-1, -2, -3));
+  splat(secondBase, new THREE.Vector3(7, 8, 9));
+  const secondPackedArray = secondBase.packedArray?.slice();
+  assert.ok(secondPackedArray);
+
+  packed.reinitialize({
+    packedArray: secondPackedArray,
+    numSplats: 2,
+  });
+  assert.strictEqual(packed.needsUpdate, true);
+  const refreshedTexture = packed.getTexture();
+  assert.strictEqual(refreshedTexture, texture);
+  assert.strictEqual(refreshedTexture.image.data, secondPackedArray);
+  assert.ok(refreshedTexture.image.data instanceof Uint32Array);
+  assert.notStrictEqual(refreshedTexture.image.data, firstTextureData);
+  assert.deepStrictEqual(
+    collectRawCenters(packed.forEachSplatCenterRaw.bind(packed)),
+    [
+      [0, -1, -2, -3],
+      [1, 7, 8, 9],
+    ],
+  );
+}
+
+{
   const ext = new ExtSplats();
   splat(ext, new THREE.Vector3(0.25, -0.5, 1.5));
   splat(ext, new THREE.Vector3(12, 13, 14));
