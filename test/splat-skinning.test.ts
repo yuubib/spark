@@ -5,6 +5,7 @@ import * as THREE from "three";
 import type { SplatMesh } from "../src/SplatMesh.js";
 import {
   SplatSkinning,
+  SplatSkinningMode,
   defineApplyCovSplatDQSkinning,
   defineApplyCovSplatLBSkinning,
   defineApplyGsplatSkinning,
@@ -138,7 +139,14 @@ function versionedMesh(numSplats: number): VersionedMesh {
     mesh: mesh(1),
     numSplats: 1,
     numBones: 8,
+    mode: SplatSkinningMode.LINEAR_BLEND,
   });
+  const skinData = skinning.skinData;
+  const boneData = skinning.boneData;
+  assert.ok(skinData.length > 0);
+  assert.ok(boneData.length > 0);
+  assert.strictEqual(skinning.boneRestQuatPosScale.length, 8);
+  assert.strictEqual(skinning.boneRestInvMats.length, 8);
   let skinDisposeCount = 0;
   let boneDisposeCount = 0;
   skinning.skinTexture.dispose = () => {
@@ -153,6 +161,14 @@ function versionedMesh(numSplats: number): VersionedMesh {
 
   assert.strictEqual(skinDisposeCount, 1);
   assert.strictEqual(boneDisposeCount, 1);
+  assert.strictEqual(skinning.skinTexture.source.data, null);
+  assert.strictEqual(skinning.boneTexture.source.data, null);
+  assert.notStrictEqual(skinning.skinData, skinData);
+  assert.notStrictEqual(skinning.boneData, boneData);
+  assert.strictEqual(skinning.skinData.length, 0);
+  assert.strictEqual(skinning.boneData.length, 0);
+  assert.deepStrictEqual(skinning.boneRestQuatPosScale, []);
+  assert.deepStrictEqual(skinning.boneRestInvMats, []);
 }
 
 {

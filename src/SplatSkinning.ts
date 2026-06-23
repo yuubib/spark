@@ -357,7 +357,13 @@ export class SplatSkinning {
     }
     this.disposed = true;
     this.skinTexture.dispose();
+    this.skinTexture.source.data = null;
     this.boneTexture.dispose();
+    this.boneTexture.source.data = null;
+    this.skinData = new Uint16Array(0);
+    this.boneData = new Float32Array(0);
+    this.boneRestQuatPosScale = [];
+    this.boneRestInvMats = [];
   }
 
   private static UNIT_SCALE = new THREE.Vector3(1, 1, 1);
