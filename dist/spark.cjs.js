@@ -25265,6 +25265,9 @@ const defineApplyGsplatSkinning = unindent(`
 
     // Normalize dual quaternion
     float norm = length(quat);
+    if (norm <= 1e-8) {
+      return;
+    }
     quat /= norm;
     dual /= norm;
     vec3 translate = vec3(
@@ -25348,6 +25351,9 @@ const defineApplyCovSplatDQSkinning = unindent(`
 
     // Normalize dual quaternion
     float norm = length(quat);
+    if (norm <= 1e-8) {
+      return;
+    }
     quat /= norm;
     dual /= norm;
     vec3 translate = vec3(
@@ -25391,6 +25397,7 @@ const defineApplyCovSplatLBSkinning = unindent(`
 
     mat3 basis = mat3(0.0);
     vec3 offset = vec3(0.0);
+    float weightSum = 0.0;
 
     for (int i = 0; i < 4; i++) {
       if (weights[i] > 0.0) {
@@ -25401,8 +25408,12 @@ const defineApplyCovSplatLBSkinning = unindent(`
           vec4 v2 = texelFetch(boneTexture, ivec2(2, boneIndex), 0);
           basis += weights[i] * mat3(v0.x, v0.y, v0.z, v0.w, v1.x, v1.y, v1.z, v1.w, v2.x);
           offset += weights[i] * vec3(v2.y, v2.z, v2.w);
+          weightSum += weights[i];
         }
       }
+    }
+    if (weightSum <= 0.0) {
+      return;
     }
 
     center = basis * center + offset;

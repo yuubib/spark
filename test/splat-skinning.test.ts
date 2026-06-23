@@ -3,7 +3,12 @@ import assert from "node:assert";
 import * as THREE from "three";
 
 import type { SplatMesh } from "../src/SplatMesh.js";
-import { SplatSkinning } from "../src/SplatSkinning.js";
+import {
+  SplatSkinning,
+  defineApplyCovSplatDQSkinning,
+  defineApplyCovSplatLBSkinning,
+  defineApplyGsplatSkinning,
+} from "../src/SplatSkinning.js";
 
 function mesh(numSplats: number): SplatMesh {
   return { numSplats, needsUpdate: false } as unknown as SplatMesh;
@@ -148,5 +153,19 @@ function versionedMesh(numSplats: number): VersionedMesh {
     /Uint16Array/,
   );
 }
+
+assert.match(
+  defineApplyGsplatSkinning,
+  /if \(norm <= 1e-8\) \{\s+return;\s+\}/,
+);
+assert.match(
+  defineApplyCovSplatDQSkinning,
+  /if \(norm <= 1e-8\) \{\s+return;\s+\}/,
+);
+assert.match(defineApplyCovSplatLBSkinning, /float weightSum = 0\.0;/);
+assert.match(
+  defineApplyCovSplatLBSkinning,
+  /if \(weightSum <= 0\.0\) \{\s+return;\s+\}/,
+);
 
 console.log("SplatSkinning packed skin data tests passed");
