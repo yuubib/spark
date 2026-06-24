@@ -10832,7 +10832,10 @@ class SplatEdits {
   // Update the SDFs and edits from an array of SplatEdits and their
   // associated SplatEditSdfs, updating it for the dyno shader program.
   update(edits) {
-    const sdfCount = edits.reduce((total, { sdfs }) => total + sdfs.length, 0);
+    let sdfCount = 0;
+    for (let i = 0; i < edits.length; i++) {
+      sdfCount += edits[i].sdfs.length;
+    }
     const dynoUpdated = this.ensureCapacity({
       maxEdits: edits.length,
       maxSdfs: sdfCount
@@ -10849,7 +10852,8 @@ class SplatEdits {
       this.numEdits = edits.length;
       updated = true;
     }
-    for (const [editIndex, { edit, sdfs }] of edits.entries()) {
+    for (let editIndex = 0; editIndex < edits.length; editIndex++) {
+      const { edit, sdfs } = edits[editIndex];
       updated = this.encodeEdit(editIndex, {
         sdfFirst: sdfIndex,
         sdfCount: sdfs.length,
@@ -10859,7 +10863,8 @@ class SplatEdits {
         sdfSmooth: edit.sdfSmooth
       }) || updated;
       let sdfUpdated = false;
-      for (const sdf of sdfs) {
+      for (let s = 0; s < sdfs.length; s++) {
+        const sdf = sdfs[s];
         sizes.set(sdf.scale.x, sdf.scale.y, sdf.scale.z, sdf.radius);
         sdf.scale.setScalar(1);
         sdf.updateMatrixWorld();
@@ -13320,6 +13325,9 @@ const SPLAT_CENTER_INTERSECTION_AUTO_SELECTED_GPU_MIN_SPLATS = Math.floor(
 const SPLAT_CENTER_INTERSECTION_AUTO_SELECTED_GPU_MIN_RATIO = 0.25;
 const SPLAT_CENTER_INTERSECTION_OUTPUT_ENCODING_BITSET = "bitset-rgba8";
 const SPLAT_CENTER_INTERSECTION_SYNC_READBACK_MAX_BYTES = 256 * 1024;
+const onBeforeRenderAccumToWorldScratch = new THREE__namespace.Matrix4();
+const onBeforeRenderAccumToCameraScratch = new THREE__namespace.Matrix4();
+const onBeforeRenderDecomposeScaleScratch = new THREE__namespace.Vector3();
 function getSplatCenterIntersectionOutputSizeForEncoding(numSplats, encoding) {
   const splatCount = Math.max(0, Math.floor(numSplats));
   const byteCount = Math.ceil(splatCount / 8);
@@ -13696,17 +13704,17 @@ const _SparkRenderer = class _SparkRenderer extends THREE__namespace.Mesh {
     this.uniforms.far.value = typedCamera.far;
     const geometry = this.geometry;
     geometry.instanceCount = spark.activeSplats;
-    const accumToWorld = new THREE__namespace.Matrix4();
-    if (!this.display.extSplats) {
+    const accumToWorld = onBeforeRenderAccumToWorldScratch;
+    if (this.display.extSplats) {
+      accumToWorld.identity();
+    } else {
       accumToWorld.makeTranslation(spark.display.viewOrigin);
     }
-    const cameraToWorld = camera.matrixWorld.clone();
-    const worldToCamera = cameraToWorld.invert();
-    const accumToCamera = worldToCamera.multiply(accumToWorld);
+    const accumToCamera = onBeforeRenderAccumToCameraScratch.copy(camera.matrixWorld).invert().multiply(accumToWorld);
     accumToCamera.decompose(
       this.uniforms.renderToViewPos.value,
       this.uniforms.renderToViewQuat.value,
-      new THREE__namespace.Vector3()
+      onBeforeRenderDecomposeScaleScratch
     );
     this.uniforms.renderToViewBasis.value.setFromMatrix4(accumToCamera);
     this.uniforms.maxStdDev.value = spark.maxStdDev;
@@ -22112,6 +22120,8 @@ const _PackedSplats = class _PackedSplats {
     const centerTextureSplatsPerLayer = canPatchCenterTexture ? centerTextureImage.width * centerTextureImage.height : 0;
     const centerTextureDepth = canPatchCenterTexture ? centerTextureImage.depth : 0;
     let centerTextureFallbackDirty = false;
+    let lastCenterLayer = -1;
+    let lastSourceLayer = -1;
     for (let row = 0; row < count; row++) {
       const index = indices[row];
       const centerOffset = row * 3;
@@ -22152,8 +22162,10 @@ const _PackedSplats = class _PackedSplats {
             centerTextureData[textureOffset + 1] = y;
             centerTextureData[textureOffset + 2] = z;
             centerTextureData[textureOffset + 3] = 1;
-            centerTexture.addLayerUpdate(layer);
-            centerTexture.needsUpdate = true;
+            if (layer !== lastCenterLayer) {
+              centerTexture.addLayerUpdate(layer);
+              lastCenterLayer = layer;
+            }
           } else {
             centerTextureFallbackDirty = true;
           }
@@ -22163,10 +22175,14 @@ const _PackedSplats = class _PackedSplats {
       }
       if (canMarkSourceLayers) {
         const layer = Math.floor(index / sourceSplatsPerLayer);
-        if (layer >= 0 && layer < sourceDepth) {
+        if (layer >= 0 && layer < sourceDepth && layer !== lastSourceLayer) {
           source.addLayerUpdate(layer);
+          lastSourceLayer = layer;
         }
       }
+    }
+    if (canPatchCenterTexture && lastCenterLayer >= 0) {
+      centerTexture.needsUpdate = true;
     }
     if (centerTextureFallbackDirty) {
       this.markCenterMatchTextureDirty();

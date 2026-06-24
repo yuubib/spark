@@ -833,6 +833,11 @@ export class PackedSplats implements SplatSource {
       ? centerTextureImage.depth
       : 0;
     let centerTextureFallbackDirty = false;
+    // addLayerUpdate is an idempotent Set add, so skipping consecutive
+    // same-layer marks (the contiguous-write common case) and hoisting the
+    // single needsUpdate flag out of the loop produces the same dirty set.
+    let lastCenterLayer = -1;
+    let lastSourceLayer = -1;
 
     for (let row = 0; row < count; row++) {
       const index = indices[row];
@@ -881,8 +886,10 @@ export class PackedSplats implements SplatSource {
             centerTextureData[textureOffset + 1] = y;
             centerTextureData[textureOffset + 2] = z;
             centerTextureData[textureOffset + 3] = 1;
-            centerTexture.addLayerUpdate(layer);
-            centerTexture.needsUpdate = true;
+            if (layer !== lastCenterLayer) {
+              centerTexture.addLayerUpdate(layer);
+              lastCenterLayer = layer;
+            }
           } else {
             centerTextureFallbackDirty = true;
           }
@@ -893,12 +900,16 @@ export class PackedSplats implements SplatSource {
 
       if (canMarkSourceLayers) {
         const layer = Math.floor(index / sourceSplatsPerLayer);
-        if (layer >= 0 && layer < sourceDepth) {
+        if (layer >= 0 && layer < sourceDepth && layer !== lastSourceLayer) {
           source.addLayerUpdate(layer);
+          lastSourceLayer = layer;
         }
       }
     }
 
+    if (canPatchCenterTexture && lastCenterLayer >= 0) {
+      centerTexture.needsUpdate = true;
+    }
     if (centerTextureFallbackDirty) {
       this.markCenterMatchTextureDirty();
     }

@@ -239,3 +239,45 @@ test("center-match setSplats marks DataArrayTexture layer updates", () => {
   assert.deepStrictEqual(Array.from(textureData.slice(4, 8)), [1, 2, 3, 1]);
   assert.deepStrictEqual(Array.from(textureData.slice(20, 24)), [5, 6, 7, 1]);
 });
+
+test("source-backed setSplats dedupes consecutive same-layer marks", () => {
+  const batch = createSourceBackedPackedSplats();
+  const perRow = createSourceBackedPackedSplats();
+
+  setTestSplats(batch.packed, [1, 2, 3]);
+  setTestSplat(perRow.packed, 1);
+  setTestSplat(perRow.packed, 2);
+  setTestSplat(perRow.packed, 3);
+
+  assert.strictEqual(batch.packed.needsUpdate, true);
+  // Three same-layer rows collapse to a single layer-0 mark.
+  assert.deepStrictEqual(Array.from(batch.texture.layerUpdates), [0]);
+  assert.deepStrictEqual(Array.from(perRow.texture.layerUpdates), [0]);
+  // Every row's payload is still written despite the deduped layer mark.
+  assert.deepStrictEqual(
+    Array.from(batch.packed.packedArray ?? []),
+    Array.from(perRow.packed.packedArray ?? []),
+  );
+});
+
+test("source-backed setSplats marks every touched layer for interleaved rows", () => {
+  const batch = createSourceBackedPackedSplats();
+  const perRow = createSourceBackedPackedSplats();
+
+  // Layers [1, 0, 1]: the trailing layer-1 row must still be marked even
+  // though a layer-0 row interrupted the run.
+  setTestSplats(batch.packed, [5, 1, 6]);
+  setTestSplat(perRow.packed, 5);
+  setTestSplat(perRow.packed, 1);
+  setTestSplat(perRow.packed, 6);
+
+  assert.deepStrictEqual(Array.from(batch.texture.layerUpdates).sort(), [0, 1]);
+  assert.deepStrictEqual(
+    Array.from(perRow.texture.layerUpdates).sort(),
+    [0, 1],
+  );
+  assert.deepStrictEqual(
+    Array.from(batch.packed.packedArray ?? []),
+    Array.from(perRow.packed.packedArray ?? []),
+  );
+});

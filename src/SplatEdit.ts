@@ -469,7 +469,10 @@ export class SplatEdits {
     updated: boolean;
     dynoUpdated: boolean;
   } {
-    const sdfCount = edits.reduce((total, { sdfs }) => total + sdfs.length, 0);
+    let sdfCount = 0;
+    for (let i = 0; i < edits.length; i++) {
+      sdfCount += edits[i].sdfs.length;
+    }
     const dynoUpdated = this.ensureCapacity({
       maxEdits: edits.length,
       maxSdfs: sdfCount,
@@ -490,7 +493,8 @@ export class SplatEdits {
       updated = true;
     }
 
-    for (const [editIndex, { edit, sdfs }] of edits.entries()) {
+    for (let editIndex = 0; editIndex < edits.length; editIndex++) {
+      const { edit, sdfs } = edits[editIndex];
       updated =
         this.encodeEdit(editIndex, {
           sdfFirst: sdfIndex,
@@ -502,7 +506,8 @@ export class SplatEdits {
         }) || updated;
 
       let sdfUpdated = false;
-      for (const sdf of sdfs) {
+      for (let s = 0; s < sdfs.length; s++) {
+        const sdf = sdfs[s];
         sizes.set(sdf.scale.x, sdf.scale.y, sdf.scale.z, sdf.radius);
         // Temporarily set the SDF scale to 1.0 to get the world-to-SDF
         // transform without scaling. The SDF treats the scale separately.

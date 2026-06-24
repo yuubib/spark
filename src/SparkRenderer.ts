@@ -363,6 +363,12 @@ const SPLAT_CENTER_INTERSECTION_OUTPUT_ENCODING_BITSET =
   "bitset-rgba8" satisfies SplatCenterIntersectionOutputEncoding;
 const SPLAT_CENTER_INTERSECTION_SYNC_READBACK_MAX_BYTES = 256 * 1024;
 
+// Reused scratch for the per-frame onBeforeRender render-to-view transform, to
+// avoid allocating two Matrix4 and a throwaway Vector3 every frame.
+const onBeforeRenderAccumToWorldScratch = new THREE.Matrix4();
+const onBeforeRenderAccumToCameraScratch = new THREE.Matrix4();
+const onBeforeRenderDecomposeScaleScratch = new THREE.Vector3();
+
 function getSplatCenterIntersectionOutputSizeForEncoding(
   numSplats: number,
   encoding: SplatCenterIntersectionOutputEncoding,
@@ -1248,17 +1254,20 @@ export class SparkRenderer extends THREE.Mesh {
     const geometry = this.geometry as SplatGeometry;
     geometry.instanceCount = spark.activeSplats;
 
-    const accumToWorld = new THREE.Matrix4();
-    if (!this.display.extSplats) {
+    const accumToWorld = onBeforeRenderAccumToWorldScratch;
+    if (this.display.extSplats) {
+      accumToWorld.identity();
+    } else {
       accumToWorld.makeTranslation(spark.display.viewOrigin);
     }
-    const cameraToWorld = camera.matrixWorld.clone();
-    const worldToCamera = cameraToWorld.invert();
-    const accumToCamera = worldToCamera.multiply(accumToWorld);
+    const accumToCamera = onBeforeRenderAccumToCameraScratch
+      .copy(camera.matrixWorld)
+      .invert()
+      .multiply(accumToWorld);
     accumToCamera.decompose(
       this.uniforms.renderToViewPos.value,
       this.uniforms.renderToViewQuat.value,
-      new THREE.Vector3(),
+      onBeforeRenderDecomposeScaleScratch,
     );
     this.uniforms.renderToViewBasis.value.setFromMatrix4(accumToCamera);
 
