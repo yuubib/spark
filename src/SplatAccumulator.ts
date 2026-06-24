@@ -102,6 +102,12 @@ export class SplatAccumulator {
   numSplats = 0;
   target: THREE.WebGLArrayRenderTarget | null = null;
   mapping: GeneratorMapping[] = [];
+  // Reused per-frame scratch for prepareGenerate, to avoid re-allocating these
+  // collection structures every frame. Each is fully consumed within a single
+  // synchronous prepareGenerate call and never escapes it.
+  private allGeneratorsScratch: SplatGenerator[] = [];
+  private globalEditsScratch: SplatEdit[] = [];
+  private previousMappingsScratch = new Map<SplatGenerator, GeneratorMapping>();
   version = -1;
   sortVersion = -1;
   mappingVersion = -1;
@@ -745,13 +751,17 @@ export class SplatAccumulator {
         // consoleLog: true,
       });
 
+      // Install the template-level target uniforms once on program creation;
+      // generate() overwrites their .value before each use, so they need not be
+      // re-allocated on every prepareProgramMaterial call.
+      Object.assign(program.uniforms, {
+        targetLayer: { value: 0 },
+        targetBase: { value: 0 },
+        targetCount: { value: 0 },
+      });
+
       SplatAccumulator.generatorProgram.set(theGenerator, program);
     }
-    Object.assign(program.uniforms, {
-      targetLayer: { value: 0 },
-      targetBase: { value: 0 },
-      targetCount: { value: 0 },
-    });
 
     const material = program.prepareMaterial();
     SplatAccumulator.fullScreenQuad.material = material;
@@ -871,7 +881,8 @@ export class SplatAccumulator {
     this.time = time;
     this.deltaTime = time - previous.time;
 
-    const allGenerators: SplatGenerator[] = [];
+    const allGenerators = this.allGeneratorsScratch;
+    allGenerators.length = 0;
     scene.traverse((node) => {
       if (node instanceof SplatGenerator) {
         if (!camera.layers || camera.layers.test(node.layers)) {
@@ -880,7 +891,10 @@ export class SplatAccumulator {
       }
     });
 
-    const globalEditsSet = new Set<SplatEdit>();
+    // traverseVisible visits each node exactly once (tree), so the old Set
+    // could never deduplicate; push directly into a reused array.
+    const globalEdits = this.globalEditsScratch;
+    globalEdits.length = 0;
     scene.traverseVisible((node) => {
       if (node instanceof SplatEdit) {
         let ancestor = node.parent;
@@ -889,11 +903,10 @@ export class SplatAccumulator {
         }
         if (ancestor == null) {
           // Not part of a SplatMesh so it's a global edit
-          globalEditsSet.add(node);
+          globalEdits.push(node);
         }
       }
     });
-    const globalEdits = Array.from(globalEditsSet);
 
     for (const object of allGenerators) {
       try {
@@ -928,22 +941,28 @@ export class SplatAccumulator {
       }
     });
 
-    const splatCounts = visibleGenerators.map(
-      (generator) => generator.numSplats,
-    );
-    const { maxSplats, mapping: baseCounts } =
-      this.generateMapping(splatCounts);
-
-    const previousMappings = previous.mapping.reduce((mappings, mapping) => {
-      mappings.set(mapping.node, mapping);
-      return mappings;
-    }, new Map<SplatGenerator, GeneratorMapping>());
+    // Reuse the previous-mapping lookup Map (clear + refill) instead of
+    // allocating one via reduce each frame.
+    const previousMappings = this.previousMappingsScratch;
+    previousMappings.clear();
+    for (const mapping of previous.mapping) {
+      previousMappings.set(mapping.node, mapping);
+    }
 
     this.mapping = [];
     this.numSplats = 0;
 
-    baseCounts.forEach(({ base, count }, index) => {
+    // Fuse the mapping layout (formerly splatCounts.map + generateMapping +
+    // baseCounts.forEach) into a single pass over visibleGenerators: no
+    // splatCounts array, no baseCounts array, no transient {base,count} objects.
+    let maxSplats = 0;
+    for (let index = 0; index < visibleGenerators.length; index++) {
       const node = visibleGenerators[index];
+      const count = node.numSplats;
+      const base = maxSplats;
+      // Generation happens in horizontal row chunks, so round up to full width.
+      maxSplats += Math.ceil(count / SPLAT_TEX_WIDTH) * SPLAT_TEX_WIDTH;
+
       const previousNode = previousMappings.get(node);
       if (previousNode && previousNode.count !== node.numSplats) {
         node.updateMappingVersion();
@@ -971,7 +990,7 @@ export class SplatAccumulator {
         });
         this.numSplats = Math.max(this.numSplats, base + count);
       }
-    });
+    }
     const { splatsUpdated, sortUpdated, styleUpdated, mappingUpdated } =
       previous.checkVersions(this.mapping);
     this.version = previous.version + (splatsUpdated ? 1 : 0);

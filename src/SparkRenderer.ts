@@ -368,6 +368,11 @@ const SPLAT_CENTER_INTERSECTION_SYNC_READBACK_MAX_BYTES = 256 * 1024;
 const onBeforeRenderAccumToWorldScratch = new THREE.Matrix4();
 const onBeforeRenderAccumToCameraScratch = new THREE.Matrix4();
 const onBeforeRenderDecomposeScaleScratch = new THREE.Vector3();
+// Reused scratch for the per-frame updateInternal viewChanged check and the
+// driveLod decompose scale sink, to avoid per-call Vector3 allocations.
+const updateInternalCenterScratch = new THREE.Vector3();
+const updateInternalDirScratch = new THREE.Vector3();
+const driveLodScaleScratch = new THREE.Vector3();
 
 function getSplatCenterIntersectionOutputSizeForEncoding(
   numSplats: number,
@@ -1412,8 +1417,8 @@ export class SparkRenderer extends THREE.Mesh {
     const renderer = this.renderer;
     const time = this.time ?? this.clock.getElapsedTime();
 
-    const center = camera.getWorldPosition(new THREE.Vector3());
-    const dir = camera.getWorldDirection(new THREE.Vector3());
+    const center = camera.getWorldPosition(updateInternalCenterScratch);
+    const dir = camera.getWorldDirection(updateInternalDirScratch);
 
     const viewChanged =
       center.distanceTo(this.sortedCenter) > 0.001 ||
@@ -1809,7 +1814,7 @@ export class SparkRenderer extends THREE.Mesh {
 
     const viewPos = new THREE.Vector3();
     const viewQuat = new THREE.Quaternion();
-    this.current.viewToWorld.decompose(viewPos, viewQuat, new THREE.Vector3());
+    this.current.viewToWorld.decompose(viewPos, viewQuat, driveLodScaleScratch);
 
     if (this.lodPosOverride) {
       viewPos.copy(this.lodPosOverride);

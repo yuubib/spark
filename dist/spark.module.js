@@ -11399,6 +11399,9 @@ const _SplatAccumulator = class _SplatAccumulator {
     this.numSplats = 0;
     this.target = null;
     this.mapping = [];
+    this.allGeneratorsScratch = [];
+    this.globalEditsScratch = [];
+    this.previousMappingsScratch = /* @__PURE__ */ new Map();
     this.version = -1;
     this.sortVersion = -1;
     this.mappingVersion = -1;
@@ -11907,13 +11910,13 @@ const _SplatAccumulator = class _SplatAccumulator {
         template: this.extSplats ? _SplatAccumulator.programExtTemplate : _SplatAccumulator.programTemplate
         // consoleLog: true,
       });
+      Object.assign(program.uniforms, {
+        targetLayer: { value: 0 },
+        targetBase: { value: 0 },
+        targetCount: { value: 0 }
+      });
       _SplatAccumulator.generatorProgram.set(theGenerator, program);
     }
-    Object.assign(program.uniforms, {
-      targetLayer: { value: 0 },
-      targetBase: { value: 0 },
-      targetCount: { value: 0 }
-    });
     const material = program.prepareMaterial();
     _SplatAccumulator.fullScreenQuad.material = material;
     return { program, material };
@@ -11975,7 +11978,7 @@ const _SplatAccumulator = class _SplatAccumulator {
     previous,
     lodInstances
   }) {
-    var _a2;
+    var _a2, _b2;
     this.viewToWorld.copy(camera.matrixWorld);
     camera.getWorldPosition(this.viewOrigin);
     camera.getWorldDirection(this.viewDirection);
@@ -11984,7 +11987,8 @@ const _SplatAccumulator = class _SplatAccumulator {
     _SplatAccumulator.sortRadialUniform.value = sortRadial;
     this.time = time;
     this.deltaTime = time - previous.time;
-    const allGenerators = [];
+    const allGenerators = this.allGeneratorsScratch;
+    allGenerators.length = 0;
     scene.traverse((node) => {
       if (node instanceof SplatGenerator) {
         if (!camera.layers || camera.layers.test(node.layers)) {
@@ -11992,7 +11996,8 @@ const _SplatAccumulator = class _SplatAccumulator {
         }
       }
     });
-    const globalEditsSet = /* @__PURE__ */ new Set();
+    const globalEdits = this.globalEditsScratch;
+    globalEdits.length = 0;
     scene.traverseVisible((node) => {
       if (node instanceof SplatEdit) {
         let ancestor = node.parent;
@@ -12000,11 +12005,10 @@ const _SplatAccumulator = class _SplatAccumulator {
           ancestor = ancestor.parent;
         }
         if (ancestor == null) {
-          globalEditsSet.add(node);
+          globalEdits.push(node);
         }
       }
     });
-    const globalEdits = Array.from(globalEditsSet);
     for (const object of allGenerators) {
       try {
         (_a2 = object.frameUpdate) == null ? void 0 : _a2.call(object, {
@@ -12033,19 +12037,19 @@ const _SplatAccumulator = class _SplatAccumulator {
         }
       }
     });
-    const splatCounts = visibleGenerators.map(
-      (generator) => generator.numSplats
-    );
-    const { maxSplats, mapping: baseCounts } = this.generateMapping(splatCounts);
-    const previousMappings = previous.mapping.reduce((mappings, mapping) => {
-      mappings.set(mapping.node, mapping);
-      return mappings;
-    }, /* @__PURE__ */ new Map());
+    const previousMappings = this.previousMappingsScratch;
+    previousMappings.clear();
+    for (const mapping of previous.mapping) {
+      previousMappings.set(mapping.node, mapping);
+    }
     this.mapping = [];
     this.numSplats = 0;
-    baseCounts.forEach(({ base, count }, index) => {
-      var _a3;
+    let maxSplats = 0;
+    for (let index = 0; index < visibleGenerators.length; index++) {
       const node = visibleGenerators[index];
+      const count = node.numSplats;
+      const base = maxSplats;
+      maxSplats += Math.ceil(count / SPLAT_TEX_WIDTH) * SPLAT_TEX_WIDTH;
       const previousNode = previousMappings.get(node);
       if (previousNode && previousNode.count !== node.numSplats) {
         node.updateMappingVersion();
@@ -12053,7 +12057,7 @@ const _SplatAccumulator = class _SplatAccumulator {
       const { generator, covGenerator } = node;
       if ((generator || covGenerator) && count > 0) {
         const { version, sortVersion, styleVersion, mappingVersion } = node;
-        const editorStateVisibilityVersion = node instanceof SplatMesh && node.editorStateRenderMode === "accumulator" ? ((_a3 = node.getEditorState()) == null ? void 0 : _a3.visibilityVersion) ?? -1 : void 0;
+        const editorStateVisibilityVersion = node instanceof SplatMesh && node.editorStateRenderMode === "accumulator" ? ((_b2 = node.getEditorState()) == null ? void 0 : _b2.visibilityVersion) ?? -1 : void 0;
         this.mapping.push({
           node,
           generator,
@@ -12068,7 +12072,7 @@ const _SplatAccumulator = class _SplatAccumulator {
         });
         this.numSplats = Math.max(this.numSplats, base + count);
       }
-    });
+    }
     const { splatsUpdated, sortUpdated, styleUpdated, mappingUpdated } = previous.checkVersions(this.mapping);
     this.version = previous.version + (splatsUpdated ? 1 : 0);
     this.sortVersion = previous.sortVersion + (sortUpdated ? 1 : 0);
@@ -13309,6 +13313,9 @@ const SPLAT_CENTER_INTERSECTION_SYNC_READBACK_MAX_BYTES = 256 * 1024;
 const onBeforeRenderAccumToWorldScratch = new THREE.Matrix4();
 const onBeforeRenderAccumToCameraScratch = new THREE.Matrix4();
 const onBeforeRenderDecomposeScaleScratch = new THREE.Vector3();
+const updateInternalCenterScratch = new THREE.Vector3();
+const updateInternalDirScratch = new THREE.Vector3();
+const driveLodScaleScratch = new THREE.Vector3();
 function getSplatCenterIntersectionOutputSizeForEncoding(numSplats, encoding) {
   const splatCount = Math.max(0, Math.floor(numSplats));
   const byteCount = Math.ceil(splatCount / 8);
@@ -13812,8 +13819,8 @@ const _SparkRenderer = class _SparkRenderer extends THREE.Mesh {
   }) {
     const renderer = this.renderer;
     const time = this.time ?? this.clock.getElapsedTime();
-    const center = camera.getWorldPosition(new THREE.Vector3());
-    const dir = camera.getWorldDirection(new THREE.Vector3());
+    const center = camera.getWorldPosition(updateInternalCenterScratch);
+    const dir = camera.getWorldDirection(updateInternalDirScratch);
     const viewChanged = center.distanceTo(this.sortedCenter) > 1e-3 || dir.dot(this.sortedDir) < 0.999;
     const next = this.accumulators.pop();
     if (!next) {
@@ -14109,7 +14116,7 @@ const _SparkRenderer = class _SparkRenderer extends THREE.Mesh {
     pixelScaleLimit *= this.lodRenderScale;
     const viewPos = new THREE.Vector3();
     const viewQuat = new THREE.Quaternion();
-    this.current.viewToWorld.decompose(viewPos, viewQuat, new THREE.Vector3());
+    this.current.viewToWorld.decompose(viewPos, viewQuat, driveLodScaleScratch);
     if (this.lodPosOverride) {
       viewPos.copy(this.lodPosOverride);
     }

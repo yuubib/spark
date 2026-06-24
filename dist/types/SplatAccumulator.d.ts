@@ -29,6 +29,9 @@ export declare class SplatAccumulator {
     numSplats: number;
     target: THREE.WebGLArrayRenderTarget | null;
     mapping: GeneratorMapping[];
+    private allGeneratorsScratch;
+    private globalEditsScratch;
+    private previousMappingsScratch;
     version: number;
     sortVersion: number;
     mappingVersion: number;
