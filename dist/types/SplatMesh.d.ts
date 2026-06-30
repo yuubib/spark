@@ -49,6 +49,7 @@ export type SplatMeshStateIterationOptions = {
     applySelectedTransform?: boolean;
 };
 export type SplatMeshStateIterationCallback = (index: number, center: THREE.Vector3, scales: THREE.Vector3, quaternion: THREE.Quaternion, opacity: number, color: THREE.Color, state: SplatEditorStateBits) => void;
+export type SplatMeshSdfEditUpdateMode = "sort" | "render-only";
 export type SplatMeshOptions = {
     url?: string;
     fileBytes?: Uint8Array | ArrayBuffer;
@@ -68,6 +69,7 @@ export type SplatMeshOptions = {
     raycastEditorStateMode?: SplatEditorStateFilterMode;
     editorStateRenderMode?: SplatEditorStateRenderMode;
     editorSelectedTransformRenderMode?: SplatEditorSelectedTransformRenderMode;
+    sdfEditUpdateMode?: SplatMeshSdfEditUpdateMode;
     onFrame?: ({ mesh, time, deltaTime, }: {
         mesh: SplatMesh;
         time: number;
@@ -257,6 +259,7 @@ export declare class SplatMesh extends SplatGenerator {
         indices: Uint32Array;
     };
     rgbaDisplaceEdits: SplatEdits | null;
+    sdfEditUpdateMode: SplatMeshSdfEditUpdateMode;
     splatRgba: RgbaArray | null;
     maxSh: number;
     enableLod?: boolean;

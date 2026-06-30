@@ -18479,6 +18479,7 @@ const _SplatMesh = class _SplatMesh extends SplatGenerator {
     this.raycastEditorStateMode = options.raycastEditorStateMode ?? "visible";
     this.editorStateRenderMode = options.editorStateRenderMode ?? "generator";
     this.editorSelectedTransformRenderMode = options.editorSelectedTransformRenderMode ?? "generator";
+    this.sdfEditUpdateMode = options.sdfEditUpdateMode ?? "sort";
     this.onFrame = options.onFrame;
     this.context = {
       transform: new SplatTransformer(),
@@ -19836,6 +19837,7 @@ const _SplatMesh = class _SplatMesh extends SplatGenerator {
     }
     this.numSplats = this.context.splats.getNumSplats();
     let updated = false;
+    let renderOnlyUpdated = false;
     const lodSplats = ((_a2 = this.packedSplats) == null ? void 0 : _a2.lodSplats) ?? ((_b2 = this.extSplats) == null ? void 0 : _b2.lodSplats);
     this.context.enableLod.value = lodSplats != null && lodIndices != null;
     if (this.enableLod === false) {
@@ -19943,7 +19945,13 @@ const _SplatMesh = class _SplatMesh extends SplatGenerator {
     }
     if (this.rgbaDisplaceEdits) {
       const editResult = this.rgbaDisplaceEdits.update(editsSdfs);
-      updated || (updated = editResult.updated);
+      if (editResult.updated) {
+        if (this.sdfEditUpdateMode === "render-only" && !editResult.dynoUpdated && !this.generatorDirty) {
+          renderOnlyUpdated = true;
+        } else {
+          updated = true;
+        }
+      }
       if (editResult.dynoUpdated) {
         this.generatorDirty = true;
         this.generatorDirtyRenderOnly = false;
@@ -19962,6 +19970,8 @@ const _SplatMesh = class _SplatMesh extends SplatGenerator {
     }
     if (updated) {
       this.updateVersion();
+    } else if (renderOnlyUpdated) {
+      this.updateRenderVersion();
     }
     (_e = this.onFrame) == null ? void 0 : _e.call(this, { mesh: this, time, deltaTime });
   }

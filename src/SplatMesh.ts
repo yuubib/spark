@@ -150,6 +150,8 @@ export type SplatMeshStateIterationCallback = (
   state: SplatEditorStateBits,
 ) => void;
 
+export type SplatMeshSdfEditUpdateMode = "sort" | "render-only";
+
 export type SplatMeshOptions = {
   // URL to fetch a Gaussian splat file from(supports .ply, .splat, .ksplat,
   // .spz formats). (default: undefined)
@@ -208,6 +210,10 @@ export type SplatMeshOptions = {
   // splats only; covariance splats stay on the generator path.
   // (default: "generator")
   editorSelectedTransformRenderMode?: SplatEditorSelectedTransformRenderMode;
+  // Controls versioning for SDF edit parameter updates after the SplatEdits
+  // generator is already attached. "sort" preserves legacy sortVersion bumps;
+  // "render-only" updates render uniforms without re-sorting. (default: "sort")
+  sdfEditUpdateMode?: SplatMeshSdfEditUpdateMode;
   // Callback function that is called every frame to update the mesh.
   // Call mesh.updateVersion() if splats need to be regenerated due to some change.
   // Calling updateVersion() is not necessary for object transformations, recoloring,
@@ -605,6 +611,10 @@ export class SplatMesh extends SplatGenerator {
   raycastIndices?: { numSplats: number; indices: Uint32Array };
   // Compiled SplatEdits for applying SDF edits to splat RGBA + centers
   rgbaDisplaceEdits: SplatEdits | null = null;
+  // Runtime SDF-only edits can opt into render-version updates after the initial
+  // edit attachment. Default keeps legacy behavior: every SDF parameter change
+  // also bumps sortVersion.
+  sdfEditUpdateMode: SplatMeshSdfEditUpdateMode;
   // Optional RgbaArray to overwrite splat RGBA values with custom values.
   // Useful for "baking" RGB and opacity edits into the SplatMesh. (default: null)
   splatRgba: RgbaArray | null = null;
@@ -673,6 +683,7 @@ export class SplatMesh extends SplatGenerator {
     this.editorStateRenderMode = options.editorStateRenderMode ?? "generator";
     this.editorSelectedTransformRenderMode =
       options.editorSelectedTransformRenderMode ?? "generator";
+    this.sdfEditUpdateMode = options.sdfEditUpdateMode ?? "sort";
     this.onFrame = options.onFrame;
 
     this.context = {
@@ -2351,6 +2362,7 @@ export class SplatMesh extends SplatGenerator {
     this.numSplats = this.context.splats.getNumSplats();
 
     let updated = false;
+    let renderOnlyUpdated = false;
 
     const lodSplats = this.packedSplats?.lodSplats ?? this.extSplats?.lodSplats;
     this.context.enableLod.value = lodSplats != null && lodIndices != null;
@@ -2503,7 +2515,17 @@ export class SplatMesh extends SplatGenerator {
     }
     if (this.rgbaDisplaceEdits) {
       const editResult = this.rgbaDisplaceEdits.update(editsSdfs);
-      updated ||= editResult.updated;
+      if (editResult.updated) {
+        if (
+          this.sdfEditUpdateMode === "render-only" &&
+          !editResult.dynoUpdated &&
+          !this.generatorDirty
+        ) {
+          renderOnlyUpdated = true;
+        } else {
+          updated = true;
+        }
+      }
       if (editResult.dynoUpdated) {
         this.generatorDirty = true;
         this.generatorDirtyRenderOnly = false;
@@ -2524,6 +2546,8 @@ export class SplatMesh extends SplatGenerator {
 
     if (updated) {
       this.updateVersion();
+    } else if (renderOnlyUpdated) {
+      this.updateRenderVersion();
     }
 
     this.onFrame?.({ mesh: this, time, deltaTime });

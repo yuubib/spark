@@ -115,6 +115,48 @@ await SplatMesh.staticInitialized;
 }
 
 {
+  const mesh = new SplatMesh({ sdfEditUpdateMode: "render-only" });
+  await mesh.initialized;
+
+  const edit = new SplatEdit();
+  const sdf = new SplatEditSdf();
+  edit.addSdf(sdf);
+  mesh.add(edit);
+
+  updateMesh(mesh);
+  const version = mesh.version;
+  const sortVersion = mesh.sortVersion;
+
+  sdf.position.x = 1;
+  sdf.updateMatrixWorld(true);
+  updateMesh(mesh);
+  assert.strictEqual(mesh.version, version + 1);
+  assert.strictEqual(mesh.sortVersion, sortVersion);
+
+  mesh.dispose();
+}
+
+{
+  const mesh = new SplatMesh();
+  await mesh.initialized;
+
+  const edit = new SplatEdit();
+  const sdf = new SplatEditSdf();
+  edit.addSdf(sdf);
+  mesh.add(edit);
+
+  updateMesh(mesh);
+  const sortVersion = mesh.sortVersion;
+
+  sdf.position.x = 1;
+  sdf.updateMatrixWorld(true);
+  updateMesh(mesh);
+  assert.strictEqual(mesh.sortVersion, sortVersion + 1);
+
+  mesh.dispose();
+}
+
+{
   const mesh = new SplatMesh();
   await mesh.initialized;
 
